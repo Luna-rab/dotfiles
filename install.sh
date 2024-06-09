@@ -10,10 +10,10 @@ link_to_homedir() {
     command mkdir "$HOME/.dotbackup"
   fi
 
-  local dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  local dotdir=$1
   if [[ "$HOME" != "$dotdir" ]];then
     for f in $dotdir/.??*; do
-      [[ `basename $f` == ".git" ]] && continue
+      [[ `basename $f` == ".git*" ]] && continue
       if [[ -L "$HOME/`basename $f`" ]];then
         command rm -f "$HOME/`basename $f`"
       fi
@@ -28,6 +28,19 @@ link_to_homedir() {
   fi
 }
 
-link_to_homedir
-git config --global include.path "~/.gitconfig_shared"
+set_global_gitignore() {
+  if [ ! -d "$HOME/.config/git" ];then
+    command echo "$HOME/.config/git not found. Auto Make it"
+    command mkdir -p "$HOME/.config/git"
+  fi
+  if [[ -e "$HOME/.config/git/ignore" ]];then
+    command mv "$HOME/.config/git/ignore" "$HOME/.config/git/ignore.backup"
+  fi
+  local dotdir=$1
+  command cp $dotdir/.gitignore_global $HOME/.config/git/ignore
+}
+
+dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+link_to_homedir $dotdir
+set_global_gitignore $dotdir
 command echo "Install completed!!!!"

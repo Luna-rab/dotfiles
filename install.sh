@@ -10,8 +10,7 @@ link_to_homedir() {
     command mkdir "$HOME/.dotbackup"
   fi
 
-  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-  local dotdir=$(dirname ${script_dir})
+  local dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
   if [[ "$HOME" != "$dotdir" ]];then
     for f in $dotdir/.??*; do
       [[ `basename $f` == ".git" ]] && continue
@@ -22,6 +21,7 @@ link_to_homedir() {
         command mv "$HOME/`basename $f`" "$HOME/.dotbackup"
       fi
       command ln -snf $f $HOME
+      command echo "create symboliclink $f"
     done
   else
     command echo "same install src dest"

@@ -3,13 +3,12 @@
 ## Install
 1. download
     ```shell
-    git clone git@github.com:Luna-rab/dotfiles.git $HOME
+    git clone https://github.com/Luna-rab/dotfiles.git $HOME/dotfiles
     cd $HOME/dotfiles
     ````
 
 2. install 
     ```shell
-    chmod +x ./install.sh # if needed
     ./install.sh
     ```
 

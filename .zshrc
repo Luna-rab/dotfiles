@@ -30,3 +30,34 @@ zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-syntax-highlighting
 
 ### End of Zinit's installer chunk
+
+# Install mise automatically if not installed
+if ! command -v mise >/dev/null 2>&1; then
+    curl https://mise.run | sh
+fi
+
+eval "$(~/.local/bin/mise activate zsh)"
+
+# Configure ghq via mise (install only if missing)
+if ! command -v ghq >/dev/null 2>&1; then
+  mise install ghq
+fi
+mise use -g ghq
+
+# Configure fzf via mise (install only if missing)
+if ! command -v fzf >/dev/null 2>&1; then
+  mise install fzf
+fi
+mise use -g fzf@latest
+
+# ghq + fzf integration
+function ghq-fzf() {
+  local src=$(ghq list | fzf)
+  if [ -n "$src" ]; then
+    BUFFER="cd $(ghq root)/$src"
+    zle accept-line
+  fi
+  zle -R -c
+}
+zle -N ghq-fzf
+bindkey '^g' ghq-fzf

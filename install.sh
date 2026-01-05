@@ -13,7 +13,9 @@ link_to_homedir() {
   local dotdir=$1
   if [[ "$HOME" != "$dotdir" ]];then
     for f in $dotdir/.??*; do
-      [[ `basename $f` == ".git*" ]] && continue
+      # .git で始まるファイル/ディレクトリはリンクしない
+      local fname=`basename "$f"`
+      [[ $fname == .git* ]] && continue
       if [[ -L "$HOME/`basename $f`" ]];then
         command rm -f "$HOME/`basename $f`"
       fi

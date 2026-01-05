@@ -61,3 +61,12 @@ function ghq-fzf() {
 }
 zle -N ghq-fzf
 bindkey '^g' ghq-fzf
+
+# git switch + fzf integration
+function gs() {
+  local branch=$(git branch -a | grep -v HEAD | sed 's/remotes\/origin\///' | sed 's/^\*\? *//' | sort -u | fzf --height 40% --reverse --border)
+  if [ -n "$branch" ]; then
+    git switch "$branch"
+  fi
+}
+alias gs='gs'

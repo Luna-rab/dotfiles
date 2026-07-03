@@ -9,6 +9,14 @@
 !/.gitignore_global
 !/.gitconfig_shared
 
+# sheldon (zsh plugin manager) config
+!/sheldon
+!/sheldon/**
+
+# Claude Code config (portable). 実体のローカル設定はコミットしない
+!/.claude
+!/.claude/**
+
 !install.sh
 !/README.md
 !.gitignore

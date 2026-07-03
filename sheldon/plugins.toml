@@ -1,0 +1,21 @@
+shell = "zsh"
+
+# pure prompt
+# async.zsh を先に読み込んでから pure.zsh を source する。
+# pure.zsh は末尾で prompt_pure_setup を呼ぶため source だけで有効化される
+# (zinit の `ice pick"async.zsh" src"pure.zsh"` と同等)。
+[plugins.pure]
+github = "sindresorhus/pure"
+use = ["async.zsh", "pure.zsh"]
+
+[plugins.zsh-autosuggestions]
+github = "zsh-users/zsh-autosuggestions"
+
+# 補完関数を fpath に追加するだけのプラグイン(source すると動かない)
+[plugins.zsh-completions]
+github = "zsh-users/zsh-completions"
+apply = ["fpath"]
+
+# syntax-highlighting は他プラグインの後に読み込む必要があるため最後に置く
+[plugins.zsh-syntax-highlighting]
+github = "zsh-users/zsh-syntax-highlighting"

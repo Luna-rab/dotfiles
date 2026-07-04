@@ -73,7 +73,7 @@ link_claude_config() {
 
   # ディレクトリは symlink（リポジトリの編集が即反映される）
   local d
-  for d in skills commands agents rules; do
+  for d in skills commands agents rules scripts; do
     [[ -d "$src/$d" ]] || continue
     if [[ -L "$dst/$d" ]]; then
       command rm -f "$dst/$d"

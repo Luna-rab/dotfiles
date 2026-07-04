@@ -6,5 +6,10 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "tui": "fullscreen"
+  "tui": "fullscreen",
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/scripts/statusline.sh",
+    "padding": 2
+  }
 }

@@ -9,9 +9,6 @@ COST=$(echo "$input" | jq -r '.cost.total_cost_usd // 0')
 DURATION_MS=$(echo "$input" | jq -r '.cost.total_duration_ms // 0')
 LINES_ADDED=$(echo "$input" | jq -r '.cost.total_lines_added // 0')
 LINES_REMOVED=$(echo "$input" | jq -r '.cost.total_lines_removed // 0')
-CACHE_READ=$(echo "$input" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
-CACHE_CREATION=$(echo "$input" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
-CACHE_INPUT=$(echo "$input" | jq -r '.context_window.current_usage.input_tokens // 0')
 FIVE_H=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 FIVE_H_RESET=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 WEEK=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
@@ -53,7 +50,7 @@ WORKTREE_INFO=""
 
 echo -e "${CYAN}[$MODEL_LABEL]${RESET} 📁 ${DIR##*/}${GIT_INFO}${WORKTREE_INFO}"
 
-# --- line 2: context bar / cost / duration ---
+# --- line 2: context bar / cost / duration / lines changed ---
 CTX_COLOR=$(color_for_pct "$PCT")
 BAR_WIDTH=10
 FILLED=$((PCT * BAR_WIDTH / 100))
@@ -66,26 +63,15 @@ COST_FMT=$(printf '$%.2f' "$COST")
 DURATION_SEC=$((DURATION_MS / 1000))
 MINS=$((DURATION_SEC / 60))
 SECS=$((DURATION_SEC % 60))
-echo -e "${CTX_COLOR}${BAR}${RESET} ctx:${PCT}% | 💰 ${COST_FMT} | ⏱️ ${MINS}m ${SECS}s"
 
-# --- line 3: lines changed / cache hit rate ---
 LINES_INFO=""
 if [ "$LINES_ADDED" -gt 0 ] || [ "$LINES_REMOVED" -gt 0 ]; then
-  LINES_INFO="📝 ${GREEN}+${LINES_ADDED}${RESET} ${RED}-${LINES_REMOVED}${RESET}"
+  LINES_INFO=" | 📝 ${GREEN}+${LINES_ADDED}${RESET} ${RED}-${LINES_REMOVED}${RESET}"
 fi
 
-CACHE_TOTAL=$((CACHE_READ + CACHE_CREATION + CACHE_INPUT))
-CACHE_INFO=""
-if [ "$CACHE_TOTAL" -gt 0 ]; then
-  CACHE_HIT_PCT=$((CACHE_READ * 100 / CACHE_TOTAL))
-  CACHE_INFO="📦 cache: ${CACHE_HIT_PCT}%"
-fi
+echo -e "${CTX_COLOR}${BAR}${RESET} ctx:${PCT}% | 💰 ${COST_FMT} | ⏱️ ${MINS}m ${SECS}s${LINES_INFO}"
 
-if [ -n "$LINES_INFO" ] || [ -n "$CACHE_INFO" ]; then
-  echo -e "${LINES_INFO}${LINES_INFO:+${CACHE_INFO:+ | }}${CACHE_INFO}"
-fi
-
-# --- line 4: rate limits (Pro/Max subscriptions only) ---
+# --- line 3: rate limits (Pro/Max subscriptions only) ---
 if [ -n "$FIVE_H" ] || [ -n "$WEEK" ]; then
   RATE_LINE=""
   if [ -n "$FIVE_H" ]; then
@@ -105,7 +91,7 @@ if [ -n "$FIVE_H" ] || [ -n "$WEEK" ]; then
   echo -e "$RATE_LINE"
 fi
 
-# --- line 5: open PR badge ---
+# --- line 4: open PR badge ---
 if [ -n "$PR_NUMBER" ]; then
   case "$PR_STATE" in
     approved) PR_COLOR=$GREEN ;;

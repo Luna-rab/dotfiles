@@ -30,6 +30,9 @@
 - **ステップ全体で止める**: 直せないエスカレーション・解けないコンフリクト・通らない動作検証は、
   ステップを未マージのまま返す。後続のステップは前のステップが未マージなので進まない。監督者がユーザーへ
   エスカレーションする。
+- **すべての `agent()` に `model` を明示する**（SKILL.md「役割ごとのモデル」）。実装・修正・
+  レビュー・マージ準備は `'opus'`、再計画は `'fable'`、topic マージは `'sonnet'`。指定した
+  モデルが使えないときは 1 つ下（`'fable'` → `'opus'` → `'sonnet'`）に落とす。
 - worktree 分離（`isolation: "worktree"`）で実装・修正・マージ（コンフリクト解消）の競合を
   防ぐ。worktree はデフォルトブランチから分岐するので、起点に取り込む topic をプロンプトで
   指定する。レビュー・topic マージは push 済みブランチを対象にする（worktree は他ステージから
@@ -87,11 +90,11 @@ const fail = (step, tasks, reason) => ({ step, merged: false, reason, tasks })
 
 // 1 回のレビュー = 通常レビュー + 敵対的レビューを並列で起動し、1 つの REVIEW にまとめる。
 // 敵対的レビューは「加えられた変更はすべて誤り」という前提で粗探しをする（adversarialReviewPrompt）。
-// approved は両方が承認したときだけ true、findings は両者を結合する。どちらも model 指定なし（継承）。
+// approved は両方が承認したときだけ true、findings は両者を結合する。どちらも model: 'opus'。
 async function runReview({ id, branch, task, phase = 'Review', prompt = reviewPrompt, adversarialPrompt = adversarialReviewPrompt }) {
   const [normal, adversarial] = await parallel([
-    () => agent(prompt(branch, task),            { label: `review:${id}`,     phase, schema: REVIEW }),
-    () => agent(adversarialPrompt(branch, task), { label: `review-adv:${id}`, phase, schema: REVIEW }),
+    () => agent(prompt(branch, task),            { label: `review:${id}`,     phase, model: 'opus', schema: REVIEW }),
+    () => agent(adversarialPrompt(branch, task), { label: `review-adv:${id}`, phase, model: 'opus', schema: REVIEW }),
   ])
   return {
     approved: !!normal?.approved && !!adversarial?.approved,
@@ -137,7 +140,7 @@ async function runStep(stepNo, tasks, topic) {
   const escalated = results.filter(r => !r.approved)
   if (escalated.length) {
     const plan = await agent(replanPrompt(stepNo, escalated),
-      { label: `replan:step${stepNo}`, phase: 'Escalation', model: 'opus', schema: PLAN })
+      { label: `replan:step${stepNo}`, phase: 'Escalation', model: 'fable', schema: PLAN })
     for (const r of escalated) {
       const task = tasks.find(t => t.id === r.task)
       const res = await fixReviewLoop({ id: `esc:${r.task}`, startBranch: r.branch,
@@ -179,7 +182,7 @@ async function runStep(stepNo, tasks, topic) {
     }
     // topic マージ: 別セッションが（コンフリクト解消は上でレビュー済み）topic へマージする
     const topicMerge = await agent(topicMergePrompt(stepNo, r, branch, topic),
-      { label: `topic-merge:${r.task}`, phase: 'Merge', schema: MERGE })
+      { label: `topic-merge:${r.task}`, phase: 'Merge', model: 'sonnet', schema: MERGE })
     if (!topicMerge?.merged) return fail(stepNo, results, topicMerge?.reason || `topic への取り込み失敗: ${r.task}`)
   }
 

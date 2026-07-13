@@ -28,7 +28,8 @@
 
 ## レビューステージ（検証のみ）
 
-`agent(prompt, opts)` で起動する。`opts` は **model 指定なし**（セッション既定を継承）。
+`agent(prompt, opts)` で起動する。`opts` は `model: "opus"`（差分の良し悪しを判断する作業なので
+基本モデルを使う）。ファイルを編集しないので worktree は不要。
 実装ステージの worktree はランタイムが管理し、レビューステージからは直接見えないため、
 push 済みのタスクブランチを対象にする（remote のタスクブランチを `git fetch` して
 checkout してから読む）。ブランチ名は前のステップの実装ステージの返り値から受け取る。
@@ -77,7 +78,7 @@ CLAUDE.md/memory を自分で読ませ、全文をプロンプトに再掲しな
 ## 敵対的レビューステージ（変更はすべて誤りという前提で粗探しする）
 
 通常レビューと**並列に**、同じタスクブランチを対象にもう 1 体の `agent()` を起動する
-（`model` 指定なし＝セッション既定を継承。[workflow-script.md](workflow-script.md) の `runReview`）。
+（通常レビューと同じ `model: "opus"`。[workflow-script.md](workflow-script.md) の `runReview`）。
 狙いは、通常レビューが「変更は概ね正しい」と見なすことで見落とす前提の誤りを拾うこと。
 
 プロンプトは通常レビューの契約（対象の特定・実行内容・禁止事項・報告形式）をそのまま封入し、
@@ -107,13 +108,13 @@ CLAUDE.md/memory を自分で読ませ、全文をプロンプトに再掲しな
 prevMustFix = review の must-fix 件数
 while (!review.approved && round < 上限) {
   fix    = agent(修正プロンプト(branch, review.findings), { model: "opus", isolation: "worktree" })
-  review = agent(再レビュープロンプト(fix.branch),        { /* model 継承 */ })
+  review = agent(再レビュープロンプト(fix.branch),        { model: "opus" })
   if (review の must-fix 件数 >= prevMustFix) break  // 無進捗 = スタック
   prevMustFix = review の must-fix 件数
 }
 ```
 
-- 修正エージェントは実装用モデル（`model: "opus"`）で、対象タスクブランチを起点に
+- 修正エージェントは実装と同じ `model: "opus"` で、対象タスクブランチを起点に
   worktree で作業する。
 - **打ち切り条件は 2 つ**: (1) 上限回数（例: 3 回）、(2) 無進捗（修正しても must-fix
   件数が減らない）。回数上限だけだと、修正が効かないタスクで上限まで無駄にエージェント

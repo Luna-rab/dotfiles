@@ -41,7 +41,7 @@ flowchart TB
       subgraph tasks["フェーズ1: 並列タスク（parallel）"]
         direction TB
         t1["タスクA: 計画→実装（agent, opus, worktree）"]
-        t1r["レビュー（agent）"]
+        t1r["レビュー（agent, opus）"]
         t1f{"承認？"}
         t1 --> t1r --> t1f
         t1f -->|未承認| t1fix["修正（agent, opus）→ 再レビュー<br/>（3回・無進捗で打ち切り）"]
@@ -52,7 +52,7 @@ flowchart TB
 
       subgraph esc["フェーズ2: エスカレーション管理（未承認タスクがあれば）"]
         direction TB
-        replan["再計画（agent, opus・コードは書かない）"]
+        replan["再計画（agent, fable・コードは書かない）"]
         escfix["未承認タスクごとに fix→review をループ<br/>（スクリプトの for）"]
         replan --> escfix
       end
@@ -61,8 +61,8 @@ flowchart TB
         direction TB
         prepare["マージ準備（agent, opus, worktree）<br/>最新 topic を取り込み・コンフリクト解消・動作検証"]
         hasconf{"コンフリクトを<br/>解消した？"}
-        creview["解消差分をレビュー（agent・別セッション）"]
-        tmerge["topic へマージ（agent・別セッション）<br/>冪等チェック→topic を前進"]
+        creview["解消差分をレビュー（agent, opus・別セッション）"]
+        tmerge["topic へマージ（agent, sonnet・別セッション）<br/>冪等チェック→topic を前進"]
         prepare --> hasconf
         hasconf -->|無し| tmerge
         hasconf -->|有り| creview --> tmerge

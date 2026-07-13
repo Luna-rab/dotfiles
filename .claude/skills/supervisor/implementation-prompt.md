@@ -104,7 +104,8 @@ Explore 調査は「分割・並列可否・規模」を監督者が判断する
 ## 7. 完了時の作法
 
 - コミットはプロジェクトの署名規約に従う（例: 末尾に
-  `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`）。
+  `Co-Authored-By: Claude <モデル名> <noreply@anthropic.com>` を付ける。モデル名は
+  そのエージェントが実際に動いているモデルを書く）。
 - push し、`gh pr create --base topic/<作業名>` で PR を作成（本文は日本語。
   設計判断・仕分け一覧など、レビューの判断材料になる情報を含める）。
 - **マージはしない**（ステップ内の全ブランチのマージはマージ管理が行う）。

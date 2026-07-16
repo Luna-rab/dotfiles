@@ -16,9 +16,11 @@
 - **ステップは直列（`for` で await）**。前のステップのマージ管理が topic を前進させてから次のステップが始まる。
 - **ステップ内タスクは並列（`parallel`）**。各タスクは `計画 → 実装 → レビュー ↔ 修正ループ` を
   回し、**自分ではマージしない**。3 回・無進捗で直せない must-fix はエスカレーションする。
-- **各レビューは通常レビューと敵対的レビューを並列で走らせる**（`runReview`）。敵対的レビューは
+- **standard タスクのレビューは通常＋敵対的を並列で走らせる**（`runReview`）。敵対的レビューは
   「加えられた変更はすべて誤りである」という前提で粗探しをする独立レビューで、通常レビューが
   見落とす前提の誤りを拾う。両方が承認したときだけ `approved: true`、指摘は両者を結合する。
+  **light タスク（docs・機械的・影響小）は通常レビュー 1 本のみ**（敵対的を省いてコストを下げる）。
+  タスクの `tier` で切り替える。
 - **fix と review は必ず別 `agent()`**（修正の自己承認を防ぐ）。
 - **マージは実装ブランチごとに逐次**。topic への並列マージはコンフリクトするので `for` で
   1 本ずつ。各回で最新 topic をタスクブランチ側に取り込み、コンフリクトを解消し、動作検証してから
@@ -30,9 +32,11 @@
 - **ステップ全体で止める**: 直せないエスカレーション・解けないコンフリクト・通らない動作検証は、
   ステップを未マージのまま返す。後続のステップは前のステップが未マージなので進まない。監督者がユーザーへ
   エスカレーションする。
-- **すべての `agent()` に `model` を明示する**（SKILL.md「役割ごとのモデル」）。実装・修正・
-  レビュー・マージ準備は `'opus'`、再計画は `'fable'`、topic マージは `'sonnet'`。指定した
-  モデルが使えないときは 1 つ下（`'fable'` → `'opus'` → `'sonnet'`）に落とす。
+- **すべての `agent()` に `model` を明示し、機械的な作業には `effort` で軽さを与える**
+  （SKILL.md「役割ごとのモデルと effort」）。standard の実装・修正・マージ準備は `'opus'`、light の
+  実装・修正は `'sonnet'`（effort `'medium'`）、レビューは effort `'medium'`、topic マージは
+  `'sonnet'` + effort `'low'`、再計画は `'fable'`。指定したモデルが使えないときは 1 つ下
+  （`'fable'` → `'opus'` → `'sonnet'`）に落とす。
 - worktree 分離（`isolation: "worktree"`）で実装・修正・マージ（コンフリクト解消）の競合を
   防ぐ。worktree はデフォルトブランチから分岐するので、起点に取り込む topic をプロンプトで
   指定する。レビュー・topic マージは push 済みブランチを対象にする（worktree は他ステージから
@@ -73,6 +77,11 @@ const REVIEW = {
 const IMPL = { type: 'object', properties: {
   pr: { type: 'number' }, branch: { type: 'string' },
   summary: { type: 'string' }, verified: { type: 'boolean' },
+  changeKind: { enum: ['docs', 'logic'] },  // 修正が doc/コメントのみか（再レビューの軽重に使う）
+  blocked: { type: 'boolean' },             // DoD が曖昧で実装に入れない（計画段階で判定）
+  questions: { type: 'string' },            // blocked のとき監督者に確認したい点
+  decisions: { type: 'array', items: { type: 'string' } },  // 自分の判断で変えた目標・DoD・スコープ
+  deferrals: { type: 'array', items: { type: 'string' } },  // 先延ばし・対象外にした作業
 }, required: ['branch'] }
 // 再計画（escalation-prompt.md に対応）
 const PLAN = { type: 'object', properties: { plan: { type: 'string' } }, required: ['plan'] }
@@ -86,19 +95,37 @@ const MERGE = { type: 'object', properties: {
 }, required: ['branch'] }
 
 const mustFixCount = r => (r?.findings || []).filter(f => f.severity === 'must-fix').length
-const fail = (step, tasks, reason) => ({ step, merged: false, reason, tasks })
+// ステップが失敗して返るときも decisions/deferrals は取りこぼさず tasks から集約する
+const fail = (step, tasks, reason) => ({ step, merged: false, reason, tasks,
+  decisions: (tasks || []).flatMap(t => t.decisions || []),
+  deferrals: (tasks || []).flatMap(t => t.deferrals || []) })
+// タスク階層から実装/修正の model・effort を決める（light は下位モデル・低めの effort でコストを下げる）
+const implOpts = task => task?.tier === 'light' ? { model: 'sonnet', effort: 'medium' } : { model: 'opus' }
+// findings を file:line:severity:summary で重複除去（通常＋敵対的の同旨指摘を fix に二重に渡さない）
+const dedupeFindings = fs => {
+  const seen = new Set()
+  return (fs || []).filter(f => {
+    const k = `${f.file}:${f.line}:${f.severity}:${f.summary}`
+    return seen.has(k) ? false : (seen.add(k), true)
+  })
+}
 
-// 1 回のレビュー = 通常レビュー + 敵対的レビューを並列で起動し、1 つの REVIEW にまとめる。
+// 1 回のレビュー。standard タスクは通常＋敵対的を並列で起動して結合、light タスクは通常レビュー 1 本。
 // 敵対的レビューは「加えられた変更はすべて誤り」という前提で粗探しをする（adversarialReviewPrompt）。
-// approved は両方が承認したときだけ true、findings は両者を結合する。どちらも model: 'opus'。
-async function runReview({ id, branch, task, phase = 'Review', prompt = reviewPrompt, adversarialPrompt = adversarialReviewPrompt }) {
-  const [normal, adversarial] = await parallel([
-    () => agent(prompt(branch, task),            { label: `review:${id}`,     phase, model: 'opus', schema: REVIEW }),
-    () => agent(adversarialPrompt(branch, task), { label: `review-adv:${id}`, phase, model: 'opus', schema: REVIEW }),
-  ])
+// approved は走らせた全レビューが承認したときだけ true、findings は結合して重複を除く。
+async function runReview({ id, branch, task, phase = 'Review',
+    prompt = reviewPrompt, adversarialPrompt = adversarialReviewPrompt,
+    adversarial = task?.tier !== 'light', effort = 'medium' }) {
+  const normalModel = task?.tier === 'light' ? 'sonnet' : 'opus'
+  const runs = [
+    () => agent(prompt(branch, task), { label: `review:${id}`, phase, model: normalModel, effort, schema: REVIEW }),
+  ]
+  if (adversarial) runs.push(
+    () => agent(adversarialPrompt(branch, task), { label: `review-adv:${id}`, phase, model: 'opus', effort, schema: REVIEW }))
+  const done = (await parallel(runs)).filter(Boolean)
   return {
-    approved: !!normal?.approved && !!adversarial?.approved,
-    findings: [...(normal?.findings || []), ...(adversarial?.findings || [])],
+    approved: done.length === runs.length && done.every(r => r.approved),  // null（失敗）が 1 つでもあれば未承認
+    findings: dedupeFindings(done.flatMap(r => r.findings || [])),
   }
 }
 
@@ -109,10 +136,13 @@ async function fixReviewLoop({ id, startBranch, review, task, maxRounds = 3 }) {
   while (review && !review.approved && round < maxRounds) {
     round++
     const fix = await agent(fixPrompt(branch, review.findings, task),
-      { label: `fix:${id}#${round}`, phase: 'Fix', model: 'opus', isolation: 'worktree', schema: IMPL })
+      { label: `fix:${id}#${round}`, phase: 'Fix', ...implOpts(task), isolation: 'worktree', schema: IMPL })
     if (!fix) break
     branch = fix.branch
-    review = await runReview({ id: `${id}#${round}`, branch, task })   // 通常 + 敵対的を並列で再レビュー
+    // doc・コメントのみの修正は通常レビュー 1 本・effort 低で再確認、ロジック修正はタスク階層どおり
+    review = fix.changeKind === 'docs'
+      ? await runReview({ id: `${id}#${round}`, branch, task, adversarial: false, effort: 'low' })
+      : await runReview({ id: `${id}#${round}`, branch, task })
     const mf = mustFixCount(review)
     if (mf >= prevMustFix) break   // 無進捗 = スタック
     prevMustFix = mf
@@ -123,18 +153,26 @@ async function fixReviewLoop({ id, startBranch, review, task, maxRounds = 3 }) {
 // --- 1 タスク: 計画→実装→レビュー↔修正ループ（マージしない） ---
 async function runTask(task) {
   const impl = await agent(implPrompt(task),
-    { label: `impl:${task.id}`, phase: 'Implement', model: 'opus', isolation: 'worktree', schema: IMPL })
+    { label: `impl:${task.id}`, phase: 'Implement', ...implOpts(task), isolation: 'worktree', schema: IMPL })
   if (!impl) return null
-  const review = await runReview({ id: task.id, branch: impl.branch, task })   // 通常 + 敵対的を並列
+  const carry = { decisions: impl.decisions || [], deferrals: impl.deferrals || [] }
+  // DoD が曖昧で計画段階で止まったら、実装・レビューに進まず blocked で返す（監督者がユーザーに確認）
+  if (impl.blocked) return { task: task.id, branch: impl.branch, blocked: true, questions: impl.questions, ...carry }
+  const review = await runReview({ id: task.id, branch: impl.branch, task })   // standard は通常＋敵対的、light は通常のみ
   const r = await fixReviewLoop({ id: task.id, startBranch: impl.branch, review, task })
   return { task: task.id, pr: impl.pr, branch: r.branch, dod: task.dod,
-           approved: r.approved, findings: r.review?.findings || [] }
+           approved: r.approved, findings: r.review?.findings || [], ...carry }
 }
 
 // --- 1 ステップ: 並列タスク → エスカレーション管理 → マージ管理 ---
 async function runStep(stepNo, tasks, topic) {
   // フェーズ1: 並列タスク
   const results = (await parallel(tasks.map(t => () => runTask({ ...t, startFrom: topic })))).filter(Boolean)
+
+  // DoD が曖昧で blocked のタスクがあれば、実装せずステップを止めて監督者に確認を上げる（§3 の確認方針）
+  const blocked = results.filter(r => r.blocked)
+  if (blocked.length) return fail(stepNo, results,
+    `DoD の確認が必要: ${blocked.map(b => `${b.task}（${b.questions}）`).join('; ')}`)
 
   // フェーズ2: エスカレーション管理（未承認タスクがあれば）
   const escalated = results.filter(r => !r.approved)
@@ -182,11 +220,14 @@ async function runStep(stepNo, tasks, topic) {
     }
     // topic マージ: 別セッションが（コンフリクト解消は上でレビュー済み）topic へマージする
     const topicMerge = await agent(topicMergePrompt(stepNo, r, branch, topic),
-      { label: `topic-merge:${r.task}`, phase: 'Merge', model: 'sonnet', schema: MERGE })
+      { label: `topic-merge:${r.task}`, phase: 'Merge', model: 'sonnet', effort: 'low', schema: MERGE })
     if (!topicMerge?.merged) return fail(stepNo, results, topicMerge?.reason || `topic への取り込み失敗: ${r.task}`)
   }
 
-  return { step: stepNo, merged: true, verified: true, tasks: results }
+  // 成功時も目標変更・先延ばしを集約して返す（監督者が最終 PR・報告にまとめる。SKILL.md §7）
+  return { step: stepNo, merged: true, verified: true, tasks: results,
+           decisions: results.flatMap(r => r.decisions || []),
+           deferrals: results.flatMap(r => r.deferrals || []) }
 }
 
 // --- ステップの連鎖 ---
@@ -206,9 +247,15 @@ for (const s of steps) {
 return report
 ```
 
+各 `task` オブジェクトには `id` / `dod` に加え `tier`（`"light"` | `"standard"`）と構造化仕様
+（受け入れ基準・スコープ境界・調査の入口・隣接タスクとの契約。SKILL.md §4）を持たせる。`tier` が
+`implOpts` と `runReview` の厳格さ（モデル・effort・敵対的レビューの有無）を決める。
+
 `implPrompt` / `reviewPrompt` / `adversarialReviewPrompt` / `fixPrompt` / `replanPrompt` /
 `mergePrompt` / `conflictReviewPrompt` / `adversarialConflictReviewPrompt` / `topicMergePrompt` は、
 監督者が「プロジェクト前提の解決」で特定した契約
 （DoD・検証コマンド一式・外形動作の確認手順・不可侵パス・ブランチ規約・起点の指定）を封入
 して組み立てる。解法（変更ファイルの列挙・行番号つき手順）は封入しない
-（[implementation-prompt.md](implementation-prompt.md) の §0）。
+（[implementation-prompt.md](implementation-prompt.md) の §0）。`implPrompt` / `fixPrompt` は返り値に
+`changeKind`（doc のみか）・`blocked`＋`questions`（DoD が曖昧なら実装せず返す）・`decisions`
+（変えた目標）・`deferrals`（先延ばし）を含めるよう指示する。

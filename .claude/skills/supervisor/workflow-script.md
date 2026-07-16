@@ -69,6 +69,7 @@ const REVIEW = {
       severity: { enum: ['must-fix', 'should-fix', 'nit'] },
       file: { type: 'string' }, line: { type: 'number' },
       summary: { type: 'string' }, rationale: { type: 'string' },
+      confirmedBy: { type: 'string' },  // どう裏づけたか（実行したテスト・検証、または「差分の精読のみ」）
     } } },
   },
   required: ['approved'],

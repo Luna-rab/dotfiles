@@ -2,8 +2,8 @@
 
 1 タスクは `計画 → 実装 → レビュー ↔ 修正ループ` を回す。計画・実装は
 [implementation-prompt.md](implementation-prompt.md)、この文書はレビューと修正の 2 つの
-ステージを扱う。**タスクは自分ではマージしない**——ステップ内の全ブランチのマージは
-マージ管理がステップの最後に行う（[merge-prompt.md](merge-prompt.md)）。
+ステージを扱う。**タスクは自分では topic へマージしない**——レビューを通ったタスクは単一レーンの
+マージキューへ投入され、キューが 1 本ずつ topic へ取り込む（[merge-prompt.md](merge-prompt.md)）。
 
 **レビューと修正は 3 か所で共用する**（[workflow-script.md](workflow-script.md) の
 `fixReviewLoop`）:

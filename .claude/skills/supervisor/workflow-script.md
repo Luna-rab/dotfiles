@@ -1,30 +1,39 @@
 # オーケストレーションスクリプトの骨組み（テンプレート）
 
 監督者が Workflow ツールに渡す dynamic workflow スクリプトの骨組み。ステップを直列に
-流し、各ステップは「並列タスク → エスカレーション管理 → マージ管理」の 3 フェーズで締める。
+流し、各ステップの中ではタスクを並列に走らせる。各タスクはレビューを通った（承認された）
+時点で、**単一レーンのマージキュー**へ順次投入され、キューが 1 本ずつ topic に取り込む
+（他タスクの完了を待たない）。修正しきれないタスクはタスク単位でエスカレーションする。
 各 `agent()` プロンプトの中身は [implementation-prompt.md](implementation-prompt.md) /
 [review-prompt.md](review-prompt.md) / [escalation-prompt.md](escalation-prompt.md) /
 [merge-prompt.md](merge-prompt.md) の契約に従って組み立てる。
 
 **重要な制約: subagent は subagent を起動できない**（`agent()` の入れ子は 1 レベルまで）。
-「エスカレーション管理の中で fix/review を回す」「マージ管理の中で fix/review を回す」といった
-入れ子は、そのままは書けない。**エスカレーション管理・マージ管理はスクリプト側の制御フロー**
-（`for` ループ・`if`）として書き、fix・review・マージ準備などの実務だけを `agent()` にする。
+「エスカレーションの中で fix/review を回す」「マージの中で fix/review を回す」といった
+入れ子は、そのままは書けない。**エスカレーション・マージはスクリプト側の制御フロー**
+（`if`・Promise チェーンのマージキュー）として書き、fix・review・マージ準備などの実務だけを
+`agent()` にする。
 
 ## 原則
 
 - **ステップは直列（`for` で await）**。前のステップのマージ管理が topic を前進させてから次のステップが始まる。
 - **ステップ内タスクは並列（`parallel`）**。各タスクは `計画 → 実装 → レビュー ↔ 修正ループ` を
-  回し、**自分ではマージしない**。3 回・無進捗で直せない must-fix はエスカレーションする。
+  回す。**レビューを通った（承認された）時点で、そのタスクをマージキューに投入する**（他タスクの
+  完了を待たない）。3 回・無進捗で直せない must-fix はタスク単位でエスカレーションする。
 - **standard タスクのレビューは通常＋敵対的を並列で走らせる**（`runReview`）。敵対的レビューは
   「加えられた変更はすべて誤りである」という前提で粗探しをする独立レビューで、通常レビューが
   見落とす前提の誤りを拾う。両方が承認したときだけ `approved: true`、指摘は両者を結合する。
   **light タスク（docs・機械的・影響小）は通常レビュー 1 本のみ**（敵対的を省いてコストを下げる）。
   タスクの `tier` で切り替える。
 - **fix と review は必ず別 `agent()`**（修正の自己承認を防ぐ）。
-- **マージは実装ブランチごとに逐次**。topic への並列マージはコンフリクトするので `for` で
-  1 本ずつ。各回で最新 topic をタスクブランチ側に取り込み、コンフリクトを解消し、動作検証してから
-  topic を前進させる。
+- **エスカレーションはタスク単位**。あるタスクの修正ループが未承認で返ったら、そのタスクのパイプラインの
+  中で再計画（`agent`, `fable`, コードは書かない）→ fix↔review を回す。直ればマージキューへ、直らなければ
+  そのタスクを失敗として返す（従来はステップ内の全未承認タスクを 1 体の再計画エージェントでまとめて
+  扱っていたが、非同期マージのためタスク単位に分けた）。
+- **マージは単一レーンのキューで直列化する**。topic への並列マージはコンフリクトするため、同時に走らせる
+  マージは常に 1 本にする。承認済みタスクを 1 本の Promise チェーン（`mergeLane` / `enqueueMerge`）につなぎ、
+  投入順（＝承認された順）に 1 本ずつ処理する。各マージは最新 topic をタスクブランチ側に取り込み、
+  コンフリクトを解消し、動作検証してから topic を前進させる。
 - **コンフリクト解消は独立レビューを通してから topic に載せる**（整合者が書いたコードの
   自己承認を防ぐ。コンフリクトの無いブランチは新規コードを書かないので追加レビュー不要）。
 - **動作検証は実装報告を鵜呑みにしない**。検証コマンド一式に加え、外形動作（アプリ・CLI の
@@ -53,7 +62,7 @@
 ```javascript
 export const meta = {
   name: 'supervisor-run',
-  description: 'ステップを直列に回し、ステップ内で実装→レビュー→修正を並列化し、エスカレーション管理とマージ管理で締める',
+  description: 'ステップを直列に回し、ステップ内で実装→レビュー→修正を並列化し、承認されたタスクを単一レーンのマージキューへ順次投入する',
   phases: [
     { title: 'Implement' }, { title: 'Review' }, { title: 'Fix' },
     { title: 'Escalation' }, { title: 'Merge' },
@@ -151,79 +160,99 @@ async function fixReviewLoop({ id, startBranch, review, task, maxRounds = 3 }) {
   return { branch, approved: !!review?.approved, review }
 }
 
-// --- 1 タスク: 計画→実装→レビュー↔修正ループ（マージしない） ---
-async function runTask(task) {
-  const impl = await agent(implPrompt(task),
-    { label: `impl:${task.id}`, phase: 'Implement', ...implOpts(task), isolation: 'worktree', schema: IMPL })
-  if (!impl) return null
-  const carry = { decisions: impl.decisions || [], deferrals: impl.deferrals || [] }
-  // DoD が曖昧で計画段階で止まったら、実装・レビューに進まず blocked で返す（監督者がユーザーに確認）
-  if (impl.blocked) return { task: task.id, branch: impl.branch, blocked: true, questions: impl.questions, ...carry }
-  const review = await runReview({ id: task.id, branch: impl.branch, task })   // standard は通常＋敵対的、light は通常のみ
-  const r = await fixReviewLoop({ id: task.id, startBranch: impl.branch, review, task })
-  return { task: task.id, pr: impl.pr, branch: r.branch, dod: task.dod,
-           approved: r.approved, findings: r.review?.findings || [], ...carry }
+// --- 1 ブランチを topic へ取り込む（マージキューが直列に呼ぶ。この関数の中は同時に 1 本しか走らない） ---
+// 最新 topic の取り込み → コンフリクト解消レビュー → 動作検証 fix → topic マージ。結果を { merged, reason } で返す。
+// コンフリクト解消 fix や検証 fix もこの中で回るので、その間このブランチがマージレーンを占有する
+// （次のブランチのマージは待つ）。次のブランチが最新 topic を正しく取り込むために必要な直列化。
+async function mergeBranchToTopic(stepNo, r, tasks, topic) {
+  const m = await agent(mergePrompt(stepNo, r, topic),
+    { label: `merge:${r.task}`, phase: 'Merge', model: 'opus', isolation: 'worktree', schema: MERGE })
+  if (!m) return { merged: false, reason: `マージ起動失敗: ${r.task}` }
+  if (m.merged) return { merged: true }        // コンフリクト無しでマージ準備が自分でマージ済み（§A-5）
+  let branch = m.branch
+
+  // コンフリクト解消があれば独立レビュー（通常 + 敵対的を並列） → 未承認なら fix ループ
+  if (m.hadConflict) {
+    const cr = await runReview({ id: `merge:${r.task}`, branch, task: tasks.find(t => t.id === r.task),
+      phase: 'Merge', prompt: b => conflictReviewPrompt(stepNo, r, b),
+      adversarialPrompt: b => adversarialConflictReviewPrompt(stepNo, r, b) })
+    if (!cr?.approved) {
+      const res = await fixReviewLoop({ id: `merge-fix:${r.task}`, startBranch: branch, review: cr, task: tasks.find(t => t.id === r.task) })
+      if (!res.approved) return { merged: false, reason: `コンフリクト解消が承認されない: ${r.task}` }
+      branch = res.branch
+    }
+  }
+  // 動作検証が通っていなければ fix→review→（fix 内で再検証）
+  if (!m.verified) {
+    const res = await fixReviewLoop({ id: `verify-fix:${r.task}`, startBranch: branch,
+      review: { approved: false, findings: [{ severity: 'must-fix', summary: m.reason || '動作検証が通らない' }] },
+      task: tasks.find(t => t.id === r.task) })
+    if (!res.approved) return { merged: false, reason: `動作検証が通らない: ${r.task}` }
+    branch = res.branch
+  }
+  // topic マージ: 別セッションが（コンフリクト解消は上でレビュー済み）topic へマージする
+  const topicMerge = await agent(topicMergePrompt(stepNo, r, branch, topic),
+    { label: `topic-merge:${r.task}`, phase: 'Merge', model: 'sonnet', effort: 'low', schema: MERGE })
+  if (!topicMerge?.merged) return { merged: false, reason: topicMerge?.reason || `topic への取り込み失敗: ${r.task}` }
+  return { merged: true }
 }
 
-// --- 1 ステップ: 並列タスク → エスカレーション管理 → マージ管理 ---
+// --- 1 ステップ: タスクを並列に回し、承認され次第 単一レーンのマージキューへ順次投入 ---
 async function runStep(stepNo, tasks, topic) {
-  // フェーズ1: 並列タスク
-  const results = (await parallel(tasks.map(t => () => runTask({ ...t, startFrom: topic })))).filter(Boolean)
+  // 単一レーンのマージキュー。承認済みタスクをこの 1 本の Promise チェーンにつなぎ、
+  // topic へのマージを投入順（＝承認された順）に 1 本ずつ直列化する（並列マージのコンフリクトを防ぐ）。
+  let mergeLane = Promise.resolve()
+  const enqueueMerge = work => {
+    const run = mergeLane.then(() => work())
+    mergeLane = run.then(() => {}, () => {})   // 1 件が失敗してもレーンは次のマージへ進む
+    return run
+  }
 
-  // DoD が曖昧で blocked のタスクがあれば、実装せずステップを止めて監督者に確認を上げる（§3 の確認方針）
+  // 1 タスクの全ライフサイクル: 計画→実装→レビュー↔修正→(未承認ならエスカレーション)→(承認ならマージキューへ)
+  async function runTaskThroughMerge(task) {
+    const impl = await agent(implPrompt(task),
+      { label: `impl:${task.id}`, phase: 'Implement', ...implOpts(task), isolation: 'worktree', schema: IMPL })
+    if (!impl) return { task: task.id, failed: true, reason: `実装起動失敗: ${task.id}` }
+    const carry = { decisions: impl.decisions || [], deferrals: impl.deferrals || [] }
+    // DoD が曖昧で計画段階で止まったら、実装・レビューに進まず blocked で返す（監督者がユーザーに確認）
+    if (impl.blocked) return { task: task.id, branch: impl.branch, blocked: true, questions: impl.questions, ...carry }
+
+    const review = await runReview({ id: task.id, branch: impl.branch, task })   // standard は通常＋敵対的、light は通常のみ
+    let r = await fixReviewLoop({ id: task.id, startBranch: impl.branch, review, task })
+
+    // タスク内ループで直しきれなければ、このタスク単体でエスカレーション（再計画 → fix↔review）
+    if (!r.approved) {
+      const esc = { task: task.id, branch: r.branch, pr: impl.pr, dod: task.dod, findings: r.review?.findings || [] }
+      const plan = await agent(replanPrompt(stepNo, esc),
+        { label: `replan:${task.id}`, phase: 'Escalation', model: 'fable', schema: PLAN })
+      r = await fixReviewLoop({ id: `esc:${task.id}`, startBranch: r.branch,
+        review: { approved: false, findings: esc.findings },
+        task: { ...task, replan: plan?.plan } })
+      if (!r.approved)
+        return { ...esc, branch: r.branch, findings: r.review?.findings || [],
+                 failed: true, reason: `エスカレーション未解決: ${task.id}`, ...carry }
+    }
+
+    // 承認済み → マージキューへ投入。lane が空けば（先に投入されたマージが済めば）このブランチのマージが始まる
+    const record = { task: task.id, pr: impl.pr, branch: r.branch, dod: task.dod, findings: r.review?.findings || [] }
+    const outcome = await enqueueMerge(() => mergeBranchToTopic(stepNo, record, tasks, topic))
+    return { ...record, ...carry, merged: outcome.merged,
+             failed: !outcome.merged, reason: outcome.merged ? undefined : outcome.reason }
+  }
+
+  // 全タスクを並列に起動。各タスクは承認され次第マージキューへ入るので、遅いタスクを待たずに早い成果から topic に載る。
+  // parallel は全タスク（＝そのマージ完了まで）を待つバリアなので、runStep はステップ内の全マージが済んでから返る。
+  const results = (await parallel(tasks.map(t => () => runTaskThroughMerge({ ...t, startFrom: topic })))).filter(Boolean)
+
+  // DoD が曖昧で blocked のタスクがあれば、ステップを止めて監督者に確認を上げる（§3 の確認方針）
   const blocked = results.filter(r => r.blocked)
   if (blocked.length) return fail(stepNo, results,
     `DoD の確認が必要: ${blocked.map(b => `${b.task}（${b.questions}）`).join('; ')}`)
 
-  // フェーズ2: エスカレーション管理（未承認タスクがあれば）
-  const escalated = results.filter(r => !r.approved)
-  if (escalated.length) {
-    const plan = await agent(replanPrompt(stepNo, escalated),
-      { label: `replan:step${stepNo}`, phase: 'Escalation', model: 'fable', schema: PLAN })
-    for (const r of escalated) {
-      const task = tasks.find(t => t.id === r.task)
-      const res = await fixReviewLoop({ id: `esc:${r.task}`, startBranch: r.branch,
-        review: { approved: false, findings: r.findings },
-        task: { ...task, replan: plan?.plan } })
-      r.branch = res.branch; r.approved = res.approved
-      if (!res.approved) return fail(stepNo, results, `エスカレーション未解決: ${r.task}`)  // ステップを止める
-    }
-  }
-
-  // フェーズ3: マージ管理（実装ブランチごとに逐次）
-  for (const r of results) {
-    // 最新 topic をタスクブランチ側に取り込み、コンフリクト解消 + 動作検証。コンフリクト無 +
-    // 検証通過なら topic を前進させて merged:true で返す（新規コードが無いので独立レビュー不要）。
-    const m = await agent(mergePrompt(stepNo, r, topic),
-      { label: `merge:${r.task}`, phase: 'Merge', model: 'opus', isolation: 'worktree', schema: MERGE })
-    if (!m) return fail(stepNo, results, `マージ起動失敗: ${r.task}`)
-    if (m.merged) continue
-    let branch = m.branch
-
-    // コンフリクト解消があれば独立レビュー（通常 + 敵対的を並列） → 未承認なら fix ループ
-    if (m.hadConflict) {
-      const cr = await runReview({ id: `merge:${r.task}`, branch, task: tasks.find(t => t.id === r.task),
-        phase: 'Merge', prompt: b => conflictReviewPrompt(stepNo, r, b),
-        adversarialPrompt: b => adversarialConflictReviewPrompt(stepNo, r, b) })
-      if (!cr?.approved) {
-        const res = await fixReviewLoop({ id: `merge-fix:${r.task}`, startBranch: branch, review: cr, task: tasks.find(t => t.id === r.task) })
-        if (!res.approved) return fail(stepNo, results, `コンフリクト解消が承認されない: ${r.task}`)
-        branch = res.branch
-      }
-    }
-    // 動作検証が通っていなければ fix→review→（fix 内で再検証）
-    if (!m.verified) {
-      const res = await fixReviewLoop({ id: `verify-fix:${r.task}`, startBranch: branch,
-        review: { approved: false, findings: [{ severity: 'must-fix', summary: m.reason || '動作検証が通らない' }] },
-        task: tasks.find(t => t.id === r.task) })
-      if (!res.approved) return fail(stepNo, results, `動作検証が通らない: ${r.task}`)
-      branch = res.branch
-    }
-    // topic マージ: 別セッションが（コンフリクト解消は上でレビュー済み）topic へマージする
-    const topicMerge = await agent(topicMergePrompt(stepNo, r, branch, topic),
-      { label: `topic-merge:${r.task}`, phase: 'Merge', model: 'sonnet', effort: 'low', schema: MERGE })
-    if (!topicMerge?.merged) return fail(stepNo, results, topicMerge?.reason || `topic への取り込み失敗: ${r.task}`)
-  }
+  // 1 本でもマージできなければステップは未マージ。ただし先に承認・マージ済みのタスクは既に topic に入っている
+  // （非同期マージの帰結。design-notes.md「なぜマージを非同期のキューにしたか」）。results の merged で追える。
+  const failed = results.filter(r => r.failed)
+  if (failed.length) return fail(stepNo, results, failed.map(f => f.reason).filter(Boolean).join('; '))
 
   // 成功時も目標変更・先延ばしを集約して返す（監督者が最終 PR・報告にまとめる。SKILL.md §7）
   return { step: stepNo, merged: true, verified: true, tasks: results,

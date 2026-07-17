@@ -48,8 +48,8 @@ Explore 調査は「分割・並列可否・規模」を監督者が判断する
 ```
 
 起点のブランチ／コミット SHA と「存在するはずのファイル」は監督者が具体的に書く。ステップは
-直列に流れ、各ステップのマージ管理が topic を前進させる。そのため次のステップのタスクは更新済みの topic を
-起点にする（起点は監督者が `runTask` の `startFrom` で渡す。[workflow-script.md](workflow-script.md)）。
+直列に流れ、各ステップのマージが topic を前進させる。そのため次のステップのタスクは更新済みの topic を
+起点にする（起点は監督者が `runTaskThroughMerge` の `startFrom` で渡す。[workflow-script.md](workflow-script.md)）。
 同じステップの並列タスク同士は互いの成果を起点にできない（まだ topic に入っていない）ので、ステップ内で
 依存が生じる作業はステップを分ける。
 

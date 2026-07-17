@@ -99,7 +99,7 @@ const PLAN = { type: 'object', properties: { plan: { type: 'string' } }, require
 const MERGE = { type: 'object', properties: {
   branch: { type: 'string' },
   hadConflict: { type: 'boolean' },   // 最新 topic の取り込みでコンフリクトが出たか
-  verified: { type: 'boolean' },      // 検証コマンド一式 + 外形動作が通ったか
+  verified: { type: 'boolean' },      // 動作検証が通ったか（no-op 取り込み時はテスト再実行を省き外形動作のみ。merge-prompt.md §A-3）
   merged: { type: 'boolean' },        // topic を前進できたか（コンフリクト無 + 検証通過のとき true）
   reason: { type: 'string' },         // 未マージ・未検証なら理由
 }, required: ['branch'] }

@@ -82,8 +82,9 @@ effort に落として時間とトークンを節約する。厳格さは各タ�
 | --- | --- | --- | --- |
 | 実装・修正（standard タスク） | `opus` | 既定 | 判断が質を左右する |
 | 実装・修正（light タスク） | `sonnet` | `medium` | docs・機械的・影響小 |
-| 通常レビュー | `opus`（light は `sonnet`） | `medium` | 差分の妥当性判断 |
-| 敵対的レビュー（standard のみ） | `opus` | `medium` | light タスクでは走らせない |
+| 通常レビュー (standard タスク) | `opus` | 既定 | 差分の妥当性判断 |
+| 通常レビュー (light タスク) | `sonnet` | `medium` | 差分の妥当性判断 |
+| 敵対的レビュー（standard のみ） | `opus` | 既定 | light タスクでは走らせない |
 | コンフリクト解消レビュー | `opus` | `medium` | 解消差分の判断 |
 | マージ準備 | `opus` | 既定 | 検証・外形動作の駆動 |
 | topic マージ | `sonnet` | `low` | 冪等チェック→merge→検証の再実行（機械的） |

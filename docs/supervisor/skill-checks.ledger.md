@@ -20,8 +20,20 @@
 
 | # | 件名 | tier | 依存 | ブランチ | PR | agentId | 状態 | must | should |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | スキル検査スクリプトを作る | standard | — | topic/skill-checks--task-1 | — | — | pending | — | — |
-| 2 | subagent-stop.sh の自動テストを作る | standard | — | topic/skill-checks--task-2 | — | — | pending | — | — |
+| 1 | スキル検査スクリプトを作る | standard | — | topic/skill-checks--task-1 | #9 | a3ae954acf424418b | running | — | — |
+| 2 | subagent-stop.sh の自動テストを作る | standard | — | topic/skill-checks--task-2 | #8 | ab21787d905dd27f9 | running | — | — |
+
+### 中断の記録
+
+**2026-08-10 08:54 JST 時点**: 利用制限（`You've hit your session limit · resets 3:50am`）で
+task1・task2 のサブリーダーと `/code-review` の子が同時に落ちた。両タスクとも実装が終わって
+PR を作り、レビュアーを起動する直前だった。
+
+- 成果は全部 push 済み（task1 は 2 コミット、task2 は 1 コミット）。
+  **両サブリーダーの worktree に未コミットの変更は 0 件**——実装 subagent への
+  「意味のある単位ごとに commit・push」の義務づけが効いた。
+- worktree は 6 つ残っている（サブリーダー 2 ＋ レビュアー 4）。再開を打ち切るまで消さない。
+- 再開は 1 回目（`resume-count-task1` / `resume-count-task2` に記録）。
 | 3 | CI と README に載せる | light | 1,2 | topic/skill-checks--task-3 | — | — | pending | — | — |
 
 状態は `pending` / `running` / `approved` / `merged` / `blocked` / `failed`。

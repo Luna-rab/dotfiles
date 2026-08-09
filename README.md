@@ -48,6 +48,55 @@
 
 既存の `projects/` `history.jsonl` 等ランタイムデータは温存される。
 
+### プラグイン（marketplace から配布されるもの）
+
+Claude Code のプラグインは marketplace（プラグインの配布カタログ）から入れる。
+状態は次の 2 つに分かれていて、dotfiles で管理するのは前者だけ。
+
+- **宣言**: `~/.claude/settings.json` の `extraKnownMarketplaces` と `enabledPlugins`。
+  どのカタログを使い、どのプラグインを有効にするかを書いたもの
+- **実体**: `~/.claude/plugins/` 配下のカタログの clone とプラグイン本体。
+  マシンごとのランタイムデータなのでコミットしない
+
+宣言は dotfiles の `.claude/settings.json` に書く。
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" }
+    }
+  },
+  "enabledPlugins": {
+    "code-simplifier@claude-plugins-official": true
+  }
+}
+```
+
+`extraKnownMarketplaces` のキーはカタログが名乗る名前で、リポジトリ名とは限らない
+（`anthropics/claude-plugins-community` のカタログ名は `claude-community`）。
+`enabledPlugins` のキーは `<プラグイン名>@<marketplace 名>` の形式。
+
+**宣言を置くだけでは新しいマシンに実体は入らない。** そのため `install.sh` がこの宣言を読んで
+`claude plugin marketplace add` と `claude plugin install --scope user` を実行し、実体を取得する。
+どちらのコマンドも既に入っていれば何もしないので、`./install.sh` は何度実行してもよい。
+`claude` コマンドが無い環境では警告を出して読み飛ばす。
+
+プラグインを追加する手順:
+
+1. 使うマシンで `/plugin` から入れる。`~/.claude/settings.json` に宣言が書き込まれる
+2. その差分を dotfiles の `.claude/settings.json` にコピーしてコミットする
+3. 他のマシンで `./install.sh` を実行すると同じものが入る
+
+プラグインを削除するときは 2 か所を手で消す。`install.sh` は宣言から消えたプラグインを
+自動では削除しない（ローカルで試しに入れたものを勝手に消さないため）。
+
+```shell
+claude plugin uninstall <プラグイン名>@<marketplace 名> --scope user
+```
+
+を実行して実体を消し、dotfiles の `.claude/settings.json` からも該当エントリを消す。
+
 ### マシン固有設定（Bedrock など）
 
 ```shell

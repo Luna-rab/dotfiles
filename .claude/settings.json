@@ -6,6 +6,15 @@
   "permissions": {
     "defaultMode": "auto"
   },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "enabledPlugins": {},
   "tui": "fullscreen",
   "statusLine": {
     "type": "command",

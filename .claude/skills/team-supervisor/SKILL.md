@@ -1,20 +1,21 @@
 ---
 name: team-supervisor
 description: >-
-  Agent Teams（Claude Code が複数の独立セッションをチームとして動かす公式機能）で
-  開発作業を並列に進める監督者ワークフロー。監督者（リード）は大きな作業をタスクに割り、
-  タスクごとに「サブリーダー」teammate を立てる。サブリーダーは自分の worktree で
-  実装 subagent とレビュー subagent を動かし、レビュー承認まで面倒を見る。
+  入れ子の subagent で開発作業を並列に進める監督者ワークフロー。監督者（リード）は
+  大きな作業をタスクに割り、タスクごとに「サブリーダー」subagent を worktree つきで立てる。
+  サブリーダーは自分の worktree で実装 subagent とレビュー subagent を動かし、
+  レビュー承認まで面倒を見る。1 タスク = 1 worktree = 1 ブランチ = 1 PR = 1 サブリーダー。
   承認済みブランチの topic への取り込みはリード本体が 1 本ずつ行い、最後に
   topic → デフォルトブランチの PR を作る（最終マージはユーザー）。
   進捗は topic 上の台帳ファイルに残すので、セッションが落ちても続きから再開できる。
 when_to_use: >-
-  ユーザーが「監督者として」「サブエージェントに分割して」「並列で実装して」
-  「マルチエージェントで」「チームで」等と明示的に依頼したときに使う。多数の
-  エージェントを起動する高コストなワークフローのため、作業が大きいというだけで
-  無断で発動しない。実行中に方針を変えたい・途中から再開したい場合はこちらを、
-  実績を優先する場合は supervisor スキルを使う。
+  ユーザーが `/team-supervisor` と明示的に打ったときだけ起動する。多数のエージェントを
+  起動する高コストなワークフローのため、自動では発動しない
+  （`disable-model-invocation` を付けてある）。dynamic workflow で回す supervisor スキルとは
+  トリガー語が重なるので、どちらを使うかはユーザーが選ぶ。走行中にユーザーと話しながら
+  方針を変えたい・途中から再開したい場合はこちらが向く。
 argument-hint: "[作業内容]"
+disable-model-invocation: true
 allowed-tools:
   - Bash(git fetch *)
   - Bash(git log *)
@@ -41,20 +42,20 @@ allowed-tools:
   - Bash(gh repo view *)
   - Bash(~/.claude/skills/team-supervisor/scripts/gh-review.py *)
 hooks:
-  TeammateIdle:
+  SubagentStop:
     - hooks:
         - type: command
-          command: ~/.claude/skills/team-supervisor/scripts/teammate-idle.sh
+          command: ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh
 ---
 
-# team-supervisor（Agent Teams による並列開発の統括）
+# team-supervisor（入れ子の subagent による並列開発の統括）
 
 作業対象: $ARGUMENTS
 
 あなたは**リード**である。次の 6 つに専念する。
 
 - 大きな作業をタスクに割り、DoD（完了条件＝達成すべき状態）を確定する
-- タスクごとにサブリーダー teammate を立てる（同時 5 体まで）
+- タスクごとにサブリーダーを立てる（同時 3 体まで）
 - 承認済みブランチを topic へ 1 本ずつ取り込む
 - 台帳を更新する
 - ユーザーと話す
@@ -64,26 +65,31 @@ hooks:
 
 ## 用語
 
-- **サブリーダー**: 1 タスクを担当する teammate。自分の git worktree を持ち、その中で
-  実装 subagent とレビュー subagent を動かし、レビュー承認まで進めて 1 行で報告する。
-  タスクとサブリーダーは 1 対 1 で、名前は `task<番号>`。
-- **タスク**: 1 サブリーダーが完結させる作業単位。合否が一意に判定できる大きさに割る。
+- **サブリーダー**: 1 タスクを担当する subagent。`isolation: "worktree"` で起動し、その worktree で
+  実装 subagent とレビュー subagent を動かし、承認まで進めて 1 行で報告する。名前は `task<番号>`。
+  **1 タスク = 1 worktree = 1 ブランチ = 1 PR = 1 サブリーダー。**
+- **タスク**: 1 サブリーダーが完結させる作業単位。合否が一意に判定できる大きさに割り、
   リスク階層 `tier`（`light` / `standard`）を付ける。
-- **台帳**: topic ブランチ上の `docs/supervisor/<作業名>.ledger.md`。タスク分解・承認状態・
-  自律判断を残す。セッションが落ちたときはここから再開する（[ledger.md](ledger.md)）。
-- **ベース 3 ファイル**: サブリーダーと subagent が毎回読む前提資料。
+- **台帳**: topic 上の `docs/supervisor/<作業名>.ledger.md`。タスク分解・承認状態・自律判断を残す。
+  セッションが落ちたときはここから再開する（[ledger.md](ledger.md)）。
+- **ベース 3 ファイル**: サブリーダーと subagent が毎回読む前提資料。すべて topic 上に置く。
   `<作業名>.brief.md`（検証コマンド・不可侵パス・ブランチ規約）、
-  `<作業名>.map.md`（コードベースの入口）、`<作業名>.ledger.md`。すべて topic 上に置く。
+  `<作業名>.map.md`（コードベースの入口）、`<作業名>.ledger.md`。
 
 ## 起動前の確認
 
-1. **Agent ツールに `name` パラメータがあるか確認する。** 無ければ Agent Teams が無効なので、
-   次を伝えて停止する: 「`.claude/settings.json` の `env` に
-   `"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"` を追加し、セッションを開き直してください」。
+1. 環境変数を確かめる。
+
+   ```bash
+   echo "teams=${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-unset} depth=${CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH:-3}"
+   ```
+
+   `teams=unset depth=5` でなければ、`.claude/settings.json` の `env` を直して
+   セッションを開き直すよう伝え、**停止する**（どちらが欠けても壊れる。
+   [design-notes.md](design-notes.md)）。
 2. git リポジトリであること、`gh auth status` が通ることを確認する。
-3. `TeammateIdle` フックのスクリプトに実行権限があるか確認する
-   （`test -x ~/.claude/skills/team-supervisor/scripts/teammate-idle.sh`）。無ければ `chmod +x` する。
-   フック自体はこのスキルの frontmatter に入っており、呼び出した時点で有効になる（[hooks.md](hooks.md)）。
+3. `test -x ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh`。無ければ `chmod +x` する
+   （[hooks.md](hooks.md)）。
 
 ## 役割ごとのモデル
 
@@ -104,14 +110,8 @@ hooks:
 | Explore 調査（リードの意思決定用） | `opus` |
 
 指定したモデルが使えなければ 1 つ下げる（`fable` → `opus` → `sonnet`）。`sonnet` も使えなければ
-`model` を省いてセッション既定を継承する。リードが `fable` 以外で動いていたら、タスク設計の前に
-`/model` での切り替えをユーザーに提案する。
-
-**teammate はリードの effort を継承し、spawn 時に個別指定できない。**
-
-**teammate はリードの `/model` を継承しない。** 指定が漏れたときの既定は `/config` の
-「Default teammate model」で決まる（`settings.json` のキーではない）。上の表どおり毎回明示すれば
-この既定は使われない。
+`model` を省く。リードが `fable` 以外で動いていたら、タスク設計の前に `/model` での切り替えを
+ユーザーに提案する。`effort` は spawn 時に指定できない——軽くしたいときは `model` を下げる。
 
 ## 全体フロー
 
@@ -133,8 +133,21 @@ Read する**（コンパクションで本文が失われても取り直せる�
 - GitHub レビューコメントの手順: [github-comments.md](github-comments.md)
 - リードの統合レーン: [integration.md](integration.md)
 - 台帳の書式と復旧手順: [ledger.md](ledger.md)
-- `TeammateIdle` フック: [hooks.md](hooks.md)
+- `SubagentStop` フック: [hooks.md](hooks.md)
 - この設計を選んだ理由: [design-notes.md](design-notes.md)
+
+## エージェントの階層
+
+```
+リード（層 0）
+└─ サブリーダー task<番号>（層 1・worktree あり・背景・同時 3 体まで）
+   ├─ 実装 / 修正 subagent（層 2・isolation なし＝親の worktree を共有・同期）
+   └─ レビュー subagent（層 2・isolation あり＝自分の worktree・同期）
+      └─ Explore や /code-review の子（層 3 以下）
+```
+
+入れ子は 5 層まで、同時に走る subagent は 20 体まで（サブリーダー自身も 1 枠を使う）。
+同時 3 体で最大 15 体に収まる。**3 体を増やさない**（[design-notes.md](design-notes.md)）。
 
 ## 1. 前提を集める
 
@@ -157,14 +170,11 @@ Read する**（コンパクションで本文が失われても取り直せる�
 
 ## 3. タスクを設計する
 
-- **依存はタスクの `blockedBy` で表す。** 前のタスクの成果（topic に取り込み済み）を前提にする
-  作業は、その依存を張る。依存が無い作業は並列に走らせる。
-- **同じ中核モジュールを構造から書き換えるタスクを並列にしない。** 取り込むときのコンフリクトが
-  手に負えなくなる（[design-notes.md](design-notes.md)）。直列にする。
-- **達成状況を検分するタスク・一覧表を書くタスクは、対象タスクに `blockedBy` を張る。** 並列に
-  置くと兄弟の成果が見えない。
-- **1 タスクの大きさ**: 1 サブリーダーで完結し、合否が一意に判定できる大きさ。複数ファイルに
-  大きく広がると実装の精度が落ちるので、機能単位で割る。
+- **依存はタスクの `blockedBy` で表す。** 前のタスクの成果を前提にする作業は依存を張る。
+  依存が無い作業は並列に走らせる。
+- **同じ中核モジュールを構造から書き換えるタスクは直列にする**（[design-notes.md](design-notes.md)）。
+- **達成状況を検分するタスク・一覧表を書くタスクは、対象タスクに `blockedBy` を張る。**
+- **1 タスクの大きさ**: 1 サブリーダーで完結し、合否が一意に判定できる大きさ。機能単位で割る。
 - **`tier` を付ける**:
   - `light`: docs の追随、生成物の機械的な更新、中核ロジックに触れない数ファイルの変更。
     **複数の light を 1 サブリーダーに束ね、1 ブランチ・1 PR にする。** レビューは通常 1 本。
@@ -177,8 +187,8 @@ Read する**（コンパクションで本文が失われても取り直せる�
   - 調査の入口: 関連ディレクトリと主要な名前を数個。
   - 隣接タスクとの契約: 並列に走る他タスクと共有する I/F・前提の一行要約。
   - `tier`。
-- **同じファイルを触る 2 タスクを並列にするなら、触ってよい領域を明示する。** worktree で
-  ファイルの編集自体は衝突しないが、意味の衝突は残る。深いならタスクを直列にする。
+- **同じファイルを触る 2 タスクを並列にするなら、触ってよい領域を明示する。** worktree は
+  ファイルの編集衝突しか防がない。意味の衝突が深いならタスクを直列にする。
 
 ## 4. topic を作る
 
@@ -187,14 +197,10 @@ Read する**（コンパクションで本文が失われても取り直せる�
 
 ## 5. 権限を先に通す
 
-teammate はリードの権限設定を継承し、**権限の確認はリードの画面に出る**。サブリーダー 5 体 ×
-subagent 最大 3 体で最大 20 エージェントが走るので、聞かれる前に通す。
+権限の確認はリードの画面に出る。最大 15 エージェントが走るので、聞かれる前に許可リストへ入れる。
 
-`brief.md` に書いた検証コマンド・起動コマンド・プロジェクト固有の MCP を、許可リストに追加する。
-スキルの `allowed-tools` には書けない（プロジェクトごとに違う）ので、ここでリードが入れる。
-
-**レビューコメント用スクリプトも許可リストに入れる。** スキルの `allowed-tools` はこのセッション
-（リード）にしか効かず、teammate と subagent には効かない。
+- `brief.md` に書いた検証コマンド・起動コマンド・プロジェクト固有の MCP
+- レビューコメント用スクリプト（スキルの `allowed-tools` はリードにしか効かない）
 
 ```
 Bash(~/.claude/skills/team-supervisor/scripts/gh-review.py *)
@@ -210,18 +216,17 @@ Bash(~/.claude/skills/team-supervisor/scripts/gh-review.py *)
 
 依存は `TaskUpdate` の `addBlockedBy` で張る。
 
-`TeammateIdle` フックが読むブランチ登録ファイルも書く（[hooks.md](hooks.md)）。最初の 1 回で
-状態ディレクトリを作り直し、前回の実行が残したカウンタと目印を消す。
+状態ディレクトリを作り直す。前回の実行が残したカウンタ・目印・登録を消す
+（[hooks.md](hooks.md)）。
 
 ```bash
 sd="$(git rev-parse --git-common-dir)/team-supervisor"
-rm -rf "$sd" && mkdir -p "$sd"                                        # 登録の前に 1 回
-printf '%s' "topic/<作業名>--task-<番号>" > "$sd/branch-task<番号>"   # タスクごと
+rm -rf "$sd" && mkdir -p "$sd"   # 登録の前に 1 回
 ```
 
 ## 7. 回す
 
-**同時に走らせるサブリーダーは 5 体まで。** 枠が空いたら、`blockedBy` が解けているタスクのうち
+**同時に走らせるサブリーダーは 3 体まで。** 枠が空いたら、`blockedBy` が解けているタスクのうち
 番号が小さいものから spawn する。
 
 ### spawn する
@@ -230,30 +235,71 @@ printf '%s' "topic/<作業名>--task-<番号>" > "$sd/branch-task<番号>"   # �
 Agent(name: "task4", model: "opus", isolation: "worktree", prompt: <契約>)
 ```
 
-`prompt` には [subleader-prompt.md](subleader-prompt.md) の契約を組み立てて渡す。
+- `isolation: "worktree"` を落とさない。
+- `run_in_background` は指定しない（既定の背景で走る）。完了は通知で届く。
+- `prompt` は [subleader-prompt.md](subleader-prompt.md) の契約を組み立てて渡す。
+
+返り値の `agentId` を台帳に控え（[ledger.md](ledger.md)）、フックへ登録する。worktree は
+`<リポジトリ>/.claude/worktrees/agent-<agentId>` にある。
+
+```bash
+sd="$(git rev-parse --git-common-dir)/team-supervisor"
+printf '%s' "topic/<作業名>--task-<番号>" > "$sd/branch-<agentId>"
+```
 
 ### 承認報告を受けたら
 
 サブリーダーは 1 行で報告する（`task4 approved / branch=... / pr=#123 / must 0 / should 2`）。
 受けたら [integration.md](integration.md) の手順で、実物を確かめてから topic へ取り込む。
-取り込んだら台帳を更新して commit・push し、空いた枠に次のタスクを spawn する。
+取り込んだら台帳を更新して commit・push し、次で再開カウンタを消してから、空いた枠に次の
+タスクを spawn する。
+
+```bash
+rm -f "$(git rev-parse --git-common-dir)/team-supervisor/resume-count-task4"
+```
 
 ### 質問・blocked を受けたら
 
-- **自分で答えられるなら答えて続けさせる。** タスク設計の意図・ベース資料・他タスクとの整合から
-  答えが出るものは、ユーザーに上げない。
-- **答えられないときだけユーザーに確認する。** 止まる条件は 4 つ:
-  作業範囲の解釈が割れる / 規模が当初想定から大きく増減する / 後戻りしにくい設計上の取引が要る /
-  ユーザーの指示が既存の DoD や設計文書と矛盾する。
-- **確認を待つ間**: 走行中のサブリーダーはそのまま完走させ、承認と統合も通常どおり進める。
-  ユーザーの答え次第で無駄になりそうなタスクだけ、新しく spawn するのを止める。進められる
-  ところは進める。
+- **自分で答えられるなら答えて続けさせる**（タスク設計の意図・ベース資料・他タスクとの整合）。
+- **ユーザーに上げるのは次の 4 つだけ**: 作業範囲の解釈が割れる / 規模が当初想定から大きく
+  増減する / 後戻りしにくい設計上の取引が要る / ユーザーの指示が既存の DoD や設計文書と矛盾する。
+- **確認を待つ間も走行中のサブリーダーは完走させ、承認と統合は進める。** 答え次第で無駄に
+  なりそうなタスクだけ、新しく spawn するのを止める。
 
-### アイドル通知を受けたら
+### 完了通知を受けたら
 
-`git ls-remote origin refs/heads/<そのタスクのブランチ>` でブランチの実在を確かめる。無ければ
-未完なので `SendMessage` で作業の再開を指示する。**全タスクが `completed` になるまで最終 PR に
-進まない。**
+**承認報告の形（`approved / branch=... / pr=#...`）でなければ、途中で止まったと見なす。**
+API エラーで落ちた場合は通知にエラー本文が載る。いずれも
+`git ls-remote origin refs/heads/<そのタスクのブランチ>` でブランチの実在を確かめる。
+**全タスクが `completed` になるまで最終 PR に進まない。**
+
+### 止まったサブリーダーを再開する（立て直さない）
+
+`SendMessage` はトランスクリプト全件を復元して再開させる。**待たずにすぐ送る。上限は 3 回。**
+**再開先はメインの作業ツリーになるので、作業ツリーを直す指示を必ず添える。**
+
+```
+SendMessage(to: "task4", message:
+  "作業を再開してください。まず subleader-prompt.md §1-b の手順で自分の作業ツリーを
+   確かめ、メインツリーにいたら EnterWorktree で worktree を作り直してから続けてください。
+   中断した地点から続け、最初からやり直さないでください。")
+```
+
+```bash
+sd="$(git rev-parse --git-common-dir)/team-supervisor"
+n=$(cat "$sd/resume-count-task4" 2>/dev/null || echo 0); n=$((n + 1))
+printf '%s' "$n" > "$sd/resume-count-task4"
+```
+
+4 回目に入るときは打ち切る。台帳でそのタスクを `blocked` にしてエラー本文を写し、次を実行して
+ユーザーへ上げる（[hooks.md](hooks.md)）。**他のタスクは止めずに進める。**
+
+```bash
+touch "$sd/blocked-<agentId>"
+```
+
+利用制限で止まったときはリードも同時に止まるので、この手順は実行できない。リードが再び
+動けるようになってから再開する。
 
 ## 8. 仕上げる
 

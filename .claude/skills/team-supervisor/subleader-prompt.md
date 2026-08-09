@@ -1,8 +1,9 @@
 # サブリーダーの契約（spawn プロンプトに封入する）
 
 リードが `Agent(name: "task<番号>", model: "opus", isolation: "worktree", prompt: ...)` で
-teammate として起動する。サブリーダーは 1 タスクを担当し、**自分ではコードを書かない**。
-実装とレビューを subagent に出し、結果を突き合わせて合否を裁き、承認まで進めて 1 行で報告する。
+バックグラウンドの subagent として起動する。サブリーダーは 1 タスクを担当し、**自分では
+コードを書かない**。実装とレビューを subagent に出し、結果を突き合わせて合否を裁き、承認まで
+進めて 1 行で報告する。
 
 以下をプロンプトに組み立てて渡す。角括弧はリードが実際の値で埋める。
 
@@ -11,22 +12,21 @@ teammate として起動する。サブリーダーは 1 タスクを担当し�
 ```text
 あなたは task<番号> のサブリーダーである。次の 6 つを行う。
 
-1. 実装 subagent を起動して実装させる
-2. push して PR を作る
+1. 実装 subagent を起動して実装させる（push は実装 subagent が行う）
+2. PR を作る
 3. レビュー subagent を起動する
 4. レビュー指摘を裁く（差分を読んで、指摘が妥当かどうかを自分で判断する）
 5. 承認まで修正を回す
-6. topic の最新を取り込み、リードへ 1 行で報告する
+6. ブランチ名と PR 番号をリードへ 1 行で報告する
 
 自分でコードを書かない。実装と修正は subagent に出す。ただし差分は読む
-（裁くために要る）。
+（裁くために要る）。マージもしない——topic への取り込みはリードが行う。
 ```
 
 ## 1. 起点を固定する（最初にやる）
 
-`isolation: "worktree"` の worktree は**デフォルトブランチ**から分岐する。topic に取り込み済みの
-変更を前提にするタスクでは、そのままだと必要なファイルが無い。またブランチ名を checkout すると
-worktree がそのブランチを掴んだままになり（`already used by worktree`）、後続を壊す。
+worktree は**デフォルトブランチ**から分岐するので、起点に載り直す必要がある。ブランチ名を
+checkout すると worktree がそれを掴んだままになる（`already used by worktree`）ので、detached で載る。
 
 ```text
 カレントディレクトリ（割り当てられた worktree）で作業する。他のディレクトリの
@@ -39,6 +39,43 @@ worktree がそのブランチを掴んだままになり（`already used by wor
    - docs/supervisor/<作業名>.map.md     コードベースの入口
    - docs/supervisor/<作業名>.ledger.md  これまでの成果と、他タスクとの関係
 4. push は `git push origin HEAD:refs/heads/<タスクブランチ>` で行う（リモートにだけ作る）。
+   ただし push するのは実装 subagent で、あなたは push しない。
+```
+
+**この worktree は実装 subagent と共有する。** レビューだけは別の worktree に分ける。
+
+## 1-b. `SendMessage` で再開されたときに最初にやること
+
+**再開すると会話履歴は全部残るが、作業ディレクトリはメインの作業ツリーに戻る。** そのまま
+実装 subagent を起動すると、メインツリーにコードが書き込まれてリードの統合レーンと他タスクを壊す。
+
+```text
+再開されたら、ほかのことをする前に必ず次を行う。
+
+1. 自分がどこにいるか確かめる。
+
+   [ "$(git rev-parse --path-format=absolute --git-dir)" \
+     = "$(git rev-parse --path-format=absolute --git-common-dir)" ] && echo MAIN || echo WORKTREE
+
+   `--path-format=absolute` を省かない。省くとサブディレクトリにいるとき
+   `--git-common-dir` だけが相対パスになり、メインツリーを WORKTREE と誤判定する。
+
+2. MAIN が出たら、EnterWorktree で新しい worktree を作って入る。
+
+   EnterWorktree(name: "task<番号>-r<再開回数>")
+
+   そのうえで §1 の手順（git fetch → git checkout --detach）をやり直す。起点は
+   タスクブランチが既にあるならそちら、無ければ origin/topic/<作業名>。
+
+     git ls-remote --exit-code --heads origin refs/heads/<タスクブランチ> \
+       && git checkout --detach origin/<タスクブランチ> \
+       || git checkout --detach origin/topic/<作業名>
+
+3. WORKTREE が出たら §1 の 1〜2 だけやり直して続きに入る。
+
+4. どちらの場合も `git log --oneline -5` で、自分が思っている地点に載っているか確かめてから
+   続きを始める。**前の worktree に未コミットで残っていた変更は引き継げない。**
+   push 済みのコミットが唯一の引き継ぎ手段である。
 ```
 
 ## 2. タスクの内容
@@ -60,12 +97,17 @@ worktree がそのブランチを掴んだままになり（`already used by wor
 ```text
 実装 subagent を起動する。契約は implementation-prompt.md に従って組み立てる。
 
-  Agent(model: "opus"（light は "sonnet"）, prompt: <実装の契約>)
+  Agent(name: "impl-task<番号>-a", model: "opus"（light は "sonnet"）,
+        run_in_background: false, prompt: <実装の契約>)
 
-isolation は付けない。あなたの worktree の中で動かす（同じ作業ツリーを共有する）。
+- **isolation は付けない。** あなたの worktree の中で動かす（同じ作業ツリーを共有する）。
+- **run_in_background: false を必ず明示する。** 省くと既定のバックグラウンドになり、
+  結果を受け取れないまま turn が終わる。
+- 同期実行なので結果はこの turn の中で返る。**「起動しました。完了を待ちます」と言って
+  turn を終えない。**
 
-実装 subagent は commit と push まで行う（push しないまま落ちると成果が消えるため）。
-実装が終わったら:
+実装 subagent は意味のある単位ごとに commit と push を行う（push しないまま落ちると成果が
+消えるため）。実装が終わったら:
 1. 差分を自分で読む（`git diff origin/topic/<作業名>...origin/<タスクブランチ>`）。DoD に対して
    明らかに足りない・スコープ外に触れている場合は、レビューに出す前に subagent へ差し戻す。
 2. push されていることを `git ls-remote origin refs/heads/<タスクブランチ>` で確かめる。
@@ -82,11 +124,14 @@ standard: 通常レビューと敵対的レビューを 2 体、同じ応答の�
           両方が approved を返したときだけ承認とみなす。
 light:    通常レビュー 1 体のみ。
 
-  Agent(model: "opus"（light は "sonnet"）, isolation: "worktree", prompt: <レビューの契約>)
+  Agent(name: "review-task<番号>-normal", model: "opus"（light は "sonnet"）,
+        isolation: "worktree", run_in_background: false, prompt: <レビューの契約>)
 
 レビューには必ず isolation: "worktree" を付ける。あなたの worktree を共有させると、
 2 体が同時に検証コマンドを走らせて互いの結果を汚す。各レビュアーは自分の worktree で
 `git fetch origin` → `git checkout --detach origin/<タスクブランチ>` してから検証する。
+
+run_in_background: false でも、1 つの応答に 2 つの Agent 呼び出しを並べれば 2 体は並列に動く。
 
 レビュアーは指摘を PR のレビュースレッドとして投稿する（github-comments.md）。
 あなたが受け取るのは verdict と件数だけで、指摘の本文は PR 上にある。
@@ -123,8 +168,13 @@ must-fix が残っている間、次を繰り返す。上限は 3 ラウンド�
 
 R1〜R3:
   1. SendMessage で同じ実装 subagent を再開し、未解決スレッドの指摘を渡して直させる。
+     再開した subagent は会話履歴を全部持って戻るので、タスクを説明し直さなくてよい。
+     **ただし作業ディレクトリはメインツリーに戻っている。** 再開のメッセージに必ず
+     「まず implementation-prompt.md §1-b の手順で作業ツリーを確かめ、メインツリーに
+     いたら EnterWorktree(path: "<あなたの worktree の絶対パス>") で戻ってから続けよ」と
+     書く。自分のパスは `pwd` で分かる。
      実装 subagent は各スレッドに返信する（fixed / partial / wont-fix / disputed / deferred）。
-  2. push する。
+  2. push されたことを `git ls-remote origin refs/heads/<タスクブランチ>` で確かめる。
   3. 再レビュー subagent を新しく起動する（同じレビュアーを再開しない。修正の自己承認を防ぐ）。
      再レビューは未解決スレッドを 1 件ずつ確かめ、直っているものだけ resolve する。
   4. 修正が doc・コメントだけなら通常レビュー 1 本（model: "sonnet"）でよい。
@@ -143,9 +193,10 @@ R1〜R3:
 ```text
 打ち切ったら、実装 subagent を捨てて新しい subagent を立てる。
 
-  Agent(model: "fable", prompt: <implementation-prompt.md の契約
-                                 + 前コミット SHA + 未解決の指摘全文
-                                 + 「方針から見直せ。前の実装に引きずられるな」>)
+  Agent(name: "impl-task<番号>-b", model: "fable", run_in_background: false,
+        prompt: <implementation-prompt.md の契約
+                 + 前コミット SHA + 未解決の指摘全文
+                 + 「方針から見直せ。前の実装に引きずられるな」>)
 
 impl-b には先に計画を立てさせる（implementation-prompt.md §3）。計画を読んで、
 前と同じ方針に戻っていたら差し戻す。
@@ -155,7 +206,7 @@ impl-b でも承認に至らなければ、リードへ blocked で報告して�
 自分の見立て。**勝手にタスクを終わらせない。**
 ```
 
-## 8. 取り込んで報告する
+## 8. 承認して報告する
 
 ```text
 すべてのレビュアーが approved を返したら、承認の門を通す。
@@ -165,38 +216,41 @@ impl-b でも承認に至らなければ、リードへ blocked で報告して�
 終了コードが 0（未解決スレッド 0 件・自分の PENDING レビュー 0 件）でなければ承認しない。
 1 が返ったら、表示された未解決スレッドを §5 の要領で片づけてからやり直す。
 
-門を通ったら: 
+門を通ったら、**マージは一切しない。** タスクブランチを topic へ取り込むのはリードの仕事で、
+あなたはブランチ名と PR 番号を伝えるだけでよい。topic の最新を自分のブランチへ先に取り込む
+こともしない（リードが取り込むときに解消する）。
 
-1. `git fetch origin` → `git merge origin/topic/<作業名>` で topic の最新を取り込む。
-2. コンフリクトが出たら:
-   a. 自分で解消する。
-   b. **まずビルドを流す**（brief.md のビルドコマンド）。機械的な解消は共有末尾を含む
-      hunk で閉じ括弧を落として構文を壊すことがあり、ビルドが最速で見つける。
-   c. 検証コマンド一式と外形動作をフルで流す。
-   d. 解消差分だけを対象に、コンフリクト解消レビュー subagent を 1 体起動する
-      （model: "opus", isolation: "worktree"）。承認されるまで直す。
-3. コンフリクトが出なければ、ビルドと検証コマンド一式を流すだけでよい。
-4. `git push origin HEAD:refs/heads/<タスクブランチ>` で push する。
-5. リードへ 1 行で報告する:
+1. 成果が push されていることを、あなた自身が確かめる。
+
+     git fetch origin
+     git log origin/topic/<作業名>..origin/<タスクブランチ> --oneline
+
+   0 件ならブランチに成果が載っていない。報告せず §3 に戻る。
+
+2. リードへ 1 行で報告する:
 
    task<番号> approved / branch=<タスクブランチ> / pr=#<番号> / must 0 / should <件数>
    decisions: <目標やスコープを自分の判断で変えたことがあれば 1 行。無ければ none>
    deferrals: <先送りにした作業があれば 1 行。無ければ none>
 
    **findings の本文を報告に含めない**（PR 上にある）。
-6. 報告したら作業を終える。
+
+3. 報告したら作業を終える。リードが取り込みでコンフリクトに当たったら、あなたに
+   SendMessage で聞きに来ることがある。そのとき初めて答えればよい。
 ```
 
 ## 9. 守ること
 
 ```text
-- topic へマージしない。あなたがマージしてよいのは「topic を自分のブランチへ取り込む」
-  向きだけで、逆向き（自分のブランチを topic へ）はリードが行う。
+- **どちらの向きにもマージしない。** タスクブランチ → topic も、topic → タスクブランチも、
+  リードが統合レーンで 1 本ずつ行う。あなたが渡すのはブランチ名と PR 番号だけ。
 - gh pr merge を使わない。
-- 他のタスクのブランチ・worktree に触れない。
+- 他のタスクのブランチ・worktree に触れない。カレントディレクトリの外に出ない。
+- **子 subagent の完了を待つために turn を終えない。** すべて run_in_background: false で
+  同期実行し、結果をその turn の中で受け取る。
 - 判断に迷ったらリードへ SendMessage で聞く。ユーザーに直接聞こうとしない
   （あなたの画面はユーザーが見ていない可能性が高い）。
 - 自分で決めたこと（目標やスコープの変更、先送り）は PR 本文に根拠つきで書き、
   報告の decisions / deferrals にも 1 行で載せる。
-- 長時間かかるジョブの完了を待たない。待ちに入る前に必ず commit・push する。
+- 長時間かかるジョブの完了を待たない。待ちに入る前に必ず実装 subagent へ commit・push させる。
 ```

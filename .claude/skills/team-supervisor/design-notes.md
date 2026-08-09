@@ -21,25 +21,28 @@ flowchart TB
     prep --> survey --> design --> topic --> perm --> reg
   end
 
-  reg --> spawn(["7. 空き枠にサブリーダーを spawn（同時 5 体）"])
+  reg --> spawn(["7. 空き枠にサブリーダーを spawn（同時 3 体・背景）"])
 
-  subgraph cell["サブリーダー task4（teammate・自分の worktree・1 ブランチ）"]
+  subgraph cell["サブリーダー task4（層 1・worktree あり・1 ブランチ・1 PR）"]
     direction TB
-    impl["実装 subagent（isolation なし＝同じ worktree）<br/>commit → push"]
+    impl["実装 subagent（層 2・isolation なし＝同じ worktree・同期）<br/>単位ごとに commit → push"]
     pr["サブリーダーが PR を作る"]
-    rev["通常レビュー ＋ 敵対的レビュー<br/>（各自 worktree・並列）<br/>指摘は PR のスレッドへ"]
+    rev["通常レビュー ＋ 敵対的レビュー<br/>（層 2・各自 worktree・同期・並列）<br/>指摘は PR のスレッドへ"]
     judge{"裁く<br/>（差分を読んで妥当性を判断）"}
     fix["SendMessage で実装を再開して修正<br/>→ 再レビューが直った分を resolve<br/>（R1〜R3）"]
     implb["impl-b に差し替え（fable・計画先行）"]
-    absorb["topic の最新を自分のブランチへ merge<br/>コンフリクトがあれば解消 → ビルド → 検証<br/>→ 解消レビュー 1 体"]
+    gate["承認の門（gate）を通す<br/>マージはしない"]
     impl --> pr --> rev --> judge
     judge -->|must-fix あり| fix --> judge
     judge -->|3 ラウンドで未承認| implb --> judge
-    judge -->|承認・unresolved 0| absorb
+    judge -->|承認・unresolved 0| gate
   end
 
   spawn --> cell
-  absorb --> report(["リードへ 1 行報告 → 終了"])
+  cell -. "API エラーで停止" .-> resume(["リードが SendMessage で再開<br/>トランスクリプト全件を復元<br/>＋ EnterWorktree で作業ツリーを回復<br/>3 回で打ち切り"])
+  resume -. 復元 .-> cell
+  resume -. "3 回失敗" .-> esc
+  gate --> report(["リードへ branch と pr を 1 行報告 → 終了"])
 
   subgraph lead2["リード本体（統合レーン・integration.md）"]
     direction TB
@@ -57,44 +60,88 @@ flowchart TB
   led -->|全完了| final["フル検証 → 残 should-fix を 1 本で回収<br/>→ topic → デフォルトブランチの PR<br/>（最終マージはユーザー）"]
 ```
 
-## なぜ Agent Teams を使うか
+## なぜ入れ子の subagent を使い、Agent Teams を使わないか
 
-`supervisor` スキル（dynamic workflow 版）の最大の弱点は、SKILL.md:247-252 が明記している
-とおり「**ワークフロー実行中はユーザーに確認できない**（権限の確認以外で実行を止められない）」
-ことだった。そのため確認が要る事柄はすべて起動前に潰す必要があり、途中で前提が割れたら
-タスクを `blocked` で返させてワークフローの完了を待つしかなかった。
+`supervisor` スキル（dynamic workflow 版）の弱点は、SKILL.md:247-252 が明記しているとおり
+「**ワークフロー実行中はユーザーに確認できない**（権限の確認以外で実行を止められない）」こと。
+確認が要る事柄をすべて起動前に潰す必要があり、途中で前提が割れたらタスクを `blocked` で返させて
+ワークフローの完了を待つしかない。この構成ではリードが毎ターン戻ってくるので、走行中でも
+ユーザーと話しながら方針を変えられる。
 
-teammate は独立した Claude Code セッションなので、リードからもユーザーからも走行中に
-話しかけられる。この 1 点のために階層を組み替える価値がある。
+**Agent Teams（teammate）は使わない。teammate は worktree を持てないため。** 公式の並列実行の
+比較ページ（`/docs/en/agents`）にこうある。
 
-副次的に 2 つ直る。
+> Agent teams don't isolate teammates in worktrees, so partition the work so each teammate owns a
+> different set of files.
 
-- **ステップという完全な直列の器が要らなくなった**。組込タスクリストが `blockedBy` を持ち、
-  依存が解けたタスクを自動で解放する。依存が無いのにステップを増やして直列化する問題が消える。
-- **入れ子の禁止が緩んだ**。dynamic workflow では `agent()` の入れ子が 1 段までで、
-  「エスカレーションの中で fix/review を回す」をスクリプトの制御フローに開く必要があった。
-  teammate は自分の subagent を起動できる（前景のみ）ので、サブリーダーの中で fix ループが回る。
+これは運用上の推奨ではなく、**配れない**。Agent ツールの実装で teammate になる条件がこう分岐して
+いる（v2.1.226 のバイナリで確認）。
+
+```js
+let { prompt, subagent_type, description, model,
+      run_in_background, name: i, isolation: s, cwd: a } = input;
+...
+if (v && i && !P && !s && !a) {   // → spawnTeammate
+```
+
+`v` はチーム機能が有効かどうか、`P` は fork 種別かどうか。**`name` を渡し、`isolation` も `cwd` も
+渡さなかったときだけ teammate になる。** teammate にすると
+`1 タスク = 1 worktree = 1 ブランチ = 1 PR` が成立しない。`isolation: "worktree"` を渡した子は
+teammate ではなく、worktree を持つ普通の subagent になる——それがこの設計のサブリーダーである。
+
+**その代わり `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` が有効なままだと事故になる。** その状態で
+`name` を渡し `isolation` を渡さない子（＝実装 subagent）を起動すると、`run_in_background: false`
+を明示していても teammate として非同期に起動される。実測した返り値:
+
+```
+agent_id: probe2-child@session-b17f4e9f
+The agent is now running and will receive instructions via mailbox.
+```
+
+親が subagent でもバックグラウンドでも同じだった。この状態では、サブリーダーが実装 subagent を
+起動して「完了を待ちます」と turn を終え、何も進まない。だから `SKILL.md` の起動前の確認で
+env が空であることを確かめ、空でなければ停止する。
 
 ## なぜサブリーダーを挟むか（lead → subleader → subagent）
 
-リードにレビューの文脈を載せたくないため。
+リードにレビューの文脈を載せたくないため。加えて、この階層にすると worktree の対応がきれいに決まる。
 
-公式 Limitations に「**No nested teams**: teammates cannot spawn their own teammates」とあるので
-チームの入れ子は作れないが、**teammate → subagent は可能**（公式 sub-agents の
-「an in-process teammate's own subagents run in the foreground」という制約記述が、起動できることを
-前提にしている）。
+**worktree は親から子へ継承される**（実測）。`isolation: "worktree"` の subagent が起動した子は、
+`isolation` を付けなければ親とまったく同じディレクトリで動く。
 
-この形にすると worktree の対応がきれいに決まる。公式 sub-agents に
-「When the main conversation itself runs isolated in a worktree, Claude Code applies the same checks
-to the session and to **every subagent it spawns, including subagents without `isolation: worktree`**」
-とあるので、**サブリーダーに `isolation: "worktree"` を付ければ配下の subagent は同じ worktree で
-動く**。結果として `1 サブリーダー = 1 worktree = 1 ブランチ = 1 タスク` が一対一で対応し、
+| | PWD | GIT_DIR |
+| --- | --- | --- |
+| 親（`isolation: "worktree"`） | `.claude/worktrees/agent-a7e0…` | `.git/worktrees/agent-a7e0…` |
+| 子（`isolation` なし） | 同じ | 同じ |
+
+結果として `1 サブリーダー = 1 worktree = 1 ブランチ = 1 PR = 1 タスク` が一対一で対応し、
 旧 supervisor が SKILL.md:137-146 で個別に課していた「checkout する全エージェントに worktree を
-付ける」規律が、階層 1 つで自動的に満たされる。
+付ける」規律が、階層 1 つで自動的に満たされる。レビューだけは `isolation: "worktree"` を付けて
+分ける——2 体が同時に検証コマンドを走らせると互いの結果を汚し、実装 subagent と同じツリーだと
+レビュー中に足元が書き換わるため。
 
-先行実装（narwhalishus/superpowered-teams）は teammate に worktree を配らず、セッション全体で
-1 つの worktree を共有してファイル所有権の分割だけで衝突を防いでいる。タスクごとのブランチも
-PR も持たない。この設計はそこから進んでいる。
+**入れ子は 5 層まで許可している。** 公式の既定は 3 層。
+
+> By default, a subagent can spawn subagents of its own, up to three layers below the main
+> conversation. At the depth limit, Claude Code **withholds the `Agent` tool** from every subagent.
+
+既定のままだと リード(0) → サブリーダー(1) → 実装・レビュー(2) → その子(3) でちょうど上限に達し、
+層 3 に落ちるもの——実装が呼ぶ Explore、レビューが走らせる `/code-review` の子——から先が
+一切委譲できない。`/code-review` は effort が高いと自分でも検証エージェントを spawn するので、
+既定では黙って失敗する余地が残る。
+
+そこで `.claude/settings.json` の `env` に `"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "5"` を
+入れて 2 層分の余裕を持たせている。この設定はリポジトリ全体に効くので、このスキル以外の
+セッションでも入れ子が深くなりうる。歯止めは同時実行数の上限（下記）が担う。
+
+**同時に走る subagent は 20 体まで**（公式の既定。`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`）。
+サブリーダー自身も 1 枠を使う。3 体なら、レビュー段階の最悪ケースで 3 ＋ 6 ＋ 6 = 15 体に収まる。
+5 体にすると 5 ＋ 10 ＋ 10 = 25 体で超過し、`Concurrent subagent limit reached`（リトライ禁止）で
+落ちる。だから同時 3 体にしている。
+
+先行実装（narwhalishus/superpowered-teams）はセッション全体で 1 つの worktree を共有し、ファイル
+所有権の分割だけで衝突を防いでいる。タスクごとのブランチも PR も持たない。この設計はそこから
+進んでいる。
 
 ## なぜサブリーダーは実装しないか
 
@@ -130,17 +177,15 @@ PR も持たない。この設計はそこから進んでいる。
 - 旧 supervisor: 3 回・無進捗で打ち切り → 再計画エージェント（`fable`）が方針を立て直す
 
 打ち切りは 2〜3 ラウンド、打ち切ったら担い手を替える。旧 supervisor が挟んでいた再計画
-エージェントは、impl-b 自身に計画を立てさせれば足りるので廃した。
+エージェントは、impl-b 自身に計画を立てさせれば足りるので置いていない。
 
 ## なぜタスクとサブリーダーを 1 対 1 にするか
 
-役割ごとに永続する teammate（`impl-1` が複数タスクを次々こなす）も検討したが、
+役割ごとに永続するサブリーダー（`impl-1` が複数タスクを次々こなす）も検討したが、
 **古いタスクの調査結果と実装判断を次のタスクに引きずる**問題が残る。
 
-`/compact` は使えない。公式 agent-teams に「While you're viewing an in-process teammate, plain
-text and skills go to that teammate, but **built-in commands still run in the lead's session**」と
-あり、teammate に compact を実行させる手段が無い。自動コンパクションは閾値でしか走らず、
-タスクの境界とは一致しない。
+`/compact` は使えない。組込コマンドはリードのセッションで走るので、subagent に compact を
+実行させる手段が無い。自動コンパクションは閾値でしか走らず、タスクの境界とは一致しない。
 
 先行実装も未解決のまま出荷している。superpowered-teams `SKILL.md:261`:
 「**There is no reliable self-detection mechanism for context quality degradation.** If the user
@@ -149,11 +194,11 @@ controlled refresh via shutdown + respawn.」——劣化の検出をユーザ�
 
 タスクごとに新しいサブリーダーを立てれば、引きずりは構造的にゼロになる。ベースの文脈は
 `brief.md` / `map.md` / `ledger.md` に外出ししてあるので、毎回の読み直しは再調査より安い。
-公式のコスト指針が「**Shut down teammates when their work is done. Each active teammate continues
-consuming tokens until it exits**」と言うとおり、待機する teammate を減らす効果もある。
+1 タスク = 1 worktree = 1 ブランチ = 1 PR という対応も、この 1 対 1 があって初めて崩れない。
 
-代償として、teammate に「次のタスクを自己クレームさせる」（公式機能）は使えない。タスクの
-割り当てはリードが全部行う。
+代償として、タスクの割り当てはリードが全部行う。サブリーダーが自分で次のタスクを取ることはない。
+組込タスクリストもリード専用になる——バックグラウンドの subagent には `TaskCreate` /
+`TaskUpdate` / `TaskList` が渡らない（公式のツール絞り込み）。
 
 ## なぜ統合をリードに残すか
 
@@ -170,7 +215,7 @@ System Writes」を理由に起動を遮断され、承認済みタスクが未�
 PR を自動的に MERGED 判定にする。
 
 auto モードでは**エージェント間のメッセージも classifier が審査し、ブロックされたメッセージは
-届かない**（公式 agent-teams の Permissions）。Agent Teams に移してもこの制約は消えない。
+届かない**。`SendMessage` で再開を指示する経路もこの審査を通る。
 
 トレードオフ: リードがコンフリクトを解消したコードは独立レビューを通らない。これを
 (1) 解消後のビルドと検証一式の実測、(2) 規模が大きいときは単発 fix エージェントと独立レビューに
@@ -191,7 +236,7 @@ auto モードでは**エージェント間のメッセージも classifier が�
 （連続してやっていただけ）。変わるのは実行の時期であって回数ではない。
 
 検証の重さは、ビルドを毎回・フル検証を「後続タスクを spawn する直前」と「全完了時」に絞ることで
-旧構成と同水準に収まる。
+旧 supervisor と同水準に収まる。
 
 ## なぜ stacked PR（`gh stack`）を使わないか
 
@@ -199,9 +244,9 @@ GitHub の stacked PR は魅力的だが、この設計とは 3 点で衝突す�
 
 - **cascade rebase が worktree 規律の真逆。** `gh stack rebase` / `gh stack sync` は下の層が
   動くと上の層すべてを rebase し直し、`--force-with-lease` で push する。このスキルの
-  detached HEAD 規律（subleader-prompt.md §1。旧 supervisor
-  `.claude/skills/supervisor/SKILL.md:141-146` から持ち越し）は「ブランチ先端の巻き戻しが
-  構造的に起きない」ことを狙って組まれている。
+  detached HEAD 規律（`subleader-prompt.md` §1 と `implementation-prompt.md` §1。ブランチ名を
+  checkout せず `git push origin HEAD:refs/heads/<ブランチ>` でリモートにだけ作る）は
+  「ブランチ先端の巻き戻しが構造的に起きない」ことを狙って組んでいる。
 - **`git merge --no-ff` と両立しない。** `gh stack modify` の前提条件に「Commit history must be
   linear」がある。classifier を通る唯一の統合経路（`git merge --no-ff` + `git push`）を捨てる
   ことになり、遮断リスクの検証をやり直す必要がある。
@@ -216,20 +261,30 @@ GitHub の stacked PR は魅力的だが、この設計とは 3 点で衝突す�
 | 同じコンフリクト | 再適用のたびに蘇る（だから `gh stack init` は `git rerere` を自動で有効にする） | 1 度解けば履歴に残り再発しない |
 | `gh stack` | 使える | 使えない（が、そもそも不要になる） |
 
-## なぜ「マージ直前」に取り込ませるか
+## なぜマージをすべてリードに集めるか
 
-旧 supervisor では、コンフリクトを**リードが 1 人で、直列に、後からまとめて**解いていた。
-サブリーダーが承認直後に topic の最新を自分のブランチへ取り込めば、**変更の文脈を持っている者が、
-並列で、小さいうちに解く**ことになる。
+マージは**どちらの向きもリードだけ**が行う。サブリーダーは承認まで面倒を見て、ブランチ名と
+PR 番号を渡して終わる。
 
-PR の diff は汚れない。承認ごとに topic へ即統合しているので、取り込む相手は「承認済みの他ブランチ」
-ではなく「更新された topic」（＝ PR の base）になる。GitHub の PR diff はマージベースからの
-three-dot diff なので、base が既に含む変更は diff に現れない。
+退けた案は「サブリーダーが承認直後に topic の最新を自分のブランチへ取り込む」形である。狙いは
+**変更の文脈を持っている者が、並列で、小さいうちに解く**ことで、旧 supervisor の「リードが 1 人で、
+直列に、後からまとめて解く」より速い。だがこの形は次の 3 つを抱える。
 
-取り込みでコンフリクトが出たときだけ解消レビューを 1 体走らせる。クリーンな取り込みは 1 行も
-書いていないので、レビューを走らせるのは使い捨て subagent の無駄になる。この軽重の付け方は
-旧 integration.md:59 の「コンフリクトを解消したマージの直後はフル、コンフリクトの無いマージは
-速い検証」と同じ考え方で、新しい判断基準を増やしていない。
+- **同じマージが 2 か所に現れる。** リードは結局タスクブランチを topic へ merge するので、
+  コンフリクトの解消手順が統合レーンとサブリーダー側の両方に書かれ、食い違うと壊れる。
+- **失敗経路が増える。** サブリーダーが再開直後だと作業ツリーが worktree に戻っていないので、
+  取り込みの前にその回復を挟む分岐が要る。
+- **責任の所在がぼやける。** マージが遮断されたときの担い手が状況によって変わる。
+
+集めた代わりに、この案が狙っていた「文脈を持つ者が解く」は**リードがサブリーダーに聞く**ことで
+満たす。サブリーダーは報告を終えて止まっていても `SendMessage` でトランスクリプト全件ごと
+再開するので、「この hunk はどちらの意図か」を本人に確かめられる
+（[integration.md](integration.md) §3）。コードを書くのはリード自身か、リードが立てた
+fix エージェントに限る。
+
+PR の diff は汚れない。承認ごとに topic へ即統合しているので、後続タスクの起点は更新された topic
+（＝ PR の base）になる。GitHub の PR diff はマージベースからの three-dot diff なので、base が
+既に含む変更は diff に現れない。
 
 ## なぜレビュー指摘をスレッドに投稿するか
 
@@ -279,19 +334,72 @@ three-dot diff なので、base が既に含む変更は diff に現れない。
 加えて light タスク（検分・docs 記録）は兄弟の成果に盲目なので後段に置かれることが多く、
 そのときには前段が全部 topic に入っている。束ねても依存関係で困らない。
 
+## なぜ立て直しより再開を優先するか
+
+止まったエージェントに `SendMessage` を送ると、Claude Code はディスクに残ったトランスクリプトを
+読み直して**同じエージェントを全メッセージ付きで起こし直す**。`Agent` ツールの案内文が
+「retains its full prior transcript — every tool call, file read, and decision — **not a summary**」
+と書いているとおり、要約ではない。
+
+立て直しで残るのは push 済みのコミットと PR のスレッドだけで、DoD の解釈・レビュー指摘の裁定・
+実装とのやり取りは消える。再開ならそれが全部残るので、**再開を第一手、立て直しをフォールバック**
+にしている。
+
+**ただし再開すると作業ツリーが失われる。** 実測した挙動:
+
+| | 作業ディレクトリ |
+| --- | --- |
+| 初回（`isolation: "worktree"`） | `.claude/worktrees/agent-<agentId>` |
+| `SendMessage` で再開後 | **リードの現在の作業ディレクトリ**（メインツリー内。リポジトリの
+ルートとは限らず、リードが `cd` していればそのサブディレクトリになる） |
+
+再開の経路には `isolation` を渡す口が無い。そのまま実装 subagent を起動すると、worktree の継承に
+より**メインの作業ツリーにコードが書き込まれる**——リードの統合レーンと他タスクが使っている
+同じチェックアウトである。だから再開したエージェントは、何かを書く前にメインツリーを検出し、
+`EnterWorktree` で作業ツリーを回復する（[subleader-prompt.md](subleader-prompt.md) §1-b、
+[implementation-prompt.md](implementation-prompt.md) §1-b）。
+
+検出は `--git-dir` と `--git-common-dir` の一致で行う。**両方に `--path-format=absolute` を付ける。**
+付けないとサブディレクトリで `--git-dir` が絶対パス、`--git-common-dir` が相対パス
+（`../../../.git`）になり、メインツリーを WORKTREE と誤判定して素通ししてしまう。再開先が
+サブディレクトリになるのは実際に観測されたので、この指定は必須である。
+
+元の worktree は当てにできない。未追跡ファイルだけの変更では自動削除を免れず、実測でも初回の
+完了時に消えていた。**push 済みのコミットだけが再開後に引き継げる成果**なので、実装 subagent には
+意味のある単位ごとの commit・push を義務づけている。
+
+**利用制限には効かない。** 制限はアカウント単位なのでリードも同時に止まり、リードは再開の
+メッセージ自体を送れない。「リードが再び動けるようになってから再開する」以上のことは書けない
+ので、rate limit 固有の制御はスキルに入れていない。
+
+## 実測で確かめたこと
+
+Claude Code v2.1.226、`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` 未設定・
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=5` の状態で測った。
+
+- **worktree は親から子へ継承される。** `isolation: "worktree"` の親が起動した子は、`isolation` を
+  付けなければ親と同じ作業ディレクトリで動く。
+- **`name` あり・`isolation` なし・`run_in_background: false` の子は同期実行される。** 結果が
+  同じ turn にインラインで返る。teams が有効だとここが teammate 化して非同期になる。
+- **`name` は `SendMessage` の宛先として機能する。** 完了した subagent も名前で再開できる。
+- **再開すると作業ツリーがメインツリーに戻る。** しかもリポジトリのルートとは限らない。
+
 ## 未検証のこと
 
-実運用で確かめて、必要ならこの設計を直す。
+実運用で確かめて、必要ならこの設計を直す。公式に記載が無い項目はバージョンで変わりうる。
 
-- **サブリーダーへの `git merge origin/topic` 指示が classifier に遮断されないか。** 遮断の実績は
-  「タスクブランチを topic へマージする担当」で向きが逆だが、確率的である以上ゼロとは言えない。
-  遮断されるなら、取り込みをリードが代行する形に退避する。
-- **teammate に subagent 定義の `effort` が適用されるか。** 公式は `tools` と `model` の適用、
-  `skills` と `mcpServers` の非適用を明記しているが `effort` に言及がない。適用されなければ
-  サブリーダーの effort はリードと同じに固定される。
+- **深さを 5 層に開けたことで枠をどれだけ食うか。** レビューが走らせる `/code-review` が
+  1 体あたり何体を spawn し、それがさらに何層降りるかを測っていない。同時実行の上限 20 体は
+  据え置きなので、`Concurrent subagent limit reached` が出たら、同時サブリーダー数を 2 に
+  下げるか `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` を上げる。
+- **`SubagentStop` フックが API エラーでの終了でも発火するか。** 発火するなら、押し戻しが無意味な
+  リトライを 3 回まで生む。`blocked-<agentId>` で止められる範囲に収めてある。
+- **subagent 定義の `effort` が適用されるか。** 公式は `tools` と `model` の適用、`skills` と
+  `mcpServers` の非適用を明記しているが `effort` に言及がない。適用されなければサブリーダーの
+  effort はリードと同じに固定される。
 - **`~/.claude/tasks/` のファイル形式。** 公式に記載がなくバージョンで変わる。再開時の読み取りは
   できたら読む扱いにし、読めなければ台帳と git/gh だけで再開する（[ledger.md](ledger.md)）。
 - **ファイル単位コメントの `path` が diff 内のファイルに限られるか。** 公式に明記が無い。
   段階 3 で必ず diff 内のファイルを選ぶ規律で回避しているが、422 が出たら規律を強める。
-- **モデル表のサブリーダー以外の行。** 旧 supervisor SKILL.md:95-104 からの持ち越しで、
-  この構造での妥当性は測っていない。
+- **モデル表のサブリーダー以外の行。** 旧 supervisor SKILL.md:95-104 の割り当てをそのまま使って
+  おり、この構造での妥当性は測っていない。

@@ -1,17 +1,23 @@
 # レビュー subagent の契約（サブリーダーが封入する）
 
-サブリーダーが `Agent(model: ..., isolation: "worktree", prompt: ...)` で起動する。
+サブリーダーが次で起動する。
 
-**`isolation: "worktree"` を必ず付ける。** サブリーダーの worktree を共有させると、通常レビューと
-敵対的レビューが同時に検証コマンドを走らせて互いの結果を汚す。各レビュアーは自分の worktree で
-対象ブランチに載る。
+```
+Agent(name: "review-task<番号>-<種類>", model: ..., isolation: "worktree",
+      run_in_background: false, prompt: ...)
+```
+
+- **`isolation: "worktree"` を必ず付ける。** 付けないとサブリーダーおよび実装 subagent と
+  同じツリーになり、検証コマンドの結果が互いに汚れ、レビュー中に足元が書き換わる。
+- **`run_in_background: false` を必ず明示する。** 省くと背景実行になり、サブリーダーが verdict を
+  受け取れないまま turn を終える。2 体を 1 つの応答に並べれば同期実行でも並列に動く。
 
 | 種類 | いつ | model |
 | --- | --- | --- |
 | 通常レビュー | 常に | standard `opus` / light `sonnet` |
 | 敵対的レビュー | standard のみ | `opus` |
 | 再レビュー | 修正ラウンドごとに新しく起動 | `changeKind` が `docs` なら `sonnet`、`logic` なら tier どおり |
-| コンフリクト解消レビュー | 取り込みで解消したときだけ | `opus` |
+| コンフリクト解消レビュー | リードが統合レーンで解消したときだけ（起動するのもリード） | `opus` |
 
 **修正した subagent と再レビューを同じセッションにしない。** 修正の自己承認を防ぐため、
 再レビューは毎回新しく起動する。

@@ -1,38 +1,37 @@
-# `TeammateIdle` フックの設置
+# `SubagentStop` フックの設置
 
 ## 何を防ぐか
 
-公式ドキュメントのトラブルシューティングに 2 つの失敗が挙がっている。
+公式ドキュメントのトラブルシューティングに、こう挙がっている。
 
 > **Agents stopping early**: Teammates may stop after encountering errors instead of recovering.
-> **The lead can stop early too**, deciding the team is finished before all tasks are actually complete.
 
-どちらも「ユーザーが気づいて言い直す」前提で書かれていて、自律で走らせる設計と噛み合わない。
-とくに 2 つ目は、**リード自身の判断ミスをリード自身に検出させる**ことになり担保にならない。
+これは「ユーザーが気づいて言い直す」前提で書かれていて、自律で走らせる設計と噛み合わない。
+リードが気づけばよいが、**リード自身の判断ミスをリード自身に検出させる**ことになり担保にならない。
 フックはリードの外にあるので、そこを埋められる。
 
 ## 何ができて、何ができないか
 
-フックの標準入力に来るのは `teammate_name` と `team_name` の 2 つだけで、タスクの状態は
-来ない。だから確かめられるのは**外部の実物**に限られる。
+フックの標準入力に来るのは `agent_id` / `agent_type` / `agent_transcript_path` /
+`last_assistant_message` などで、**タスクの状態は来ない**。だから確かめられるのは
+**外部の実物**に限られる。
 
 このフックは **タスクブランチが `origin` に push されているか**を見る。承認まで進んだ
-サブリーダーは必ず push している（[subleader-prompt.md](subleader-prompt.md) §3・§8）ので、
-push が無いままアイドルに入る＝未完、と判定できる。
+サブリーダーの配下は必ず push している（[implementation-prompt.md](implementation-prompt.md) §1）
+ので、push が無いまま終わろうとする＝未完、と判定できる。
 
-確かめるブランチ名は、リードがタスク登録時に
-`.git/team-supervisor/branch-<teammate 名>` へ書いたものを読む（SKILL.md §6）。この登録が
-無いときだけ、命名規約 `topic/<作業名>--task-<番号>`（teammate 名 `task4` → 末尾 `--task-4`）の
-末尾一致に頼る。末尾一致は**過去の実行が残した同名ブランチにも一致してしまう**
-（例: 前回の `topic/old-work--task-1` があると、今回の task1 が未 push でも合格する）ので、
-登録ファイルがある状態を正とする。
+確かめるブランチ名は、リードが spawn 直後に `.git/team-supervisor/branch-<agentId>` へ書いた
+ものを読む（`SKILL.md` §7）。
 
-終了コード 2 で終了を拒否し、標準エラー出力が teammate に見える。
+**このフックは全 subagent の終了で発火する**（実装・レビュー・Explore・`/code-review` の子も
+含む）。登録ファイルが無いものは素通しする、という絞り込みで対象をサブリーダーだけに限る。
+
+終了コード 2 で終了を拒否し、標準エラー出力が subagent に見える。
 
 ## 設置場所は SKILL.md の frontmatter（settings.json ではない）
 
-`settings.json` に置くと**全プロジェクト・全セッションの `TeammateIdle` で発火する**。このスキルと
-無関係な teammate まで巻き込むので、SKILL.md の `hooks` frontmatter に置く。公式ドキュメント:
+`settings.json` に置くと**全プロジェクト・全セッションの `SubagentStop` で発火する**。このスキルと
+無関係な subagent まで巻き込むので、SKILL.md の `hooks` frontmatter に置く。公式ドキュメント:
 
 > These hooks are **component-scoped and run only when that component is active**, cleaning up when
 > it completes.
@@ -41,68 +40,70 @@ SKILL.md の frontmatter に書いてある（設定形式は `settings.json` �
 
 ```yaml
 hooks:
-  TeammateIdle:
+  SubagentStop:
     - hooks:
         - type: command
-          command: ~/.claude/skills/team-supervisor/scripts/teammate-idle.sh
+          command: ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh
 ```
 
 有効なのは**このスキルを呼び出してから、そのセッションが終わるまで**。スキルの内容は呼び出すと
 セッションの残りの間コンテキストに留まるので（公式「スキルコンテンツのライフサイクル」）、
 フックも同じ期間だけ生きる。呼び出していないセッションでは存在しない。
 
-スクリプトは `~/.claude/skills/team-supervisor/scripts/teammate-idle.sh`
+スクリプトは `~/.claude/skills/team-supervisor/scripts/subagent-stop.sh`
 （`~/.claude/skills` は dotfiles の `.claude/skills` への symlink）。実行権限を付ける。
 
 ```bash
-chmod +x ~/.claude/skills/team-supervisor/scripts/teammate-idle.sh
+chmod +x ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh
 ```
-
-**スキルを呼び出したセッションの中では、このスキルが立てたのではない teammate にも発火する。**
-スクリプト側で teammate 名が `task` で始まるものだけを対象にして二重に絞っている（下表の 1 行目）。
 
 ## 振る舞い
 
 | 状況 | 終了コード | 何が起きるか |
 | --- | --- | --- |
-| teammate 名が `task` で始まらない | 0 | 素通し（他のスキルや手動の teammate を邪魔しない） |
+| `agent_id` が来ない | 0 | 素通し |
 | git リポジトリでない | 0 | 素通し |
-| `blocked-<名前>` の目印ファイルがある | 0 | 素通し（リードへ報告済み） |
+| `branch-<agentId>` の登録が無い | 0 | 素通し（サブリーダー以外の subagent を邪魔しない） |
+| `blocked-<agentId>` の目印がある | 0 | 素通し（リードへ報告済み、または再開を打ち切り済み） |
 | タスクブランチが push されている | 0 | 素通し。カウンタを消す |
 | push が無い（1〜3 回目） | 2 | 終了を拒否し、続けるか blocked を報告するよう伝える |
 | push が無い（4 回目） | 1 | 打ち切る。ユーザーにだけ警告を出す |
 
-**無限ループを避けるため 3 回で打ち切る。** 本当に進められない teammate を永久に止め続けると、
+**無限ループを避けるため 3 回で打ち切る。** 本当に進められない subagent を永久に止め続けると、
 トークンを使い続けるだけになる。
 
-## blocked の目印
+## `.git/team-supervisor/` に置くファイル
 
-サブリーダーがリードへ blocked を報告したあと、次を実行するとこの確認が止まる。
+作業ツリーに出ないので差分を汚さない。パスは
+`$(git rev-parse --path-format=absolute --git-common-dir)/team-supervisor` で求める
+（worktree の中からでも共有の `.git` を指す）。
 
-```bash
-touch "$(git rev-parse --git-common-dir)/team-supervisor/blocked-<teammate 名>"
-```
-
-目印とカウンタは `.git/team-supervisor/` に置く。作業ツリーに出ないので、差分を汚さない。
+| ファイル | 誰が書くか | 用途 |
+| --- | --- | --- |
+| `branch-<agentId>` | リード（spawn 直後） | このフックが実在を確かめるブランチ名。対象の絞り込みも兼ねる |
+| `idle-count-<agentId>` | このフック | 押し戻した回数（3 回で打ち切り） |
+| `resume-count-task<番号>` | リード | `SendMessage` で再開した回数（3 回で打ち切り） |
+| `blocked-<agentId>` | サブリーダーまたはリード | 押し戻しを止める目印 |
 
 ## 後始末
 
-作業が終わったら、リードが目印を消す。
+作業が終わったら、リードがディレクトリごと消す。
 
 ```bash
 rm -rf "$(git rev-parse --git-common-dir)/team-supervisor"
 ```
 
-リードはタスク登録の前にも同じディレクトリを作り直す（SKILL.md §6）。teammate 名は毎回
-`task<番号>` で再利用されるため、前回の実行が残したカウンタ・目印・ブランチ登録が新しい実行の
-判定を狂わせないようにする（リードが落ちて後始末できなかった場合の備え）。
+リードはタスク登録の前にも同じディレクトリを作り直す（`SKILL.md` §6）。前回の実行が残した
+カウンタ・目印・ブランチ登録が新しい実行の判定を狂わせないようにする（リードが落ちて後始末
+できなかった場合の備え）。
 
 ## 動作確認
 
 ```bash
-echo '{"teammate_name":"task1","team_name":"session-abc12345"}' |
-  ~/.claude/skills/team-supervisor/scripts/teammate-idle.sh; echo "exit=$?"
+echo '{"hook_event_name":"SubagentStop","agent_id":"affffffffffffffff"}' |
+  ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh; echo "exit=$?"
 ```
 
-ブランチ登録（`.git/team-supervisor/branch-task1`）が無く、末尾が `--task-1` のブランチも
-origin に無ければ、`exit=2` と、続けるよう促す文が出る。
+登録ファイルが無いので `exit=0`（素通し）になる。押し戻しを見たいときは、先に
+`printf '%s' "no-such-branch" > "$(git rev-parse --path-format=absolute --git-common-dir)/team-supervisor/branch-affffffffffffffff"`
+を実行してから同じコマンドを流すと `exit=2` になる。確認後は登録ファイルを消す。

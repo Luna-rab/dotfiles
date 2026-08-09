@@ -1,7 +1,15 @@
 # 実装 subagent の契約（サブリーダーが封入する）
 
-サブリーダーが `Agent(model: ..., prompt: ...)` で起動する。**`isolation` は付けない**——
-サブリーダーの worktree の中で動かし、同じ作業ツリーを共有する。
+サブリーダーが次で起動する。
+
+```
+Agent(name: "impl-task<番号>-a", model: ..., run_in_background: false, prompt: ...)
+```
+
+- **`isolation` は付けない**——子は親の作業ディレクトリを継承するので、サブリーダーの worktree を
+  そのまま共有する。
+- **`run_in_background: false` を必ず明示する。** 省くと背景実行になり、サブリーダーが結果を
+  受け取れないまま turn を終える。
 
 modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差し替え（impl-b）なら `"fable"`。
 
@@ -31,9 +39,39 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 - commit はプロジェクトの署名規約に従う（brief.md に書いてある）。
 - push は `git push origin HEAD:refs/heads/<タスクブランチ>` で行う
   （ブランチ名を checkout しない。リモートにだけ作る）。
-- **検証が通ったら必ず push する。** push しないまま終わると成果が失われる。
+- **意味のある単位ができたら、その都度 commit して push する。** 検証が全部通ってから
+  まとめて push しない。あなたが途中で落ちると、**push 済みのものしか次に引き継げない**
+  （再開すると別の作業ツリーで起きる。§1-b）。
 - PR は作らない（サブリーダーが作る）。
-- topic へマージしない。
+- **どちらの向きにもマージしない。** タスクブランチ → topic も、topic → タスクブランチも、
+  リードが統合レーンで行う。
+```
+
+## 1-b. `SendMessage` で再開されたときに最初にやること
+
+**再開すると会話履歴は全部残るが、作業ディレクトリはメインの作業ツリーに戻る。** そこに書くと
+リードの統合レーンと他タスクを壊す。
+
+```text
+再開されたら、コードに触れる前に必ず次を行う。
+
+1. 自分がどこにいるか確かめる。
+
+   [ "$(git rev-parse --path-format=absolute --git-dir)" \
+     = "$(git rev-parse --path-format=absolute --git-common-dir)" ] && echo MAIN || echo WORKTREE
+
+   `--path-format=absolute` を省かない。省くとサブディレクトリにいるとき
+   `--git-common-dir` だけが相対パスになり、メインツリーを WORKTREE と誤判定する。
+
+2. MAIN が出たら、サブリーダーが再開メッセージに書いた worktree のパスへ戻る。
+
+   EnterWorktree(path: "<サブリーダーの worktree の絶対パス>")
+
+   パスが渡されていない、または戻れなかったら、**1 行も書かずに**サブリーダーへ
+   「メインツリーに再開されて worktree に戻れない」と報告して終える。
+
+3. 戻ったら `pwd` と `git log --oneline -5` で、自分が思っている地点に載っているか
+   確かめてから続きに入る。
 ```
 
 ## 2. 何を作るか
@@ -95,8 +133,8 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 ## 7. 修正ラウンドでの作法
 
 サブリーダーが `SendMessage` で再開したときは、未解決のレビュースレッドを渡される。
-**GraphQL を直接書かず、`gh-review.py` を引数付きで呼ぶ**（詳細は
-[github-comments.md](github-comments.md)）。
+**まず §1-b の作業ツリー確認を通す。** そのうえで、**GraphQL を直接書かず `gh-review.py` を
+引数付きで呼ぶ**（詳細は [github-comments.md](github-comments.md)）。
 
 ```text
 1. 対象を取る（isOutdated が true のスレッドも未解決なら対象に含める）。

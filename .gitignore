@@ -21,6 +21,14 @@
 !/.claude
 !/.claude/**
 
+# GitHub Actions のワークフロー
+!/.github
+!/.github/**
+
+# 監督者ワークフローの台帳とベース資料（docs/supervisor/）
+!/docs
+!/docs/**
+
 !install.sh
 !/README.md
 !.gitignore

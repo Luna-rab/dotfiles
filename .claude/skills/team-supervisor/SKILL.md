@@ -210,6 +210,15 @@ Bash(~/.claude/skills/team-supervisor/scripts/gh-review.py *)
 
 依存は `TaskUpdate` の `addBlockedBy` で張る。
 
+`TeammateIdle` フックが読むブランチ登録ファイルも書く（[hooks.md](hooks.md)）。最初の 1 回で
+状態ディレクトリを作り直し、前回の実行が残したカウンタと目印を消す。
+
+```bash
+sd="$(git rev-parse --git-common-dir)/team-supervisor"
+rm -rf "$sd" && mkdir -p "$sd"                                        # 登録の前に 1 回
+printf '%s' "topic/<作業名>--task-<番号>" > "$sd/branch-task<番号>"   # タスクごと
+```
+
 ## 7. 回す
 
 **同時に走らせるサブリーダーは 5 体まで。** 枠が空いたら、`blockedBy` が解けているタスクのうち

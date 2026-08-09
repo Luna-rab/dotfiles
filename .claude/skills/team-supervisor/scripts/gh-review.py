@@ -76,8 +76,13 @@ def resolve_repo(explicit):
     return data["owner"]["login"], data["name"]
 
 
-def pr_node_id(pr):
-    return run(["gh", "pr", "view", str(pr), "--json", "id", "--jq", ".id"])
+def pr_node_id(pr, owner, name):
+    # --repo を付けないと gh がカレントディレクトリのリポジトリで解決してしまい、
+    # --repo 指定時に他の呼び出しと別のリポジトリを見ることになる
+    return run(
+        ["gh", "pr", "view", str(pr), "--repo", f"{owner}/{name}",
+         "--json", "id", "--jq", ".id"]
+    )
 
 
 def viewer_login():
@@ -133,6 +138,11 @@ def cmd_post(args):
     role = args.role
     check_role(role)
 
+    if args.findings == "-" and args.summary_file == "-":
+        die(
+            "--findings と --summary-file の両方を - にはできません"
+            "（標準入力は 1 回しか読めず、後から読む方が空になります）"
+        )
     raw = sys.stdin.read() if args.findings == "-" else open(args.findings).read()
     try:
         findings = json.loads(raw)
@@ -198,7 +208,7 @@ def cmd_post(args):
         "mutation($pr:ID!,$threads:[DraftPullRequestReviewThread!]){"
         "addPullRequestReview(input:{pullRequestId:$pr,threads:$threads}){"
         "pullRequestReview{id}}}",
-        {"pr": pr_node_id(args.pr), "threads": line_threads},
+        {"pr": pr_node_id(args.pr, owner, name), "threads": line_threads},
     )["addPullRequestReview"]["pullRequestReview"]["id"]
 
     for thread in file_threads:
@@ -233,16 +243,45 @@ def cmd_post(args):
 
 
 THREADS_QUERY = (
-    "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){"
-    "pullRequest(number:$n){reviewThreads(first:100){nodes{"
+    "query($o:String!,$r:String!,$n:Int!,$cursor:String){repository(owner:$o,name:$r){"
+    "pullRequest(number:$n){reviewThreads(first:100,after:$cursor){"
+    "pageInfo{hasNextPage endCursor} nodes{"
     "id isResolved isOutdated path line subjectType "
     "comments(first:30){nodes{author{login} body}}}}}}}"
 )
 
 
 def fetch_threads(owner, name, pr):
-    data = graphql(THREADS_QUERY, {"o": owner, "r": name, "n": int(pr)})
-    return data["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+    """全ページを辿ってスレッドを集める。
+
+    スレッドは作成順に返るため、1 ページ（100 件）で打ち切ると解決済みの古いスレッドが
+    枠を埋め、未解決の新しいスレッドが gate から見えなくなる。
+    """
+    nodes, cursor = [], None
+    while True:
+        data = graphql(
+            THREADS_QUERY, {"o": owner, "r": name, "n": int(pr), "cursor": cursor}
+        )
+        conn = data["repository"]["pullRequest"]["reviewThreads"]
+        nodes.extend(conn["nodes"])
+        if not conn["pageInfo"]["hasNextPage"]:
+            return nodes
+        cursor = conn["pageInfo"]["endCursor"]
+
+
+def thread_severity(comment_nodes):
+    """先頭コメントの 1 行目（finding_body の書式）から severity を取り出す。
+
+    書式が合わないスレッド（手書きのコメント等）は None。
+    """
+    if not comment_nodes:
+        return None
+    body = comment_nodes[0].get("body") or ""
+    first_line = body.splitlines()[0] if body else ""
+    for severity in SEVERITIES:
+        if f"`{severity}`" in first_line:
+            return severity
+    return None
 
 
 def cmd_threads(args):
@@ -258,6 +297,7 @@ def cmd_threads(args):
             "path": n["path"],
             "line": n["line"],
             "subjectType": n["subjectType"],
+            "severity": thread_severity(n["comments"]["nodes"]),
             "comments": [
                 {"author": (c["author"] or {}).get("login"), "body": c["body"]}
                 for c in n["comments"]["nodes"]

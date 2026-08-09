@@ -158,7 +158,8 @@ consuming tokens until it exits**」と言うとおり、待機する teammate �
 ## なぜ統合をリードに残すか
 
 **マージを指示されたサブエージェントは安全クラシファイアに確率的に遮断される。** 旧 supervisor の
-M25 ステップ 1 で、マージ準備エージェント 5 体のうち 3 体が「Merge Without Review / External
+運用 M25（「M+数字」は旧 supervisor スキルを実運用したワークフロー実行の通し番号。以下同じ）の
+ステップ 1 で、マージ準備エージェント 5 体のうち 3 体が「Merge Without Review / External
 System Writes」を理由に起動を遮断され、承認済みタスクが未統合のままステップが失敗で返った。
 遮断は確率的で、同じプロンプトでも通ることがある——リトライでは安定しない。ユーザーの承認の
 文脈（スキルの起動）はサブエージェントのトランスクリプトから見えないので、プロンプトの工夫では
@@ -181,7 +182,8 @@ auto モードでは**エージェント間のメッセージも classifier が�
 「topic をいつ前進させるか」の選択で、承認ごとに取り込むと 2 つ得がある。
 
 - **コンフリクトが最小の状態で解ける。** 溜めると全タスクが同じ古い起点のまま並走し、
-  旧 supervisor が記録した「並列書き換えで全損した」形に近づく。
+  旧 supervisor が記録した「並列書き換えで全損した」形
+  （`.claude/skills/supervisor/SKILL.md:262`）に近づく。
 - **後から始まるタスクほど新しい起点を持つ。** サブリーダーはタスクごとに立て直され、起点は
   spawn 時に決まるので、topic が進んでいれば累積の差分が小さくなる。
 
@@ -196,8 +198,10 @@ auto モードでは**エージェント間のメッセージも classifier が�
 GitHub の stacked PR は魅力的だが、この設計とは 3 点で衝突する。
 
 - **cascade rebase が worktree 規律の真逆。** `gh stack rebase` / `gh stack sync` は下の層が
-  動くと上の層すべてを rebase し直し、`--force-with-lease` で push する。SKILL.md:141-146 の
-  detached HEAD 規律は「ブランチ先端の巻き戻しが構造的に起きない」ことを狙って組まれている。
+  動くと上の層すべてを rebase し直し、`--force-with-lease` で push する。このスキルの
+  detached HEAD 規律（subleader-prompt.md §1。旧 supervisor
+  `.claude/skills/supervisor/SKILL.md:141-146` から持ち越し）は「ブランチ先端の巻き戻しが
+  構造的に起きない」ことを狙って組まれている。
 - **`git merge --no-ff` と両立しない。** `gh stack modify` の前提条件に「Commit history must be
   linear」がある。classifier を通る唯一の統合経路（`git merge --no-ff` + `git push`）を捨てる
   ことになり、遮断リスクの検証をやり直す必要がある。

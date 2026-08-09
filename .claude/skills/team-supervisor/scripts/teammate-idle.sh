@@ -33,8 +33,24 @@ if [ -f "$state_dir/blocked-$name" ]; then
 fi
 
 # タスクブランチが push されていれば成果は残っているので素通しする。
-# ブランチ名は topic/<作業名>--<teammate 名> の形なので末尾一致で探す。
-if git ls-remote --heads origin 2>/dev/null | grep -q -- "--${name}\$"; then
+# ブランチ名は、リードがタスク登録時に branch-<teammate 名> へ書いたもの（SKILL.md §6）を
+# 読む。登録が無いときだけ、規約 topic/<作業名>--task-<番号>（teammate 名は task<番号>）の
+# 末尾一致に頼る。末尾一致は過去の実行が残した同名ブランチにも一致し得るので、登録を正とする。
+pushed=0
+branch_file="$state_dir/branch-$name"
+if [ -f "$branch_file" ]; then
+  branch=$(cat "$branch_file")
+  if [ -n "$branch" ] &&
+    git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+    pushed=1
+  fi
+elif git ls-remote --heads origin 2>/dev/null | grep -- "--task-${name#task}\$" >/dev/null; then
+  # grep に -q を付けない（-q は途中で読むのをやめ、pipefail 下で ls-remote が
+  # SIGPIPE で落ちて「push なし」と誤判定することがある）
+  pushed=1
+fi
+
+if [ "$pushed" = 1 ]; then
   rm -f "$state_dir/idle-count-$name"
   exit 0
 fi

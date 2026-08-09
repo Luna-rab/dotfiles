@@ -113,7 +113,9 @@ JSON
 ```
 
 既定は**未解決のみ**。`--all` で解決済みも含める。JSON で `id` / `isResolved` / `isOutdated` /
-`path` / `line` / `subjectType` / `comments` が返る。
+`path` / `line` / `subjectType` / `severity` / `comments` が返る。`severity` はスクリプトが
+先頭コメントから読み取った値（`must-fix` / `should-fix` / `nit`。手書き等で読み取れなければ
+`null`）。重大度で選別するときは本文の文字列ではなくこのフィールドを使う。
 
 **`isOutdated` が `true` のスレッドも未解決なら対象に含める。** 実装が push すると、その前に
 付いた行単位のコメントは outdated 表示になるが、指摘そのものは消えていない。

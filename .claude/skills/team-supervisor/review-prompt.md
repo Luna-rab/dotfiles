@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 通常レビュー | 常に | standard `opus` / light `sonnet` |
 | 敵対的レビュー | standard のみ | `opus` |
-| 再レビュー | 修正ラウンドごとに新しく起動 | `changeKind` が `docs` なら `sonnet` + effort `low`、`logic` なら tier どおり |
+| 再レビュー | 修正ラウンドごとに新しく起動 | `changeKind` が `docs` なら `sonnet`、`logic` なら tier どおり |
 | コンフリクト解消レビュー | 取り込みで解消したときだけ | `opus` |
 
 **修正した subagent と再レビューを同じセッションにしない。** 修正の自己承認を防ぐため、

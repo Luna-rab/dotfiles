@@ -20,6 +20,13 @@
 サブリーダーは必ず push している（[subleader-prompt.md](subleader-prompt.md) §3・§8）ので、
 push が無いままアイドルに入る＝未完、と判定できる。
 
+確かめるブランチ名は、リードがタスク登録時に
+`.git/team-supervisor/branch-<teammate 名>` へ書いたものを読む（SKILL.md §6）。この登録が
+無いときだけ、命名規約 `topic/<作業名>--task-<番号>`（teammate 名 `task4` → 末尾 `--task-4`）の
+末尾一致に頼る。末尾一致は**過去の実行が残した同名ブランチにも一致してしまう**
+（例: 前回の `topic/old-work--task-1` があると、今回の task1 が未 push でも合格する）ので、
+登録ファイルがある状態を正とする。
+
 終了コード 2 で終了を拒否し、標準エラー出力が teammate に見える。
 
 ## 設置場所は SKILL.md の frontmatter（settings.json ではない）
@@ -86,6 +93,10 @@ touch "$(git rev-parse --git-common-dir)/team-supervisor/blocked-<teammate 名>"
 rm -rf "$(git rev-parse --git-common-dir)/team-supervisor"
 ```
 
+リードはタスク登録の前にも同じディレクトリを作り直す（SKILL.md §6）。teammate 名は毎回
+`task<番号>` で再利用されるため、前回の実行が残したカウンタ・目印・ブランチ登録が新しい実行の
+判定を狂わせないようにする（リードが落ちて後始末できなかった場合の備え）。
+
 ## 動作確認
 
 ```bash
@@ -93,4 +104,5 @@ echo '{"teammate_name":"task1","team_name":"session-abc12345"}' |
   ~/.claude/skills/team-supervisor/scripts/teammate-idle.sh; echo "exit=$?"
 ```
 
-`topic/...--task1` が origin に無ければ `exit=2` と、続けるよう促す文が出る。
+ブランチ登録（`.git/team-supervisor/branch-task1`）が無く、末尾が `--task-1` のブランチも
+origin に無ければ、`exit=2` と、続けるよう促す文が出る。

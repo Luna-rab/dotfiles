@@ -103,7 +103,8 @@ should-fix は承認の条件ではないので、topic に入った後も残る
    ~/.claude/skills/team-supervisor/scripts/gh-review.py threads --pr <PR 番号> --all
    ```
 
-   コメント本文の 1 行目に `` `should-fix` `` を含むものが対象。
+   出力の `severity` フィールドが `should-fix` のスレッドが対象（スクリプトが先頭コメントから
+   読み取って返す）。`severity` が `null` の手書きスレッドだけは本文を読んで判断する。
 2. **topic の実コードで未解決であることを確かめてから**回収する（レビューの後に直っている
    ことがあるので、スレッドの記述だけを根拠にしない）。
 3. 未解決の分を 1 本の残件ブランチにまとめ、単発 fix エージェント（`model: "sonnet"`、

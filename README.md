@@ -12,15 +12,31 @@
     ./install.sh
     ```
 
+    `install.sh` は次を行う。
+
+    - [mise](https://mise.jdx.dev/)（言語・CLI ツールのバージョン管理ツール）が
+      未導入なら公式インストーラで入れる
+    - `mise/config.toml` を `~/.config/mise/config.toml` へ symlink し、
+      そこに書かれたツールをインストールする
+
 3. zsh plugin install
 
-    `exec zsh` すると mise が [sheldon](https://github.com/rossmacarthur/sheldon)
-    を自動インストールし、`~/.config/sheldon/plugins.toml`（`sheldon/plugins.toml`
-    への symlink）に従ってプラグインを取得する。
+    `exec zsh` すると、`install.sh` が入れた
+    [sheldon](https://github.com/rossmacarthur/sheldon)（zsh のプラグインマネージャ）が
+    `~/.config/sheldon/plugins.toml`（`sheldon/plugins.toml` への symlink）に従って
+    プラグインを取得する。
 
     ```shell
     exec zsh
     ```
+
+## ツール管理 (`mise/config.toml`)
+
+グローバルに入れる CLI ツールは `mise/config.toml` の `[tools]` で管理する。
+ツールを増やすときはここに 1 行足して `./install.sh` を実行する。
+
+`.zshrc` はインストールを行わず、`mise activate` でツールを PATH に載せることと、
+プロンプトなど見た目の適用だけを担当する。
 
 ## Claude Code (`~/.claude/`)
 

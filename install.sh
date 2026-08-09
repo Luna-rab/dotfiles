@@ -44,6 +44,55 @@ set_global_gitignore() {
   command cp $dotdir/.gitignore_global $HOME/.config/git/ignore
 }
 
+# mise 本体を入れる。既に PATH 上にあるか ~/.local/bin/mise が存在すればそれを使う。
+# 見つからない場合だけ公式インストーラ (https://mise.run) を実行する。
+install_mise() {
+  if command -v mise >/dev/null 2>&1; then
+    MISE="$(command -v mise)"
+    return 0
+  fi
+  if [[ ! -x "$HOME/.local/bin/mise" ]]; then
+    command echo "install mise ..."
+    command curl -fsSL https://mise.run | command sh
+  fi
+  MISE="$HOME/.local/bin/mise"
+}
+
+# mise/config.toml を ~/.config/mise/config.toml へ symlink し、
+# そこに書かれたツールをインストールする。
+#
+# 引数なしの `mise install` を使わないのは、~/.tool-versions のような
+# dotfiles 管理外の設定ファイルにあるツールまで入れに行くため。
+# [tools] セクションのツール名だけを取り出して明示的に渡す。
+install_mise_tools() {
+  local dotdir=$1
+  local src="$dotdir/mise/config.toml"
+  local dst="$HOME/.config/mise/config.toml"
+  [[ -e "$src" ]] || return 0
+
+  command echo "setup ~/.config/mise ..."
+  command mkdir -p "$HOME/.config/mise"
+  if [[ -L "$dst" ]]; then
+    command rm -f "$dst"
+  elif [[ -e "$dst" ]]; then
+    command mv "$dst" "$HOME/.dotbackup"
+  fi
+  command ln -snf "$src" "$dst"
+  command echo "create symboliclink $src"
+
+  local tools
+  tools=$(command awk '/^\[tools\]/{f=1; next} /^\[/{f=0} f && /^[[:alnum:]_-]+[[:space:]]*=/{print $1}' "$src")
+  if [[ -n "$tools" ]]; then
+    command echo "install tools: $(command echo $tools)"
+    # shellcheck disable=SC2086
+    "$MISE" install $tools
+  fi
+
+  # mise が生成する shim（ツール本体へ橋渡しする実行ファイル）を PATH に載せる。
+  # この install.sh の以降の処理が jq を呼べるようにするため。
+  export PATH="$HOME/.local/share/mise/shims:$PATH"
+}
+
 link_sheldon_config() {
   local dotdir=$1
   local src="$dotdir/sheldon/plugins.toml"
@@ -139,6 +188,9 @@ merge_claude_settings() {
 dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 link_to_homedir $dotdir
 set_global_gitignore $dotdir
+install_mise
+# link_claude_config は jq を使うので、jq を入れる install_mise_tools を先に呼ぶ
+install_mise_tools $dotdir
 link_sheldon_config $dotdir
 link_claude_config $dotdir
 command echo "Install completed!!!!"

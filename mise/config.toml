@@ -1,0 +1,13 @@
+# mise（言語・CLI ツールのバージョン管理ツール）がグローバルに入れるツールの一覧。
+# install.sh がこのファイルを ~/.config/mise/config.toml へ symlink し、
+# [tools] に書かれたツールをインストールする。ツールを増やすときはここに 1 行足す。
+
+[tools]
+# fuzzy finder。下の ghq と組み合わせてリポジトリを絞り込む
+fzf = "latest"
+# Git リポジトリを ~/ghq 配下に一元管理するツール
+ghq = "latest"
+# JSON 処理ツール。install.sh が ~/.claude/settings.json をマージするのに使う
+jq = "latest"
+# zsh のプラグインマネージャ。設定は sheldon/plugins.toml
+sheldon = "latest"

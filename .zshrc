@@ -1,35 +1,23 @@
 # Created by newuser for 5.8.1
 
-# Install mise automatically if not installed
-if ! command -v mise >/dev/null 2>&1; then
-    curl https://mise.run | sh
+# ツールのインストールは install.sh が行う。ここでは既に入っているものを
+# シェルに適用するだけにする（インストール対象は mise/config.toml を参照）。
+
+# mise が管理するツールを PATH に載せる。シェルごとに評価が必要なのでここに置く。
+# 公式インストーラは ~/.local/bin に入れるが、この場所は PATH に無いことがあるため
+# PATH 上に無ければフルパスで呼ぶ。
+if command -v mise >/dev/null 2>&1; then
+  eval "$(mise activate zsh)"
+elif [[ -x "$HOME/.local/bin/mise" ]]; then
+  eval "$("$HOME/.local/bin/mise" activate zsh)"
 fi
 
-eval "$(~/.local/bin/mise activate zsh)"
-
-# sheldon (zsh plugin manager) — install via mise if missing
-if ! command -v sheldon >/dev/null 2>&1; then
-  mise install sheldon
-fi
-mise use -g sheldon@latest
-
-# zsh-completions を fpath に載せてから compinit を呼ぶ必要があるため、
-# sheldon source の前に fpath を確定させ、あとで compinit を実行する。
+# プロンプト・補完・シンタックスハイライトなどのプラグインを読み込む。
+# zsh-completions は fpath に補完関数を追加するだけなので、
+# sheldon source で fpath を確定させてから compinit を呼ぶ。
 eval "$(sheldon source)"
 
 autoload -Uz compinit && compinit
-
-# Configure ghq via mise (install only if missing)
-if ! command -v ghq >/dev/null 2>&1; then
-  mise install ghq
-fi
-mise use -g ghq
-
-# Configure fzf via mise (install only if missing)
-if ! command -v fzf >/dev/null 2>&1; then
-  mise install fzf
-fi
-mise use -g fzf@latest
 
 # ghq + fzf integration
 function ghq-fzf() {

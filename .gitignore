@@ -9,6 +9,10 @@
 !/.gitignore_global
 !/.gitconfig_shared
 
+# mise (tool version manager) config
+!/mise
+!/mise/**
+
 # sheldon (zsh plugin manager) config
 !/sheldon
 !/sheldon/**

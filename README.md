@@ -48,6 +48,68 @@
 
 既存の `projects/` `history.jsonl` 等ランタイムデータは温存される。
 
+### プラグイン（marketplace から配布されるもの）
+
+Claude Code のプラグインは marketplace（プラグインの配布カタログ）から入れる。
+状態は次の 2 つに分かれていて、dotfiles で管理するのは前者だけ。
+
+- **宣言**: `~/.claude/settings.json` の `extraKnownMarketplaces` と `enabledPlugins`。
+  どのカタログを使い、どのプラグインを有効にするかを書いたもの
+- **実体**: `~/.claude/plugins/` 配下のカタログの clone とプラグイン本体。
+  マシンごとのランタイムデータなのでコミットしない
+
+宣言は dotfiles の `.claude/settings.json` に書く。
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" }
+    }
+  },
+  "enabledPlugins": {
+    "code-simplifier@claude-plugins-official": true
+  }
+}
+```
+
+`extraKnownMarketplaces` のキーはカタログが名乗る名前で、リポジトリ名とは限らない
+（`anthropics/claude-plugins-community` のカタログ名は `claude-community`）。
+`enabledPlugins` のキーは `<プラグイン名>@<marketplace 名>` の形式。
+
+**宣言を置くだけでは新しいマシンに実体は入らない。** そのため `install.sh` がこの宣言を読んで
+`claude plugin marketplace add` と `claude plugin install --scope user` を実行し、実体を取得する。
+どちらのコマンドも既に入っていれば何もしないので、`./install.sh` は何度実行してもよい。
+`claude` コマンドが無い環境では警告を出して読み飛ばす。
+
+プラグインを追加する手順:
+
+1. 使うマシンで `/plugin` から入れる。`~/.claude/settings.json` に宣言が書き込まれる
+2. その差分を dotfiles の `.claude/settings.json` にコピーしてコミットする
+3. 他のマシンで `./install.sh` を実行すると同じものが入る
+
+プラグインを削除するときは 2 か所を手で消す。`install.sh` は宣言から消えたプラグインを
+自動では削除しない（ローカルで試しに入れたものを勝手に消さないため）。
+
+```shell
+claude plugin uninstall <プラグイン名>@<marketplace 名> --scope user
+```
+
+を実行して実体を消し、dotfiles の `.claude/settings.json` からも該当エントリを消す。
+
+#### 注意: この dotfiles リポジトリの中では宣言が二重に効く
+
+`.claude/settings.json` は dotfiles のマージ素材であると同時に、**このリポジトリ自身の
+プロジェクト設定**でもある（Claude Code は作業ディレクトリの `.claude/settings.json` を
+プロジェクトスコープの設定として読む）。そのため、このリポジトリの中で Claude Code を
+動かすと、宣言したプラグインがユーザースコープとは別にプロジェクトスコープにも
+インストールされる。実体のキャッシュ（`~/.claude/plugins/cache/`）は共有されるので
+動作上の実害はない。
+
+一方で `/plugin` の操作や `claude plugin uninstall --scope project` は、プロジェクト設定
+としてこのファイルを直接書き換える。リポジトリ内でプラグインを操作したあとは
+`git diff .claude/settings.json` で意図しない変更が入っていないか確認する。
+
 ### マシン固有設定（Bedrock など）
 
 ```shell

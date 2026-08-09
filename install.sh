@@ -147,6 +147,7 @@ link_claude_config() {
   done
 
   merge_claude_settings "$src" "$dst"
+  install_claude_plugins "$src"
 }
 
 # ~/.claude/settings.json への dotfiles 設定のマージ。
@@ -183,6 +184,92 @@ merge_claude_settings() {
     command jq '.' "$fragment" > "$target"
     command echo "generate $target from $fragment (no existing settings yet)"
   fi
+}
+
+# dotfiles の .claude/settings.json に宣言したマーケットプレイスとプラグインを
+# 実際に取得する。
+#
+# marketplace（プラグインの配布カタログ）と plugin の状態は 2 つに分かれている。
+#
+#   宣言: ~/.claude/settings.json の extraKnownMarketplaces と enabledPlugins。
+#         「どのカタログを使い、どのプラグインを有効にするか」を書いたもの。
+#   実体: ~/.claude/plugins/ 配下のカタログの clone とプラグイン本体。
+#         マシンごとのランタイムデータなので dotfiles では管理しない。
+#
+# 宣言を settings.json に置いただけでは、新しいマシンに実体は入らない
+# （空の設定ディレクトリで検証済み。`claude plugin marketplace list` は
+# "No marketplaces configured" を返す）。実体を取得するのは `claude plugin`
+# コマンドなので、ここで宣言を読んで実行する。
+#
+# どちらのコマンドも、既に入っていれば "already installed" と表示して正常終了する
+# （冪等）ため、install.sh を何度実行しても問題ない。
+#
+# dotfiles の宣言から消したプラグインは自動では削除しない。ローカルで /plugin から
+# 試しに入れたものを install.sh が勝手に消さないため。実際に消すときは
+# `claude plugin uninstall <plugin>@<marketplace> --scope user` を手で実行する。
+install_claude_plugins() {
+  local src=$1
+  local fragment="$src/settings.json"
+  [[ -e "$fragment" ]] || return 0
+
+  if ! command -v claude >/dev/null 2>&1; then
+    command echo "WARNING: claude not found. skip installing plugins declared in $fragment"
+    return 0
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    command echo "WARNING: jq not found. skip installing plugins declared in $fragment"
+    return 0
+  fi
+
+  # extraKnownMarketplaces の各エントリを `claude plugin marketplace add` の引数に変換する。
+  # 引数の形は source の種類ごとに違う:
+  #   github           -> owner/repo（ref があれば owner/repo#ref）
+  #   git              -> リポジトリ URL（ref があれば URL#ref）
+  #   url              -> marketplace.json の URL
+  #   directory / file -> ローカルパス
+  # npm など引数に変換できない種類は空文字にして、下のループで警告して読み飛ばす。
+  local marketplaces
+  marketplaces=$(command jq -r '
+    (.extraKnownMarketplaces // {}) | to_entries[]
+    | .key as $name
+    | (.value.source // {}) as $s
+    | (
+        if   $s.source == "github"    then $s.repo + (if $s.ref then "#" + $s.ref else "" end)
+        elif $s.source == "git"       then $s.url  + (if $s.ref then "#" + $s.ref else "" end)
+        elif $s.source == "url"       then $s.url
+        elif $s.source == "directory" then $s.path
+        elif $s.source == "file"      then $s.path
+        else "" end
+      ) as $arg
+    | $name + "\t" + $arg
+  ' "$fragment")
+
+  local name arg
+  while IFS=$'\t' read -r name arg; do
+    [[ -n "$name" ]] || continue
+    if [[ -z "$arg" ]]; then
+      command echo "WARNING: skip marketplace '$name': unsupported source type in $fragment"
+      continue
+    fi
+    command echo "add marketplace $name ($arg) ..."
+    command claude plugin marketplace add "$arg" --scope user \
+      || command echo "WARNING: failed to add marketplace '$name' ($arg)"
+  done <<< "$marketplaces"
+
+  # enabledPlugins は "<plugin>@<marketplace>" をキーに持つ。値が false のものは
+  # 明示的に無効化されているので取得しない。
+  local plugins
+  plugins=$(command jq -r '
+    (.enabledPlugins // {}) | to_entries[] | select(.value != false) | .key
+  ' "$fragment")
+
+  local plugin
+  while read -r plugin; do
+    [[ -n "$plugin" ]] || continue
+    command echo "install plugin $plugin ..."
+    command claude plugin install "$plugin" --scope user \
+      || command echo "WARNING: failed to install plugin '$plugin'"
+  done <<< "$plugins"
 }
 
 dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"

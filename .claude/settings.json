@@ -6,10 +6,21 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "tui": "fullscreen",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/scripts/statusline.sh",
     "padding": 2
-  }
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "tui": "fullscreen"
 }

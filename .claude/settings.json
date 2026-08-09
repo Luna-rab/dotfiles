@@ -14,7 +14,10 @@
       }
     }
   },
-  "enabledPlugins": {},
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true,
+    "mattpocock-skills@claude-plugins-official": true
+  },
   "tui": "fullscreen",
   "statusLine": {
     "type": "command",

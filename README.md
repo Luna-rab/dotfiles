@@ -97,6 +97,19 @@ claude plugin uninstall <プラグイン名>@<marketplace 名> --scope user
 
 を実行して実体を消し、dotfiles の `.claude/settings.json` からも該当エントリを消す。
 
+#### 注意: この dotfiles リポジトリの中では宣言が二重に効く
+
+`.claude/settings.json` は dotfiles のマージ素材であると同時に、**このリポジトリ自身の
+プロジェクト設定**でもある（Claude Code は作業ディレクトリの `.claude/settings.json` を
+プロジェクトスコープの設定として読む）。そのため、このリポジトリの中で Claude Code を
+動かすと、宣言したプラグインがユーザースコープとは別にプロジェクトスコープにも
+インストールされる。実体のキャッシュ（`~/.claude/plugins/cache/`）は共有されるので
+動作上の実害はない。
+
+一方で `/plugin` の操作や `claude plugin uninstall --scope project` は、プロジェクト設定
+としてこのファイルを直接書き換える。リポジトリ内でプラグインを操作したあとは
+`git diff .claude/settings.json` で意図しない変更が入っていないか確認する。
+
 ### マシン固有設定（Bedrock など）
 
 ```shell

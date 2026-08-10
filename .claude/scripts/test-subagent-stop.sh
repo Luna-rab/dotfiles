@@ -9,7 +9,7 @@
 #
 # 確かめる 6 ケース:
 #   1. 状態ディレクトリは在るが自分の branch-<agentId> が無い -> 0（サブリーダー以外を邪魔しない）
-#   2. 登録があり、そのブランチが origin に無い               -> 2（未 push なので終了を拒む）
+#   2. 登録があり、そのブランチが origin に無い               -> 2。押し戻す理由も標準エラーへ書く
 #   3. blocked-<agentId> の目印がある                         -> 0（報告済みなので止めない）
 #   4. 押し戻しが 3 回を超えた（4 回目）                      -> 1（無限に止め続けない）
 #   5. 登録したブランチが origin に push 済み                 -> 0。押し戻し回数の記録も消える
@@ -51,7 +51,6 @@ die() {
 # --- 使い捨てのリポジトリを用意する ---
 
 sandbox=$(mktemp -d "${TMPDIR:-/tmp}/subagent-stop-test.XXXXXX") || die "一時ディレクトリを作れません"
-sandbox=$(cd "$sandbox" && pwd -P) || die "一時ディレクトリへ移動できません"
 
 cleanup() {
   # 名前が想定どおりのときだけ消す。sandbox が空文字になった場合に / を消さないため。
@@ -59,14 +58,31 @@ cleanup() {
     */subagent-stop-test.??????) rm -rf "$sandbox" ;;
   esac
 }
+# トラップは mktemp -d の直後に張る。ここから下で die を呼ぶ経路はどれも、作ったばかりの
+# 一時ディレクトリを抱えたまま exit 1 するので、トラップが後ろにあるとその分だけ消し残しが出る。
 trap 'code=$?; cleanup; exit $code' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+# シンボリックリンクを解いた実体のパスに直す。フックが返す --git-common-dir は実体のパスなので、
+# assert_sandbox の「$sandbox/* で始まるか」の照合が、揃えておかないと通らない。
+#
+# いったん resolved で受けてから代入するのは、失敗したときに sandbox を空文字で潰さないため。
+# sandbox=$(cd ...) と直接書くと、失敗した瞬間に sandbox が空になり、cleanup の case が
+# 何にも当たらなくなって、直前に作った一時ディレクトリを消せないまま die してしまう。
+resolved=$(cd "$sandbox" && pwd -P) || die "一時ディレクトリへ移動できません: $sandbox"
+sandbox=$resolved
+
 # 呼び出し元の git 設定と git 用の環境変数を遮断する。~/.gitconfig の init.defaultBranch や
 # url.<base>.insteadOf、親プロセスが立てた GIT_DIR などが残っていると、使い捨てのつもりの
 # git 呼び出しが別のリポジトリや別の URL を向く。
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_NAMESPACE
+#
+# GIT_CONFIG_COUNT / GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n> と GIT_CONFIG_PARAMETERS も
+# 落とす。これらは git -c と同じ扱い（コマンドラインと同じ優先度）で設定を差し込むので、
+# GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM を /dev/null にしても効き続ける。GIT_CONFIG_KEY_<n> と
+# GIT_CONFIG_VALUE_<n> は GIT_CONFIG_COUNT が無ければ読まれないので、COUNT だけ落とせば足りる。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_NAMESPACE \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 export HOME="$sandbox/home"
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_SYSTEM=/dev/null
@@ -222,14 +238,24 @@ run_case_1() {
 # --- ケース 2: 登録があり origin に無い -> 2 ---
 
 # origin は生きていて main も push 済み。登録するブランチ名だけを push しないでおく。
+#
+# 終了コード 2 に加えて、フックが標準エラーへ何か書いたことも見る。hooks.md の「振る舞い」表は
+# exit 2 を「終了を拒否し、続けるか blocked を報告するよう伝える」と定めており、この「伝える」を
+# 担うのがフックが標準エラーへ出す本文である。押し戻された subagent はその本文を読んで、push する
+# か blocked-<agentId> を作るかを決める。本文が消えると、理由も次の一手も分からないまま 3 回
+# 拒まれて 4 回目に打ち切られる。終了コードだけを見ていると、本文を丸ごと消した実装でも 6 ケース
+# 全部が PASS してしまうので、押し戻す唯一の単発ケースであるここで押さえる。
 run_case_2() {
-  local work state agent_id=a0000000000000002
+  local work state agent_id=a0000000000000002 message
   work=$(new_repo case2) || die "ケース2 の使い捨てリポジトリを作れません$(setup_reason)"
   state=$(state_dir_of "$work") || die "ケース2 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース2 の状態ディレクトリを作れません"
   printf '%s' "topic/demo--task-1" >"$state/branch-$agent_id" || die "ケース2 のブランチ登録を書けません"
   invoke_hook "$work" "$agent_id"
-  report "ケース2" "登録あり・origin にそのブランチが無い -> 押し戻し" 2 "$hook_exit_code"
+  # report は $hook_log を空にするので、その前に見る。
+  if [ -s "$hook_log" ]; then message=有り; else message=無し; fi
+  report "ケース2" "登録あり・origin にそのブランチが無い -> 押し戻し、理由を標準エラーへ書く" \
+    "2,有り" "$hook_exit_code,$message"
 }
 
 # --- ケース 3: blocked の目印がある -> 0 ---

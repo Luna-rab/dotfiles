@@ -10,18 +10,28 @@
   reply     スレッドに返信する（--resolve を付けると返信後に畳む）
   resolve   スレッドを畳む
   pending   自分の PENDING レビューを数える / 消す
-  gate      未解決スレッドと PENDING が 0 件かを判定する（承認の門）
+  gate      未解決スレッド 0 件・PENDING 0 件・要求した役割のレビュー提出を判定する（承認の門）
 
 すべて `gh api graphql` を経由する。REST は使わない。
+
+投稿する本文の 1 行目には、GitHub 上で表示されない HTML コメントの形で機械可読な
+メタデータ（`<!-- team-supervisor {...} -->`）を埋める。役割・重大度をここから読むので、
+表示用の `**[役割]**` タグの書式を変えてもパースが壊れない。
 """
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 
 SEVERITIES = ("must-fix", "should-fix", "nit")
 VERDICTS = ("approved", "changes-requested")
+
+# 本文の 1 行目に埋める隠しメタデータ。GitHub は HTML コメントを表示しない
+META_PREFIX = "<!-- team-supervisor "
+META_SUFFIX = " -->"
+META_RE = re.compile(r"<!--\s*team-supervisor\s+(\{.*?\})\s*-->", re.DOTALL)
 
 # 役割の接頭辞ごとに使ってよい状態語
 STATUS_BY_ROLE = {
@@ -103,12 +113,41 @@ def check_role(role):
 # ---------------------------------------------------------------- 本文の組み立て
 
 
+def meta_line(**fields):
+    """本文の 1 行目に置く隠しメタデータ。
+
+    表示用の `**[役割]**` タグを文字列一致でパースしていた形から移した。タグは人間が
+    PR 画面で誰の指摘かを読むために残すが、機械が読むのはこの行である。
+    """
+    payload = {k: v for k, v in fields.items() if v is not None}
+    return META_PREFIX + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + META_SUFFIX
+
+
+def parse_meta(body):
+    """本文から隠しメタデータを取り出す。無ければ空の dict。"""
+    if not body:
+        return {}
+    match = META_RE.search(body)
+    if not match:
+        return {}
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def finding_body(role, finding):
     severity = finding.get("severity")
     if severity not in SEVERITIES:
         die(f"severity は {' / '.join(SEVERITIES)} のいずれかにしてください: {severity!r}")
     category = finding.get("category") or "general"
-    lines = [f"**[{role}]** `{severity}` / {category}", "", finding.get("body", "").rstrip()]
+    lines = [
+        meta_line(kind="finding", role=role, severity=severity, category=category),
+        f"**[{role}]** `{severity}` / {category}",
+        "",
+        finding.get("body", "").rstrip(),
+    ]
     if finding.get("evidence"):
         lines += ["", f"**根拠**: {finding['evidence']}"]
     if finding.get("suggestion"):
@@ -122,6 +161,7 @@ def summary_body(role, verdict, counts, extra):
     if verdict not in VERDICTS:
         die(f"verdict は {' / '.join(VERDICTS)} のいずれかにしてください: {verdict!r}")
     lines = [
+        meta_line(kind="review", role=role, verdict=verdict, counts=counts),
         f"**[{role}]** verdict: `{verdict}`",
         "",
         "- must-fix: {must-fix} / should-fix: {should-fix} / nit: {nit}".format(**counts),
@@ -269,19 +309,27 @@ def fetch_threads(owner, name, pr):
         cursor = conn["pageInfo"]["endCursor"]
 
 
-def thread_severity(comment_nodes):
-    """先頭コメントの 1 行目（finding_body の書式）から severity を取り出す。
+def thread_meta(comment_nodes):
+    """先頭コメントから severity と role を取り出す。
 
-    書式が合わないスレッド（手書きのコメント等）は None。
+    隠しメタデータを優先し、無ければ表示用タグの 1 行目を文字列一致で読む
+    （メタデータを入れる前に投稿されたスレッドと、手書きのコメントのため）。
+    どちらでも読めなければ None。
     """
     if not comment_nodes:
-        return None
+        return None, None
     body = comment_nodes[0].get("body") or ""
-    first_line = body.splitlines()[0] if body else ""
-    for severity in SEVERITIES:
-        if f"`{severity}`" in first_line:
-            return severity
-    return None
+
+    meta = parse_meta(body)
+    if meta.get("severity") in SEVERITIES or meta.get("role"):
+        severity = meta.get("severity")
+        return (severity if severity in SEVERITIES else None), meta.get("role")
+
+    lines = [ln for ln in body.splitlines() if not ln.lstrip().startswith("<!--")]
+    first_line = lines[0] if lines else ""
+    severity = next((s for s in SEVERITIES if f"`{s}`" in first_line), None)
+    role_match = re.search(r"\*\*\[([^\]]+)\]\*\*", first_line)
+    return severity, (role_match.group(1) if role_match else None)
 
 
 def cmd_threads(args):
@@ -289,22 +337,25 @@ def cmd_threads(args):
     nodes = fetch_threads(owner, name, args.pr)
     if not args.all:
         nodes = [n for n in nodes if not n["isResolved"]]
-    out = [
-        {
+    out = []
+    for n in nodes:
+        severity, role = thread_meta(n["comments"]["nodes"])
+        out.append({
             "id": n["id"],
             "isResolved": n["isResolved"],
             "isOutdated": n["isOutdated"],
             "path": n["path"],
             "line": n["line"],
             "subjectType": n["subjectType"],
-            "severity": thread_severity(n["comments"]["nodes"]),
+            "severity": severity,
+            "role": role,
             "comments": [
                 {"author": (c["author"] or {}).get("login"), "body": c["body"]}
                 for c in n["comments"]["nodes"]
             ],
-        }
-        for n in nodes
-    ]
+        })
+    if args.role:
+        out = [t for t in out if t["role"] == args.role]
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
@@ -318,7 +369,10 @@ def cmd_reply(args):
     if args.resolve and prefix == "impl":
         die("実装エージェントはスレッドを畳めません（自己承認になります）")
 
-    lines = [f"**[{role}]** `{args.status}` — {args.message}"]
+    lines = [
+        meta_line(kind="reply", role=role, status=args.status, commit=args.commit),
+        f"**[{role}]** `{args.status}` — {args.message}",
+    ]
     if args.commit:
         lines += ["", f"commit: {args.commit}"]
     body = "\n".join(lines).rstrip() + "\n"
@@ -388,17 +442,64 @@ def cmd_pending(args):
         sys.exit(1)
 
 
+SUBMITTED_REVIEWS_QUERY = (
+    "query($o:String!,$r:String!,$n:Int!,$cursor:String){repository(owner:$o,name:$r){"
+    "pullRequest(number:$n){reviews(first:100,after:$cursor){"
+    "pageInfo{hasNextPage endCursor} nodes{state body}}}}}"
+)
+
+
+def submitted_roles(owner, name, pr):
+    """提出済みレビューを役割ごとに数える。
+
+    未解決スレッドが 0 件であることは「レビューが行われた」ことを意味しない——レビューを
+    1 度も走らせていない PR ではスレッドがそもそも 0 件になる（この穴で承認の門が
+    素通しになった実績がある）。post が submit するサマリ本文の隠しメタデータを数えて、
+    要求した役割のレビュアーが実際に走ったことを確かめる。
+    """
+    counts, cursor = {}, None
+    while True:
+        conn = graphql(
+            SUBMITTED_REVIEWS_QUERY,
+            {"o": owner, "r": name, "n": int(pr), "cursor": cursor},
+        )["repository"]["pullRequest"]["reviews"]
+        for node in conn["nodes"]:
+            # PENDING は未提出なので数えない（別に pending_reviews で見る）
+            if node["state"] == "PENDING":
+                continue
+            meta = parse_meta(node.get("body"))
+            if meta.get("kind") == "review" and meta.get("role"):
+                counts[meta["role"]] = counts.get(meta["role"], 0) + 1
+        if not conn["pageInfo"]["hasNextPage"]:
+            return counts
+        cursor = conn["pageInfo"]["endCursor"]
+
+
 def cmd_gate(args):
+    required = [r.strip() for r in args.require_roles.split(",") if r.strip()]
+    if not required:
+        die(
+            "--require-roles に役割を 1 つ以上指定してください"
+            "（standard: review:normal,review:adversarial / light: review:normal）"
+        )
+    for role in required:
+        check_role(role)
+
     owner, name = resolve_repo(args.repo)
     unresolved = [t for t in fetch_threads(owner, name, args.pr) if not t["isResolved"]]
     pending = own_pending(owner, name, args.pr)
-    clean = not unresolved and not pending
+    counts = submitted_roles(owner, name, args.pr)
+    missing = [r for r in required if not counts.get(r)]
+    clean = not unresolved and not pending and not missing
     print(
         json.dumps(
             {
                 "clean": clean,
                 "unresolved": len(unresolved),
                 "pending_reviews": len(pending),
+                "required_roles": required,
+                "submitted_roles": {r: counts.get(r, 0) for r in required},
+                "missing_roles": missing,
                 "unresolved_threads": [
                     {"id": t["id"], "path": t["path"], "line": t["line"],
                      "isOutdated": t["isOutdated"]}
@@ -409,6 +510,14 @@ def cmd_gate(args):
             indent=2,
         )
     )
+    if missing:
+        print(
+            "gh-review: "
+            + " / ".join(missing)
+            + " のレビューが提出されていません。未解決スレッドが 0 件でも承認しないで"
+            "ください（レビューを走らせていない PR はスレッドが 0 件になります）",
+            file=sys.stderr,
+        )
     sys.exit(0 if clean else 1)
 
 
@@ -439,6 +548,7 @@ def build_parser():
     p = sub.add_parser("threads", help="レビュースレッドを列挙する")
     add_common(p)
     p.add_argument("--all", action="store_true", help="解決済みも含める")
+    p.add_argument("--role", help="この役割が立てたスレッドだけに絞る（例: review:normal）")
     p.set_defaults(func=cmd_threads)
 
     p = sub.add_parser("reply", help="スレッドに返信する")
@@ -463,8 +573,17 @@ def build_parser():
     p.add_argument("--fail-if-any", action="store_true", help="1 件でもあれば終了コード 1")
     p.set_defaults(func=cmd_pending)
 
-    p = sub.add_parser("gate", help="未解決スレッドと PENDING が 0 件かを判定する")
+    p = sub.add_parser(
+        "gate",
+        help="未解決スレッド 0 件・PENDING 0 件・要求した役割のレビュー提出を判定する",
+    )
     add_common(p)
+    # 任意にすると渡し忘れた時点で「レビュー 0 件でも通る門」に戻るので必須にする
+    p.add_argument(
+        "--require-roles", required=True,
+        help="提出されていることを要求するレビューの役割をカンマ区切りで指定する。"
+             "standard: review:normal,review:adversarial / light: review:normal",
+    )
     p.set_defaults(func=cmd_gate)
 
     return parser

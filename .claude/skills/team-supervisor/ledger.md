@@ -5,22 +5,31 @@
 | どこ | 何を持つ | 誰が書く |
 | --- | --- | --- |
 | 組込タスクリスト（`~/.claude/tasks/session-<セッション ID の先頭 8 文字>/`） | 実行中の真実。状態・依存・metadata | **リードだけ**が `TaskCreate` / `TaskUpdate` で |
-| `topic` 上の `docs/supervisor/<作業名>.ledger.md` | 節目の記録。タスク分解・承認状態・自律判断 | リードだけが commit する |
+| `<ベース>/ledger.md` | 節目の記録。タスク分解・承認状態・自律判断 | リードだけが書く（commit しない） |
+
+`<ベース>` は次で受け取る絶対パス。`.git` 配下なので **git の追跡対象に入らず、PR の差分にも
+出ない**。全 worktree から同じパスに解決でき、リポジトリのクローンが残る限りセッションをまたいで
+残る（`/tmp` は WSL の再起動で消えるので使えない）。
+
+```bash
+~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名>
+```
 
 **サブリーダーはタスクリストに触れない。** バックグラウンドの subagent には `TaskCreate` /
 `TaskUpdate` / `TaskList` が渡らない（公式のツール絞り込み）。状態はリードが報告を受けて更新する。
 
-台帳は成果物に残り、最終 PR の差分に載る。ディレクトリ名はセッション ID から決まるので、
-**新しいセッションを立てるとタスクリストは引き継げない**（`claude --resume <元のセッション ID>` で
-開き直せば、`--fork-session` を付けない限りセッション ID が再利用されるので残る）。したがって
-再開の足場は台帳が持つ。
+台帳はリポジトリの履歴に残らない。**ユーザーが後から読める記録は最終 PR 本文だけ**なので、
+タスク一覧と自律判断は PR 本文へ転記する（`SKILL.md` §8・§9）。タスクリストのディレクトリ名は
+セッション ID から決まるので、**新しいセッションを立てるとタスクリストは引き継げない**
+（`claude --resume <元のセッション ID>` で開き直せば、`--fork-session` を付けない限りセッション
+ID が再利用されるので残る）。したがって再開の足場は台帳が持つ。
 
 ## 台帳を書くタイミング
 
 1. **タスク設計の直後（v0）** — これが無いと分解そのものが失われる。必ず書く。
 2. **1 タスクを topic へ取り込むたび** — 状態を `merged` にし、findings 件数・`decisions`・
    `deferrals` を写す。
-3. **最終 PR を作る前** — 最終版に更新する。
+3. **最終 PR を作る前** — 最終版に更新し、同じ内容を PR 本文へ転記する。
 
 ## 書式
 
@@ -32,7 +41,7 @@
 - topic: topic/<作業名>
 - default-branch: main
 - created: 2026-08-09
-- ベース資料: docs/supervisor/<作業名>.brief.md / docs/supervisor/<作業名>.map.md
+- ベース資料: 同じディレクトリの brief.md / map.md
 
 ## 全体のゴールと DoD
 
@@ -83,7 +92,17 @@
 セッション ID が再利用されるのでタスクリストが残り、手順 7 が要らなくなる。
 
 1. `git fetch origin && git checkout topic/<作業名> && git pull`
-2. `docs/supervisor/<作業名>.ledger.md` を読む。全タスクの DoD・tier・依存・状態が分かる。
+2. 台帳を読む。全タスクの DoD・tier・依存・状態が分かる。置き場は次で受け取る
+   （`.git` 配下にあり、`git checkout` では作業ツリーに現れない）。
+
+   ```bash
+   ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+   ```
+
+   **終了コードが 1 なら、この足場は失われている**（クローンを作り直した、`.git` を消した、
+   `SKILL.md` §8 の後始末を済ませていた場合）。台帳無しでの再開は手順 3〜4 の git と gh だけで
+   行い、そこから台帳を書き直す。作業名が分からなければ
+   `git branch -r | grep '^  origin/topic/'` で topic ブランチ名から拾う。
 3. `git log --oneline origin/topic/<作業名>` で、台帳の `merged` と実際の取り込みが一致するか
    突き合わせる。**台帳より git を信じる**（台帳の更新前に落ちた可能性がある）。
 4. `git branch -r | grep 'topic/<作業名>--task-'` と
@@ -93,10 +112,10 @@
    `~/.claude/tasks/session-a1b2c3d4/` を Read すると、fix ラウンド数や metadata が拾える。
    **このファイルの形式は公式に文書化されておらず、バージョンで変わる。読めなければ飛ばす**
    ——1〜4 だけで再開できる。
-6. `git worktree list` に残留があれば、[integration.md](integration.md) §2 の手順で
+6. `git worktree list` に残留があれば、[integration.md](integration.md) §4 の手順で
    未コミットの成果を保全してから消す。
 7. 未完のタスクを `TaskCreate` で登録し直し（新しいセッションでは新しいタスクリストになる）、
-   台帳に `lead-session:` と `task-list:` の新しい値を書いて commit する。
+   台帳に `lead-session:` と `task-list:` の新しい値を書く。
 8. 承認済みだが未統合のブランチがあれば、先に [integration.md](integration.md) の手順で取り込む。
 9. 空き枠にサブリーダーを spawn して続きを回す。
 
@@ -108,20 +127,25 @@
 
 順に試す。
 
-1. **再開する。** `SendMessage(to: "task<番号>", ...)`。**再開したサブリーダーは worktree を
-   失ってメインの作業ツリーで起きる**ので、再開の指示に
-   [subleader-prompt.md](subleader-prompt.md) §1-b（`EnterWorktree` で作り直す）を必ず添える。
-   待たずに 3 回まで試す。
+1. **再開する。** `SendMessage(to: "task<番号>", ...)`。**再開したサブリーダーは自分の
+   worktree のまま起きる**ので、worktree を作り直す指示は添えない（起点に載り直す手順は
+   [subleader-prompt.md](subleader-prompt.md) §1-b にある）。待たずに 3 回まで試す。
+   `name` を付けずに spawn していた場合は、spawn の返り値の agentId を宛先にする。
+   **worktree を消したサブリーダーは再開できない**（[integration.md](integration.md) §4）。
 2. **文脈が復元できなかったとき**は、途中成果から立て直す。**やり直しではなく続きから始める。**
    - ブランチに push 済みのコミットがあれば、それを起点に新しいサブリーダーを立てる
      （spawn プロンプトに「前コミット `<SHA>` まで実装済み。ここから続けよ」と書く）。
    - PR が作られていればそのまま使う。レビュースレッドも残っている。
    - worktree に未コミットの変更が残っていたら、先に保全する
-     （[integration.md](integration.md) §2）。
+     （[integration.md](integration.md) §4）。
    - push も未コミットの変更も無ければ成果はゼロなので、最初から立て直す。
-3. **3 回の再開に失敗したら打ち切る。** 台帳でそのタスクを `blocked` にし、通知に載ったエラー
-   本文を写し、`touch "$(git rev-parse --git-common-dir)/team-supervisor/blocked-<agentId>"` を
-   実行してユーザーへ上げる。**他のタスクは止めずに進める。**
+3. **3 回の再開に失敗したら打ち切る**（回数は `lane.py state-resume` が数え、上限を超えると
+   終了コード 1 を返す。`SKILL.md` §7）。台帳でそのタスクを `blocked` にし、通知に載ったエラー
+   本文を写し、次を実行してユーザーへ上げる。**他のタスクは止めずに進める。**
+
+   ```bash
+   ~/.claude/skills/team-supervisor/scripts/lane.py state-block --agent <agentId>
+   ```
 
 利用制限で止まった場合、リードも同時に止まるので 1 を実行できない。リードが再び動けるように
 なった時点で 1 から始める。

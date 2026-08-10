@@ -36,6 +36,11 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 カレントディレクトリで作業する。他のディレクトリのチェックアウトに触れない。
 すでに `origin/topic/<作業名>` に detached で載っている。
 
+- ベース資料（brief.md / map.md / ledger.md）は git の追跡対象外で、作業ツリーには現れない。
+  置き場は次で 1 行受け取る（サブリーダーが渡したパスがあればそれでよい）。
+
+    ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+
 - commit はプロジェクトの署名規約に従う（brief.md に書いてある）。
 - push は `git push origin HEAD:refs/heads/<タスクブランチ>` で行う
   （ブランチ名を checkout しない。リモートにだけ作る）。
@@ -55,22 +60,25 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 ```text
 再開されたら、コードに触れる前に必ず次を行う。
 
-1. 自分がどこにいるか確かめる。
+1. どこへ入るべきかを聞く。--parent-worktree にはサブリーダーが再開メッセージに書いた
+   worktree の絶対パスを渡す。
 
-   [ "$(git rev-parse --path-format=absolute --git-dir)" \
-     = "$(git rev-parse --path-format=absolute --git-common-dir)" ] && echo MAIN || echo WORKTREE
+   ~/.claude/skills/team-supervisor/scripts/lane.py where --role impl \
+     --parent-worktree "<サブリーダーの worktree の絶対パス>"
 
-   `--path-format=absolute` を省かない。省くとサブディレクトリにいるとき
-   `--git-common-dir` だけが相対パスになり、メインツリーを WORKTREE と誤判定する。
+   メインツリーにいればそのパスをそのまま返し、既に worktree にいれば STAY を返す。
+   パスが渡されていないままメインツリーにいると、スクリプトが非 0 で止める。
 
-2. MAIN が出たら、サブリーダーが再開メッセージに書いた worktree のパスへ戻る。
+2. 絶対パスが返ったら、そのパスで戻る。
 
-   EnterWorktree(path: "<サブリーダーの worktree の絶対パス>")
+   EnterWorktree(path: "<返ってきた絶対パス>")
 
-   パスが渡されていない、または戻れなかったら、**1 行も書かずに**サブリーダーへ
+   スクリプトが非 0 で止まった、または戻れなかったら、**1 行も書かずに**サブリーダーへ
    「メインツリーに再開されて worktree に戻れない」と報告して終える。
 
-3. 戻ったら `pwd` と `git log --oneline -5` で、自分が思っている地点に載っているか
+3. STAY が返ったら、そのまま次へ進む。
+
+4. どちらの場合も `pwd` と `git log --oneline -5` で、自分が思っている地点に載っているか
    確かめてから続きに入る。
 ```
 
@@ -160,7 +168,10 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 
 ## 8. 報告の形
 
-サブリーダーへ、次の形で返す。
+**次の形を自分の最終テキストとして出力する。それがサブリーダーへの返り値になる。**
+`SendMessage` を使わない——あなたは `run_in_background: false` の同期実行なので、最終
+テキストがそのまま呼び出し元に返る。**宛先を解決できないときも、代わりの宛先（リード）を
+自分で選ばない。**
 
 ```text
 status: done | blocked
@@ -180,8 +191,10 @@ questions:
   - <blocked のときだけ。確認したい点>
 ```
 
-`changeKind` は再レビューの軽重を決めるのに使う。変更が doc とコメントだけなら `docs`、
-ロジックに触れたら `logic`。
+`changeKind` は、サブリーダーが差分の重さを一目で掴むための印である。変更が doc と
+コメントだけなら `docs`、ロジックに触れたら `logic`。**再レビューの model を切り替える用途では
+使わない**——再レビューは最初のレビュアーを `SendMessage` で再開し、再開に `model` を渡す口が
+無いため（review-prompt.md 冒頭）。
 
 `decisions` と `deferrals` は、**同じ内容を PR 本文にも書く**（サブリーダーが PR を作った後に
 `gh pr comment` で追記してよい）。

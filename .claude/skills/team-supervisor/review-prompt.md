@@ -9,6 +9,7 @@ Agent(name: "review-task<番号>-<種類>", model: ..., isolation: "worktree",
 
 - **`isolation: "worktree"` を必ず付ける。** 付けないとサブリーダーおよび実装 subagent と
   同じツリーになり、検証コマンドの結果が互いに汚れ、レビュー中に足元が書き換わる。
+  `SendMessage` で再開されたときも**この worktree はそのまま残る**（§7）。
 - **`run_in_background: false` を必ず明示する。** 省くと背景実行になり、サブリーダーが verdict を
   受け取れないまま turn を終える。2 体を 1 つの応答に並べれば同期実行でも並列に動く。
 
@@ -16,11 +17,18 @@ Agent(name: "review-task<番号>-<種類>", model: ..., isolation: "worktree",
 | --- | --- | --- |
 | 通常レビュー | 常に | standard `opus` / light `sonnet` |
 | 敵対的レビュー | standard のみ | `opus` |
-| 再レビュー | 修正ラウンドごとに新しく起動 | `changeKind` が `docs` なら `sonnet`、`logic` なら tier どおり |
+| 再レビュー（R1〜R3） | 未解決スレッドを持つレビュアーを `SendMessage` で再開 | 初回のまま（再開に `model` は渡せない） |
+| impl-b のレビュー | 実装を差し替えたとき。**再開せず新しく起動** | 初回と同じ（standard `opus` / light `sonnet`） |
 | コンフリクト解消レビュー | リードが統合レーンで解消したときだけ（起動するのもリード） | `opus` |
 
-**修正した subagent と再レビューを同じセッションにしない。** 修正の自己承認を防ぐため、
-再レビューは毎回新しく起動する。
+**修正した実装 subagent に自分の修正をレビューさせない。** 防ぐのはこれだけで、
+**レビュアー自身の再開は禁じない**——直したのは実装 subagent なので、レビュアーが自分の指摘の
+確認に戻っても自己承認にならない。再開すればレビュアーは対象コードの調査結果を持ったまま
+戻るので、コードベースの再探索が要らない。
+
+`SendMessage` には `model` を渡す口が無いため、再開したレビュアーは初回の model で動く。
+docs だけの修正でも standard なら `opus` のままになる（安く済ませるために新規起動へ切り替える
+ことはしない。再探索コストの削減を優先する）。
 
 ## 1. 対象に載る
 
@@ -30,10 +38,19 @@ Agent(name: "review-task<番号>-<種類>", model: ..., isolation: "worktree",
 
 1. `git fetch origin`
 2. `git checkout --detach origin/<タスクブランチ>`
-3. 次を読む。
-   - docs/supervisor/<作業名>.brief.md   検証コマンド・外形動作の確認手順・不可侵パス・規約
-   - docs/supervisor/<作業名>.map.md     コードベースの入口
-4. 差分は `git diff origin/topic/<作業名>...HEAD` で見る。
+3. 前提資料の置き場を 1 行受け取る。**この資料は git の追跡対象外なので、checkout では
+   作業ツリーに現れない。** 返ってきた絶対パスから読む。
+
+   ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+
+   終了コードが 1 なら資料が揃っていない。**検証コマンドを 1 つも流さずに**サブリーダーへ
+   「ベース資料が無い」と報告して終える（brief.md が無いと、何を流せば「マージしてよい」と
+   言えるのかが分からない）。
+
+4. 返ってきたパスの下の次を読む。
+   - <ベース>/brief.md   検証コマンド・外形動作の確認手順・不可侵パス・規約
+   - <ベース>/map.md     コードベースの入口
+5. 差分は `git diff origin/topic/<作業名>...HEAD` で見る。
 ```
 
 ## 2. 前提（思い込みを断ち、外の信号に接地する）
@@ -131,14 +148,36 @@ Agent(name: "review-task<番号>-<種類>", model: ..., isolation: "worktree",
 
 **すべての指摘をスレッドとして投稿する。サマリ本文に落とさない。** サマリに書くのは検証結果だけ。
 
-## 7. 再レビューでやること
+## 7. 再レビューでやること（`SendMessage` で再開されたとき）
 
-修正ラウンドで起動されたときは、次を追加で行う。
+**再開しても会話履歴と自分の worktree の両方が残る。** `isolation: "worktree"` で起動した
+subagent の Bash は起動時の worktree に固定され、harness がその外でのコマンド実行を拒む。
+**worktree を作り直さない。**
 
 ```text
-1. 未解決スレッドを列挙する。
-   ~/.claude/skills/team-supervisor/scripts/gh-review.py threads --pr <PR 番号>
-   （isOutdated が true のものも対象に含める）
+再開されたら、対象に載り直してから続ける。worktree は起動時のものをそのまま使う。
+
+  git fetch origin
+  git checkout --detach origin/<タスクブランチ>
+
+lane.py where を呼ばない（--role review は無い）。EnterWorktree も使わない
+（成功を返しても Bash は起動時の worktree に固定されたままなので、入った先で
+コマンドが 1 つも通らない）。
+```
+
+そのうえで、次を行う。
+
+```text
+1. 自分の未解決スレッドを列挙する。--role に自分の役割を渡すと、スクリプトが本文の
+   隠しメタデータを読んで絞り込む（isOutdated が true のものも対象に含まれる）。
+
+   ~/.claude/skills/team-supervisor/scripts/gh-review.py threads \
+     --pr <PR 番号> --role review:normal
+
+   （敵対的レビューは --role review:adversarial、コンフリクト解消は review:conflict）
+
+   **確かめるのは自分が出した指摘のスレッドだけ。** もう一方のレビュアーのスレッドは
+   --role なしで列挙すれば読めるが、返信も resolve もしない。
 
 2. 各スレッドについて、実際の差分を見て直っているかを確かめる。
    - 直っている:
@@ -163,11 +202,19 @@ Agent(name: "review-task<番号>-<種類>", model: ..., isolation: "worktree",
   GitHub が拒否する。投稿は `event: COMMENT` に限る。
 - **自分が出した指摘を自分で resolve しない**（再レビューとして起動されたときだけ、直っていると
   確かめたものを畳む）。
-- メイン作業ツリー・他のディレクトリのチェックアウトに触れない。
+- メイン作業ツリー・他のディレクトリのチェックアウトに触れない。作業するのは起動時に
+  割り当てられた自分の worktree だけで、新しい worktree を作らない。
+- **リード（層 0）へ findings の本文を送らない。** 報告先はサブリーダーだけである（§9）。
 
 ## 9. 報告の形
 
-サブリーダーへ、次の形で返す。**findings の本文は返さない**（PR 上にある）。
+**次の形を自分の最終テキストとして出力する。それがサブリーダーへの返り値になる。**
+`SendMessage` を使わない——あなたは `run_in_background: false` の同期実行なので、最終
+テキストがそのまま呼び出し元に返る。**宛先を解決できないときも、代わりの宛先（リード）を
+自分で選ばない**（findings の本文がリードに漏れ、リードが findings を読まないという設計が
+壊れる）。
+
+**findings の本文は返さない**（PR 上にある）。
 
 ```text
 verdict: approved | changes-requested

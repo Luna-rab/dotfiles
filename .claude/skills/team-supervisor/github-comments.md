@@ -26,9 +26,25 @@ GraphQL の組み立てと JSON のエスケープはスクリプトの中に閉
 **指摘をサマリ本文に落とさない。** 段階 3 で必ず diff 内のファイルを選ぶ（diff 外のパスを
 指定すると GitHub が 422 で拒む）。
 
+## 隠しメタデータ（機械が読む行）
+
+スクリプトは投稿する本文の 1 行目に、GitHub 上で表示されない HTML コメントを置く。
+
+```
+<!-- team-supervisor {"kind":"finding","role":"review:normal","severity":"must-fix","category":"correctness"} -->
+**[review:normal]** `must-fix` / correctness
+
+境界値 `len == 0` のとき `slice[0]` で panic する。
+```
+
+`kind` は `finding`（指摘スレッドの先頭）/ `review`（レビューのサマリ本文）/ `reply`（返信）。
+`threads` の `role` と `severity`、`gate` の `--require-roles` の判定はこの行から読む。
+表示用の `**[役割]**` タグは**人間が PR 画面で誰の指摘かを読むために残してある**もので、
+機械はこちらを見ない（タグの書式を変えてもパースは壊れない）。
+
 ## 役割タグ
 
-`--role` に渡す。スクリプトが 1 行目に `**[役割]**` として置く。
+`--role` に渡す。スクリプトが隠しメタデータの `role` と、表示用の `**[役割]**` 行に置く。
 
 | タグ | 誰 | 使える状態語（`reply` の `--status`） |
 | --- | --- | --- |
@@ -110,12 +126,16 @@ JSON
 
 ```bash
 ~/.claude/skills/team-supervisor/scripts/gh-review.py threads --pr 123
+
+# 自分が立てたスレッドだけに絞る（再レビューで使う）
+~/.claude/skills/team-supervisor/scripts/gh-review.py threads --pr 123 --role review:normal
 ```
 
 既定は**未解決のみ**。`--all` で解決済みも含める。JSON で `id` / `isResolved` / `isOutdated` /
-`path` / `line` / `subjectType` / `severity` / `comments` が返る。`severity` はスクリプトが
-先頭コメントから読み取った値（`must-fix` / `should-fix` / `nit`。手書き等で読み取れなければ
-`null`）。重大度で選別するときは本文の文字列ではなくこのフィールドを使う。
+`path` / `line` / `subjectType` / `severity` / `role` / `comments` が返る。`severity` と `role` は
+スクリプトが先頭コメントの隠しメタデータから読み取った値（読み取れなければ `null`）。
+**重大度や役割で選別するときは、本文の文字列ではなくこのフィールドを使う。**
+`--role` を付ければスクリプト側で絞り込める。
 
 **`isOutdated` が `true` のスレッドも未解決なら対象に含める。** 実装が push すると、その前に
 付いた行単位のコメントは outdated 表示になるが、指摘そのものは消えていない。
@@ -165,12 +185,31 @@ gh-review.py reply --thread <ID> --role subleader:task4 --status overruled \
 ## 承認の門を確かめる（サブリーダー / リード）
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr 123
+# standard（通常レビューと敵対的レビューの 2 本立て）
+~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr 123 \
+  --require-roles review:normal,review:adversarial
+
+# light（通常レビュー 1 本）
+~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr 123 \
+  --require-roles review:normal
 ```
 
-未解決スレッドと自分の PENDING レビューが**どちらも 0 件なら終了コード 0**、そうでなければ 1 を
-返し、未解決スレッドの一覧を表示する。サブリーダーは承認を決める前に、リードは topic へ取り込む
+次の 3 つが**すべて満たされたときだけ終了コード 0**。そうでなければ 1 を返し、`missing_roles`
+と未解決スレッドの一覧を表示する。サブリーダーは承認を決める前に、リードは topic へ取り込む
 前にこれを通す。
+
+1. 未解決スレッドが 0 件
+2. 自分の PENDING レビューが 0 件
+3. `--require-roles` に挙げた役割のレビューが、すべて 1 件以上提出されている
+
+**`--require-roles` は必須である。** 未解決スレッドが 0 件であることは「レビューが行われた」
+ことを意味しない——レビューを 1 度も走らせていない PR ではスレッドがそもそも 0 件になるので、
+1 と 2 だけの門はレビュー無しの PR を素通しする。任意引数にすると渡し忘れた時点で同じ穴に
+戻るため、省略するとスクリプトが止まる。
+
+`verdict` が `approved` であることは条件にしない。再レビューは直ったスレッドに `reply
+--resolve` を返すだけで `post` を再実行しないので、承認に至った PR でもその役割の最新レビューは
+初回の `changes-requested` のまま残る。
 
 ## スクリプトが拒むこと
 

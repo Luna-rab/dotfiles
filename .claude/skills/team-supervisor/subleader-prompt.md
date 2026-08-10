@@ -34,11 +34,20 @@ checkout すると worktree がそれを掴んだままになる（`already used
 
 1. `git fetch origin` を実行する。
 2. `git checkout --detach origin/topic/<作業名>` で起点に detached で載る（ブランチは作らない）。
-3. 次の 3 ファイルを読む。これがこのタスクの前提資料である。
-   - docs/supervisor/<作業名>.brief.md   検証コマンド・外形動作の確認手順・不可侵パス・規約
-   - docs/supervisor/<作業名>.map.md     コードベースの入口
-   - docs/supervisor/<作業名>.ledger.md  これまでの成果と、他タスクとの関係
-4. push は `git push origin HEAD:refs/heads/<タスクブランチ>` で行う（リモートにだけ作る）。
+3. 前提資料の置き場を 1 行受け取る。**この 3 ファイルは git の追跡対象外なので、
+   checkout では作業ツリーに現れない。** 返ってきた絶対パスから読む。
+
+   ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+
+   終了コードが 1 なら 3 ファイルが揃っていない。実装 subagent を起動せず、リードへ
+   「ベース資料が無い」と報告して終える（検証コマンドも不可侵パスも分からないまま
+   実装させると、確かめずに push する経路に落ちる）。
+
+4. 返ってきたパスの下の次の 3 ファイルを読む。これがこのタスクの前提資料である。
+   - <ベース>/brief.md   検証コマンド・外形動作の確認手順・不可侵パス・規約
+   - <ベース>/map.md     コードベースの入口
+   - <ベース>/ledger.md  これまでの成果と、他タスクとの関係
+5. push は `git push origin HEAD:refs/heads/<タスクブランチ>` で行う（リモートにだけ作る）。
    ただし push するのは実装 subagent で、あなたは push しない。
 ```
 
@@ -46,36 +55,25 @@ checkout すると worktree がそれを掴んだままになる（`already used
 
 ## 1-b. `SendMessage` で再開されたときに最初にやること
 
-**再開すると会話履歴は全部残るが、作業ディレクトリはメインの作業ツリーに戻る。** そのまま
-実装 subagent を起動すると、メインツリーにコードが書き込まれてリードの統合レーンと他タスクを壊す。
+**再開しても会話履歴と自分の worktree の両方が残る。** `isolation: "worktree"` で起動した
+subagent の Bash は起動時の worktree に固定され、harness がその外でのコマンド実行を拒む。
+**worktree を作り直さない。**
 
 ```text
-再開されたら、ほかのことをする前に必ず次を行う。
+再開されたら、ほかのことをする前に起点に載り直す。worktree は起動時のものをそのまま使う。
+起点はタスクブランチが既にあるならそちら、無ければ origin/topic/<作業名>。
 
-1. 自分がどこにいるか確かめる。
+  git fetch origin
+  git ls-remote --exit-code --heads origin refs/heads/<タスクブランチ> \
+    && git checkout --detach origin/<タスクブランチ> \
+    || git checkout --detach origin/topic/<作業名>
 
-   [ "$(git rev-parse --path-format=absolute --git-dir)" \
-     = "$(git rev-parse --path-format=absolute --git-common-dir)" ] && echo MAIN || echo WORKTREE
+lane.py where を呼ばない（--role subleader は無い）。EnterWorktree も使わない
+（成功を返しても Bash は起動時の worktree に固定されたままなので、入った先で
+コマンドが 1 つも通らない）。
 
-   `--path-format=absolute` を省かない。省くとサブディレクトリにいるとき
-   `--git-common-dir` だけが相対パスになり、メインツリーを WORKTREE と誤判定する。
-
-2. MAIN が出たら、EnterWorktree で新しい worktree を作って入る。
-
-   EnterWorktree(name: "task<番号>-r<再開回数>")
-
-   そのうえで §1 の手順（git fetch → git checkout --detach）をやり直す。起点は
-   タスクブランチが既にあるならそちら、無ければ origin/topic/<作業名>。
-
-     git ls-remote --exit-code --heads origin refs/heads/<タスクブランチ> \
-       && git checkout --detach origin/<タスクブランチ> \
-       || git checkout --detach origin/topic/<作業名>
-
-3. WORKTREE が出たら §1 の 1〜2 だけやり直して続きに入る。
-
-4. どちらの場合も `git log --oneline -5` で、自分が思っている地点に載っているか確かめてから
-   続きを始める。**前の worktree に未コミットで残っていた変更は引き継げない。**
-   push 済みのコミットが唯一の引き継ぎ手段である。
+`git log --oneline -5` で、自分が思っている地点に載っているか確かめてから続きを始める。
+ベース資料は `.git` 配下にあるので、読み直したければ §1 の 3 を再実行する。
 ```
 
 ## 2. タスクの内容
@@ -170,16 +168,26 @@ R1〜R3:
   1. SendMessage で同じ実装 subagent を再開し、未解決スレッドの指摘を渡して直させる。
      再開した subagent は会話履歴を全部持って戻るので、タスクを説明し直さなくてよい。
      **ただし作業ディレクトリはメインツリーに戻っている。** 再開のメッセージに必ず
-     「まず implementation-prompt.md §1-b の手順で作業ツリーを確かめ、メインツリーに
-     いたら EnterWorktree(path: "<あなたの worktree の絶対パス>") で戻ってから続けよ」と
-     書く。自分のパスは `pwd` で分かる。
+     「まず implementation-prompt.md §1-b の手順で作業ツリーを回復してから続けよ。
+     --parent-worktree に渡すパスは <あなたの worktree の絶対パス> である」と書く。
+     自分のパスは `pwd` で分かる。
      実装 subagent は各スレッドに返信する（fixed / partial / wont-fix / disputed / deferred）。
   2. push されたことを `git ls-remote origin refs/heads/<タスクブランチ>` で確かめる。
-  3. 再レビュー subagent を新しく起動する（同じレビュアーを再開しない。修正の自己承認を防ぐ）。
-     再レビューは未解決スレッドを 1 件ずつ確かめ、直っているものだけ resolve する。
-  4. 修正が doc・コメントだけなら通常レビュー 1 本（model: "sonnet"）でよい。
-     ロジックに触れたなら tier どおり（standard は通常＋敵対的）。
-     （Agent ツールに effort の指定は無い。軽くしたいときは model で下げる）
+  3. **最初にレビューしたレビュアーを SendMessage で再開する。新しく立てない。**
+     レビュアーは対象コードを既に調べてあるので、再開すればコードベースの再探索が要らない。
+     修正したのは実装 subagent なので、レビュアーを再開しても自己承認にはならない。
+
+     **再開するのは、自分の指摘が未解決で残っているレビュアーだけ。** どのスレッドが誰のものかは
+     gh-review.py threads の出力の role フィールドで分かる（スクリプトが本文の隠しメタデータ
+     から読む）。`--role review:normal` を付けて数えれば、そのレビュアーの未解決スレッドだけが
+     返る。指摘が全部片づいたレビュアーは起こさない。
+
+     再開のメッセージには次の 2 つを必ず書く。
+     - 確かめる対象は自分の未解決スレッドだけで、他のレビュアーのスレッドは畳まない
+     - 修正で新しく生じた問題があれば新しいレビューとして投稿する
+
+     **worktree を作り直せとは書かない。** レビュアーは再開しても自分の worktree のままで、
+     そこで検証できる（review-prompt.md §7）。
 
 打ち切る条件は 2 つ。
   (1) 3 ラウンド終えても must-fix が残っている
@@ -201,6 +209,11 @@ R1〜R3:
 impl-b には先に計画を立てさせる（implementation-prompt.md §3）。計画を読んで、
 前と同じ方針に戻っていたら差し戻す。
 
+**impl-b のレビューは、レビュアーを再開せず新しく立てる。** §6 の再開規律はここには
+効かない。impl-b は方針から作り直すので差分が全面的に入れ替わり、前のレビュアーが
+持っている構造理解と未解決スレッドは別のコードを指した状態になる。初回レビューと同じ扱いで、
+tier どおりの体数を isolation: "worktree" 付きで起動する（§4）。
+
 impl-b でも承認に至らなければ、リードへ blocked で報告して指示を待つ。
 報告には次を入れる: 落ちた検証、直しきれなかった指摘（PR のスレッド番号）、
 自分の見立て。**勝手にタスクを終わらせない。**
@@ -211,10 +224,28 @@ impl-b でも承認に至らなければ、リードへ blocked で報告して�
 ```text
 すべてのレビュアーが approved を返したら、承認の門を通す。
 
-  ~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr <PR 番号>
+**修正ラウンドを回したときは、起こさなかったレビュアーの verdict を待たない。** 指摘が
+全部片づいたレビュアーは再開していないので新しい verdict を返さない。判断の材料は
+そのレビュアーの未解決スレッドが 0 件であること——これは下の gate が数える。
+つまり見るのは「再開したレビュアーが返した verdict」と「gate の終了コード」の 2 つ。
 
-終了コードが 0（未解決スレッド 0 件・自分の PENDING レビュー 0 件）でなければ承認しない。
-1 が返ったら、表示された未解決スレッドを §5 の要領で片づけてからやり直す。
+**--require-roles に tier どおりの役割を渡す。** 未解決スレッドが 0 件であることは
+「レビューが行われた」ことを意味しない（レビューを 1 度も走らせていない PR では
+スレッドがそもそも 0 件になる）。この引数で、要求した役割のレビュアーが実際に走って
+レビューを提出したことを確かめる。省略するとスクリプトが止まる。
+
+  # standard（通常レビューと敵対的レビューの 2 本立て）
+  ~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr <PR 番号> \
+    --require-roles review:normal,review:adversarial
+
+  # light（通常レビュー 1 本）
+  ~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr <PR 番号> \
+    --require-roles review:normal
+
+終了コードが 0（未解決スレッド 0 件・自分の PENDING レビュー 0 件・要求した役割の
+レビューが全て提出済み）でなければ承認しない。1 が返ったら、出力の missing_roles と
+unresolved_threads を見て、足りないレビューを走らせるか、未解決スレッドを §5 の要領で
+片づけてからやり直す。
 
 門を通ったら、**マージは一切しない。** タスクブランチを topic へ取り込むのはリードの仕事で、
 あなたはブランチ名と PR 番号を伝えるだけでよい。topic の最新を自分のブランチへ先に取り込む
@@ -227,13 +258,15 @@ impl-b でも承認に至らなければ、リードへ blocked で報告して�
 
    0 件ならブランチに成果が載っていない。報告せず §3 に戻る。
 
-2. リードへ 1 行で報告する:
+2. リードへ 1 行で報告する。あなたはバックグラウンドで走っているので、報告は
+   `SendMessage(to: "main", ...)` で送る。
 
    task<番号> approved / branch=<タスクブランチ> / pr=#<番号> / must 0 / should <件数>
    decisions: <目標やスコープを自分の判断で変えたことがあれば 1 行。無ければ none>
    deferrals: <先送りにした作業があれば 1 行。無ければ none>
 
-   **findings の本文を報告に含めない**（PR 上にある）。
+   **findings の本文を報告に含めない**（PR 上にある）。リードは findings を読まない設計
+   なので、本文を送るとその境界が壊れる。
 
 3. 報告したら作業を終える。リードが取り込みでコンフリクトに当たったら、あなたに
    SendMessage で聞きに来ることがある。そのとき初めて答えればよい。
@@ -248,8 +281,10 @@ impl-b でも承認に至らなければ、リードへ blocked で報告して�
 - 他のタスクのブランチ・worktree に触れない。カレントディレクトリの外に出ない。
 - **子 subagent の完了を待つために turn を終えない。** すべて run_in_background: false で
   同期実行し、結果をその turn の中で受け取る。
-- 判断に迷ったらリードへ SendMessage で聞く。ユーザーに直接聞こうとしない
-  （あなたの画面はユーザーが見ていない可能性が高い）。
+- 判断に迷ったらリードへ `SendMessage(to: "main", ...)` で聞く。ユーザーに直接聞こうと
+  しない（あなたの画面はユーザーが見ていない可能性が高い）。
+- **配下の subagent が返した findings の本文をリードへ転送しない。** リードへ渡すのは
+  verdict と件数だけである。
 - 自分で決めたこと（目標やスコープの変更、先送り）は PR 本文に根拠つきで書き、
   報告の decisions / deferrals にも 1 行で載せる。
 - 長時間かかるジョブの完了を待たない。待ちに入る前に必ず実装 subagent へ commit・push させる。

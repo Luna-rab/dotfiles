@@ -52,9 +52,10 @@ hooks:
 
 スクリプトは `~/.claude/skills/team-supervisor/scripts/subagent-stop.sh`
 （`~/.claude/skills` は dotfiles の `.claude/skills` への symlink）。実行権限を付ける。
+`gh-review.py` と `lane.py` もエージェントがパスを直に叩くので、同じく実行ビットが要る。
 
 ```bash
-chmod +x ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh
+chmod +x ~/.claude/skills/team-supervisor/scripts/{subagent-stop.sh,gh-review.py,lane.py}
 ```
 
 ## 振る舞い
@@ -80,22 +81,32 @@ chmod +x ~/.claude/skills/team-supervisor/scripts/subagent-stop.sh
 
 | ファイル | 誰が書くか | 用途 |
 | --- | --- | --- |
-| `branch-<agentId>` | リード（spawn 直後） | このフックが実在を確かめるブランチ名。対象の絞り込みも兼ねる |
+| `branch-<agentId>` | リード（spawn 直後・`lane.py state-branch`） | このフックが実在を確かめるブランチ名。対象の絞り込みも兼ねる |
 | `idle-count-<agentId>` | このフック | 押し戻した回数（3 回で打ち切り） |
-| `resume-count-task<番号>` | リード | `SendMessage` で再開した回数（3 回で打ち切り） |
-| `blocked-<agentId>` | サブリーダーまたはリード | 押し戻しを止める目印 |
+| `resume-count-task<番号>` | リード（`lane.py state-resume` / `state-clear`） | `SendMessage` で再開した回数（3 回で打ち切り） |
+| `blocked-<agentId>` | サブリーダーまたはリード（`lane.py state-block`） | 押し戻しを止める目印 |
+| `base/<作業名>/{brief,map,ledger}.md` | リード（`lane.py base-dir` で場所を得て書く） | ベース 3 資料。サブリーダーとレビュアーが `--require` 付きで読む（[ledger.md](ledger.md)） |
+
+上の 4 つは**このディレクトリ直下のファイル**、ベース資料は**`base/` サブディレクトリ**に置く。
+`state-init` が消すのは直下のファイルだけなので、この分け方でベース資料が残る。
+
+リードはこれらをシェルで直に書かず `lane.py` の `state-*` サブコマンドを通す。パスの求め方を
+1 か所に閉じ、`resume-count-task<番号>` では上限 3 との比較を終了コードで返させて、リードが
+比較を飛ばせないようにするため（`SKILL.md` §7）。
 
 ## 後始末
 
-作業が終わったら、リードがディレクトリごと消す。
+作業が終わったら、リードがディレクトリごと消す。**台帳も一緒に消える**ので、最終 PR がマージ
+されるまでは消さず、消してよいかユーザーに確認する（`SKILL.md` §8）。
 
 ```bash
-rm -rf "$(git rev-parse --git-common-dir)/team-supervisor"
+rm -rf "$(git rev-parse --path-format=absolute --git-common-dir)/team-supervisor"
 ```
 
-リードはタスク登録の前にも同じディレクトリを作り直す（`SKILL.md` §6）。前回の実行が残した
-カウンタ・目印・ブランチ登録が新しい実行の判定を狂わせないようにする（リードが落ちて後始末
-できなかった場合の備え）。
+リードはタスク登録の前にも直下のファイルを消す（`SKILL.md` §6 の `lane.py state-init`）。前回の
+実行が残したカウンタ・目印・ブランチ登録が新しい実行の判定を狂わせないようにする（リードが
+落ちて後始末できなかった場合の備え）。**`state-init` はディレクトリごと消してはならない**——
+ベース資料は同じディレクトリの `base/<作業名>/` にあり、`state-init` はそれを書いた後に走る。
 
 ## 動作確認
 

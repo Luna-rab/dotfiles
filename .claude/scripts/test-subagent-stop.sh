@@ -9,7 +9,7 @@
 #
 # 確かめる 6 ケース:
 #   1. 状態ディレクトリは在るが自分の branch-<agentId> が無い -> 0（サブリーダー以外を邪魔しない）
-#   2. 登録があり、そのブランチが origin に無い               -> 2。押し戻す理由も標準エラーへ書く
+#   2. 登録があり、そのブランチが origin に無い               -> 2。次の一手も標準エラーへ書く
 #   3. blocked-<agentId> の目印がある                         -> 0（報告済みなので止めない）
 #   4. 押し戻しが 3 回を超えた（4 回目）                      -> 1（無限に止め続けない）
 #   5. 登録したブランチが origin に push 済み                 -> 0。押し戻し回数の記録も消える
@@ -239,12 +239,23 @@ run_case_1() {
 
 # origin は生きていて main も push 済み。登録するブランチ名だけを push しないでおく。
 #
-# 終了コード 2 に加えて、フックが標準エラーへ何か書いたことも見る。hooks.md の「振る舞い」表は
+# 終了コード 2 に加えて、フックが標準エラーへ書いた本文の中身も見る。hooks.md の「振る舞い」表は
 # exit 2 を「終了を拒否し、続けるか blocked を報告するよう伝える」と定めており、この「伝える」を
 # 担うのがフックが標準エラーへ出す本文である。押し戻された subagent はその本文を読んで、push する
 # か blocked-<agentId> を作るかを決める。本文が消えると、理由も次の一手も分からないまま 3 回
 # 拒まれて 4 回目に打ち切られる。終了コードだけを見ていると、本文を丸ごと消した実装でも 6 ケース
 # 全部が PASS してしまうので、押し戻す唯一の単発ケースであるここで押さえる。
+#
+# 「本文が 1 バイト以上あるか」では足りない。本文が別の出力（たとえば cat が出す
+# "No such file or directory"）に置き換わっても長さは 0 にならず、次の一手が伝わらないまま
+# PASS してしまうため。そこで長さではなく、次の 3 語がそろって載っているかを見る。
+#   - "push"               : 作業を続ける道。未 push が理由なので、どの実装も push と書く
+#   - "topic/demo--task-1" : この試験が branch-<agentId> に登録したブランチ名。どのブランチを
+#                            push すればよいかを伝えるには、この名前を出すしかない
+#   - "blocked-"           : もう進められないときに作る目印 blocked-<agentId> のファイル名。
+#                            この語が無いと、subagent は押し戻しを止める手立てを知りようがない
+# 日本語の言い回しではなく識別子に当てるのは、本文の文面を書き直しただけで試験が落ちるのを
+# 避けるため。
 run_case_2() {
   local work state agent_id=a0000000000000002 message
   work=$(new_repo case2) || die "ケース2 の使い捨てリポジトリを作れません$(setup_reason)"
@@ -253,9 +264,15 @@ run_case_2() {
   printf '%s' "topic/demo--task-1" >"$state/branch-$agent_id" || die "ケース2 のブランチ登録を書けません"
   invoke_hook "$work" "$agent_id"
   # report は $hook_log を空にするので、その前に見る。
-  if [ -s "$hook_log" ]; then message=有り; else message=無し; fi
-  report "ケース2" "登録あり・origin にそのブランチが無い -> 押し戻し、理由を標準エラーへ書く" \
-    "2,有り" "$hook_exit_code,$message"
+  if grep -qF 'push' "$hook_log" &&
+    grep -qF 'topic/demo--task-1' "$hook_log" &&
+    grep -qF 'blocked-' "$hook_log"; then
+    message=次の一手あり
+  else
+    message=次の一手なし
+  fi
+  report "ケース2" "登録あり・origin にそのブランチが無い -> 押し戻し、次の一手を標準エラーへ書く" \
+    "2,次の一手あり" "$hook_exit_code,$message"
 }
 
 # --- ケース 3: blocked の目印がある -> 0 ---

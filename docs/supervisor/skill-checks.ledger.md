@@ -22,7 +22,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | スキル検査スクリプトを作る | standard | — | topic/skill-checks--task-1 | #9 | a3ae954acf424418b | merged | 0 | 0 |
 | 2 | subagent-stop.sh の自動テストを作る | standard | — | topic/skill-checks--task-2 | #8 | ab21787d905dd27f9 | merged | 0 | 0 |
-| 3 | CI と README に載せる | light | 1,2 | topic/skill-checks--task-3 | — | — | pending | — | — |
+| 3 | CI と README に載せる | light | 1,2 | topic/skill-checks--task-3 | #11 | a60631e0779cc090e | merged | 0 | 0 |
 
 状態は `pending` / `running` / `approved` / `merged` / `blocked` / `failed`。
 
@@ -127,6 +127,15 @@ PR を作り、レビュアーを起動する直前だった。
   実行・終了コード 0 / 1）に合わせる。ubuntu-latest に `python3` はあるが **`PyYAML` は
   無い**ので、ワークフローで入れる。
 - **tier**: light
+- **結果**: merged（PR #11、2 コミット、3 ファイル 65 行）。レビュー 1 巡で指摘 0 件。
+  リードが取り込み後にフル検証して、CI の YAML が読めること・2 本の検査が終了コード 0 を
+  返すこと・`py_compile` がツリーを汚さないことを確かめた。
+- **findings**: must 0 / should 0
+- **decisions**: `__pycache__` 対策は `.gitignore` に無視パターンを足す案を採った。
+  `PYTHONDONTWRITEBYTECODE=1` 案は「手元で実行する全員が環境変数の設定に依存し、忘れると
+  再発する」として退けた。パターンは `.claude/scripts/` だけでなく
+  `.claude/skills/team-supervisor/scripts/` にも効くよう `/.claude/**/__pycache__/` に広げた。
+- **deferrals**: none
 
 ## 自律判断の記録
 

@@ -21,6 +21,13 @@
 !/.claude
 !/.claude/**
 
+# .claude/** で復活させた許可を上書きし、Python のバイトコード生成物だけ再び無視する。
+# `python3 -m py_compile <ファイル>` や `.claude/scripts/check-skills.py` の実行で
+# .claude/scripts/__pycache__/ や .claude/skills/team-supervisor/scripts/__pycache__/ に
+# .pyc が生成されるが、ソースの副産物であり追跡する意味が無い。
+/.claude/**/__pycache__/
+/.claude/**/*.pyc
+
 # GitHub Actions のワークフロー
 !/.github
 !/.github/**

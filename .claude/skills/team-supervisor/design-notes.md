@@ -27,7 +27,7 @@ flowchart TB
     direction TB
     impl["実装 subagent（層 2・isolation なし＝同じ worktree・同期）<br/>単位ごとに commit → push"]
     pr["サブリーダーが PR を作る"]
-    rev["通常レビュー ＋ 敵対的レビュー<br/>（層 2・各自 worktree・同期・並列）<br/>指摘は PR のスレッドへ"]
+    rev["レビュー subagent（層 2・自分の worktree・同期）<br/>/code-review を走らせる<br/>指摘は PR のスレッドへ"]
     judge{"裁く<br/>（差分を読んで妥当性を判断）"}
     fix["SendMessage で実装を再開して修正<br/>→ 再レビューが直った分を resolve<br/>（R1〜R3）"]
     implb["impl-b に差し替え（fable・計画先行）"]

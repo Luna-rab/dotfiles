@@ -426,7 +426,7 @@ def build_parser():
 
     p = sub.add_parser("post", help="レビューを投稿する")
     add_common(p)
-    p.add_argument("--role", required=True, help="例: review:normal / review:adversarial")
+    p.add_argument("--role", required=True, help="例: review:normal / review:conflict")
     p.add_argument("--verdict", required=True, choices=VERDICTS)
     p.add_argument("--findings", required=True, help="findings の JSON ファイル（- で標準入力）")
     p.add_argument("--summary-file", help="サマリに足す本文（検証結果など）")

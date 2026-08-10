@@ -32,8 +32,7 @@ GraphQL の組み立てと JSON のエスケープはスクリプトの中に閉
 
 | タグ | 誰 | 使える状態語（`reply` の `--status`） |
 | --- | --- | --- |
-| `review:normal` | 通常レビュー subagent | `still-open` / `resolved` |
-| `review:adversarial` | 敵対的レビュー subagent | 同上 |
+| `review:normal` | レビュー subagent | `still-open` / `resolved` |
 | `review:conflict` | コンフリクト解消レビュー subagent | 同上 |
 | `impl:a` / `impl:b` | 実装 subagent（`b` は差し替え後） | `fixed` / `partial` / `wont-fix` / `disputed` / `deferred` |
 | `subleader:task<番号>` | サブリーダー | `upheld` / `overruled` |

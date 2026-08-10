@@ -20,7 +20,7 @@
 
 | # | 件名 | tier | 依存 | ブランチ | PR | agentId | 状態 | must | should |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | スキル検査スクリプトを作る | standard | — | topic/skill-checks--task-1 | #9 | a3ae954acf424418b | running | — | — |
+| 1 | スキル検査スクリプトを作る | standard | — | topic/skill-checks--task-1 | #9 | a3ae954acf424418b | merged | 0 | 0 |
 | 2 | subagent-stop.sh の自動テストを作る | standard | — | topic/skill-checks--task-2 | #8 | ab21787d905dd27f9 | merged | 0 | 0 |
 | 3 | CI と README に載せる | light | 1,2 | topic/skill-checks--task-3 | — | — | pending | — | — |
 
@@ -63,6 +63,19 @@ PR を作り、レビュアーを起動する直前だった。
 - **隣接タスクとの契約**: task3 が CI から `python3 .claude/scripts/check-skills.py` の形で
   呼ぶ。**引数なし・リポジトリのルートから実行・終了コード 0 / 1** を変えない。
 - **tier**: standard
+- **結果**: merged（PR #9、4 コミット、717 行）。レビュー 2 巡＋修正 2 ラウンド。裁定は
+  17 件 upheld / 1 件 overruled。must 0 / should 0。リードが取り込み後に実際に走らせて
+  **4 スキル / 18 ファイルを検査して終了コード 0**、`py_compile` も通過することを確かめた。
+- **findings**: must 0 / should 0（PR #9 のスレッドに履歴が残っている）
+- **decisions**: 実行権限の検査範囲を DoD の「`.sh`」から「`scripts/` 配下で 1 行目が `#!` で
+  始まるファイル全部」へ広げた。`gh-review.py` は `SKILL.md` の `allowed-tools` を含む 17 か所で
+  interpreter 無しに直接起動されるのに、検査が素通りしていたため。既存 4 スキルはすべて 0755 で
+  誤検出が増えないことを実測済み。「フェンスの内側は検査しない」というレビュー提案は一部だけ
+  採った——`scripts/` 参照 23 件のうち 17 件がフェンスの中にあり、一律に外すと検査 4 が空振りして
+  DoD 未達になるため、新規追加の 2 つの正規表現に限って止めた。
+- **deferrals**: `.claude/scripts/__pycache__/` が `.gitignore` の `!/.claude/**` で無視されない件を
+  task3 へ回した（`brief.md` が検証コマンドに挙げる `python3 -m py_compile` が生成する。
+  `9ca0ee2` で同種の事故が既発）。
 
 ### task 2: subagent-stop.sh の自動テストを作る
 
@@ -136,4 +149,12 @@ PR を作り、レビュアーを起動する直前だった。
 
 ### 先送り・対象外にした作業
 
-- （まだ無し）
+- **`map.md` に、git に載っていないファイルを書いてしまった。** `map.md` の初版は
+  `.claude/skills/team-supervisor/scripts/.gitignore` が Python の生成物を止めていると書いたが、
+  `.claude/.gitignore:1` の `.gitignore` が `.claude/` 配下の入れ子 `.gitignore` をすべて無視する
+  ため、このファイルは**メインの作業ツリーにしか存在せず worktree には現れない**。task1 の
+  サブリーダーが「実在しない」と申し送ってきて発覚した。原因は、`§2 調査` で Explore に
+  **メインの作業ツリー**を調べさせたこと。エージェントが実際に働くのは git から checkout した
+  worktree なので、追跡されていないファイルを前提資料に書くと嘘になる。`map.md` は訂正した。
+  **スキル側の直し**（Explore に「git が追跡しているものだけを書け」と課す）は今回の作業の
+  対象外とし、e2e の結果としてまとめて報告する。

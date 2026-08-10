@@ -38,6 +38,8 @@ frontmatter に現れるフィールドは 4 スキルの和集合で 7 種（`n
   復活済みなので、そこに置くぶんには問題ない。**それ以外の場所に成果物を置かない。**
 - `install.sh` の `link_claude_config()` が `.claude/scripts` を `~/.claude/scripts` へ symlink
   する。リポジトリ側の編集がそのまま反映される。
-- `.claude/skills/team-supervisor/scripts/.gitignore` に Python のテンプレート
-  （`__pycache__/` など）が入っている。`.claude/scripts/` には無いので、Python を置くなら
-  生成物が追跡対象にならないか確かめる。
+- **入れ子の `.gitignore` は git に載っていない。** `.claude/.gitignore:1` の `.gitignore` が
+  `.claude/` 配下のすべての `.gitignore` を無視するため、`.claude/skills/team-supervisor/scripts/`
+  に置かれた Python 用テンプレートは**メインの作業ツリーにしか存在せず、worktree には現れない**。
+  したがって `__pycache__/` を止める仕掛けは、あなたの作業場所には無い。Python の生成物が
+  追跡対象にならないか、`git status --porcelain` で自分で確かめること。

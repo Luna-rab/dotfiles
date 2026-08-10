@@ -41,7 +41,7 @@ docs だけの修正でも standard なら `opus` のままになる（安く済
 3. 前提資料の置き場を 1 行受け取る。**この資料は git の追跡対象外なので、checkout では
    作業ツリーに現れない。** 返ってきた絶対パスから読む。
 
-   ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+   ~/.claude/skills/team-supervisor/scripts/place.py base-dir --work <作業名> --require
 
    終了コードが 1 なら資料が揃っていない。**検証コマンドを 1 つも流さずに**サブリーダーへ
    「ベース資料が無い」と報告して終える（brief.md が無いと、何を流せば「マージしてよい」と
@@ -160,7 +160,7 @@ subagent の Bash は起動時の worktree に固定され、harness がその�
   git fetch origin
   git checkout --detach origin/<タスクブランチ>
 
-lane.py where を呼ばない（--role review は無い）。EnterWorktree も使わない
+place.py where を呼ばない（--role review は無い）。EnterWorktree も使わない
 （成功を返しても Bash は起動時の worktree に固定されたままなので、入った先で
 コマンドが 1 つも通らない）。
 ```

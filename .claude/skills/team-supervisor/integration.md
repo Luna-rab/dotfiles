@@ -22,7 +22,7 @@
    無い）、PR の head と base が報告どおりで state が OPEN かを 1 回で見る。
 
    ```bash
-   ~/.claude/skills/team-supervisor/scripts/lane.py verify \
+   ~/.claude/skills/team-supervisor/scripts/verify.py \
      --branch <タスクブランチ> --base topic/<作業名> --pr <PR 番号>
    ```
 
@@ -43,7 +43,7 @@
 
    終了コードが 0 でなければ取り込まない（`missing_roles` と未解決スレッドの一覧が
    表示される）。PENDING に残ったスレッドは未解決件数に現れないので、両方を見るこの
-   コマンドを使う。**`verify` はこれを呼ばない**（GitHub のレビュー状態は gh-review.py が
+   コマンドを使う。**`verify.py` はこれを呼ばない**（GitHub のレビュー状態は gh-review.py が
    一手に扱う）ので、2 つを続けて叩く。
 
    **未解決スレッドが 0 件であることは「レビューが行われた」ことを意味しない。** レビューを
@@ -67,7 +67,7 @@
    が成功したら、既に入っているのでそのブランチは飛ばす（再開・再実行時に効く）。
 3. `git merge --no-ff origin/<タスクブランチ>` で取り込む。
 4. **コンフリクトが出なければ、ここではビルドだけを流す**（`<ベース>/brief.md` のビルドコマンド。
-   `<ベース>` は `lane.py base-dir --work <作業名>` が返すパス）。
+   `<ベース>` は `place.py base-dir --work <作業名>` が返すパス）。
    そのブランチの検証一式はレビュー subagent が承認前に自分の worktree で流しているので、
    ここでのフル検証は §5 の 2 で改めて行う。
 5. **コンフリクトが出たら**（タスクブランチは承認時点の topic を起点にしたままなので、
@@ -129,7 +129,7 @@ exists, and the fallback directory is not covered by the session's isolation fen
    **agentId を 1 つずつ指定して**消す。
 
    ```bash
-   ~/.claude/skills/team-supervisor/scripts/lane.py wt-remove --agent <agentId> --merged
+   ~/.claude/skills/team-supervisor/scripts/worktree.py remove --agent <agentId> --merged
    ```
 
    `--merged` は「このタスクを topic へ取り込み終えた」というリードの明示である。打ち切った
@@ -150,7 +150,7 @@ exists, and the fallback directory is not covered by the session's isolation fen
 落ちたサブリーダーの worktree に未コミットの変更が残っていたら、消す前に保全する。
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/lane.py wt-rescue \
+~/.claude/skills/team-supervisor/scripts/worktree.py rescue \
   --agent <agentId> --branch <タスクブランチ>
 ```
 

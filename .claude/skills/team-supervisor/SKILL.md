@@ -42,7 +42,10 @@ allowed-tools:
   - Bash(gh pr comment *)
   - Bash(gh repo view *)
   - Bash(~/.claude/skills/team-supervisor/scripts/gh-review.py *)
-  - Bash(~/.claude/skills/team-supervisor/scripts/lane.py *)
+  - Bash(~/.claude/skills/team-supervisor/scripts/place.py *)
+  - Bash(~/.claude/skills/team-supervisor/scripts/state.py *)
+  - Bash(~/.claude/skills/team-supervisor/scripts/verify.py *)
+  - Bash(~/.claude/skills/team-supervisor/scripts/worktree.py *)
 hooks:
   SubagentStop:
     - hooks:
@@ -79,7 +82,7 @@ findings の本文がリードの画面に流れてきたら、この境界が�
   セッションをまたいで残る。パスは自分で組み立てず、次で 1 行受け取る。
 
   ```bash
-  ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名>
+  ~/.claude/skills/team-supervisor/scripts/place.py base-dir --work <作業名>
   ```
 
 - **ベース 3 ファイル**: サブリーダーと subagent が毎回読む前提資料。ベースディレクトリに
@@ -100,11 +103,12 @@ findings の本文がリードの画面に流れてきたら、この境界が�
    `teams=unset depth=5` でなければ、`.claude/settings.json` の `env` を直して
    セッションを開き直すよう伝え、**停止する**（どちらが欠けても壊れる）。
 2. git リポジトリであること、`gh auth status` が通ることを確認する。
-3. 付属スクリプト 3 本が実行できることを確かめる。エージェントはパスを直に叩くので、実行ビットが
+3. 付属スクリプト 6 本が実行できることを確かめる。エージェントはパスを直に叩くので、実行ビットが
    無いと `permission denied` になる（[hooks.md](hooks.md)）。
 
    ```bash
-   cd ~/.claude/skills/team-supervisor/scripts && ls -l gh-review.py lane.py subagent-stop.sh
+   cd ~/.claude/skills/team-supervisor/scripts &&
+     ls -l gh-review.py place.py state.py verify.py worktree.py subagent-stop.sh
    ```
 
    `x` が欠けているものに `chmod +x` する。
@@ -172,7 +176,7 @@ Read する**（コンパクションで本文が失われても取り直せる�
 置き場を 1 行受け取る（無ければ作られる）。以降 `<ベース>` はこの絶対パスを指す。
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名>
+~/.claude/skills/team-supervisor/scripts/place.py base-dir --work <作業名>
 ```
 
 次を特定して `<ベース>/brief.md` に書く。サブリーダーと subagent はこれを読む。
@@ -225,12 +229,15 @@ Read する**（コンパクションで本文が失われても取り直せる�
 権限の確認はリードの画面に出る。最大 15 エージェントが走るので、聞かれる前に許可リストへ入れる。
 
 - `<ベース>/brief.md` に書いた検証コマンド・起動コマンド・プロジェクト固有の MCP
-- スキル付属の 2 スクリプト（スキルの `allowed-tools` はリードにしか効かない。サブリーダーと
-  その配下の subagent も両方を呼ぶ）
+- スキル付属の 5 スクリプト（スキルの `allowed-tools` はリードにしか効かない。サブリーダーと
+  その配下の subagent も同じものを呼ぶ）
 
 ```
 Bash(~/.claude/skills/team-supervisor/scripts/gh-review.py *)
-Bash(~/.claude/skills/team-supervisor/scripts/lane.py *)
+Bash(~/.claude/skills/team-supervisor/scripts/place.py *)
+Bash(~/.claude/skills/team-supervisor/scripts/state.py *)
+Bash(~/.claude/skills/team-supervisor/scripts/verify.py *)
+Bash(~/.claude/skills/team-supervisor/scripts/worktree.py *)
 ```
 
 ## 6. タスクを登録する
@@ -247,7 +254,7 @@ Bash(~/.claude/skills/team-supervisor/scripts/lane.py *)
 実行する。§1 で書いたベース 3 ファイルは消えない（同じディレクトリの `base/<作業名>/` にある）。
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/lane.py state-init
+~/.claude/skills/team-supervisor/scripts/state.py init
 ```
 
 ## 7. 回す
@@ -273,7 +280,7 @@ Agent(name: "task4", model: "opus", isolation: "worktree", prompt: <契約>)
 リーダーは再開できなくなる**ので、取り込みを終えてから消す（[integration.md](integration.md) §4）。
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/lane.py state-branch \
+~/.claude/skills/team-supervisor/scripts/state.py branch \
   --agent <agentId> --branch topic/<作業名>--task-<番号>
 ```
 
@@ -284,7 +291,7 @@ Agent(name: "task4", model: "opus", isolation: "worktree", prompt: <契約>)
 取り込んだら台帳を更新し、次で再開カウンタを消してから、空いた枠に次のタスクを spawn する。
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/lane.py state-clear --task 4
+~/.claude/skills/team-supervisor/scripts/state.py clear --task 4
 ```
 
 ### 質問・blocked を受けたら
@@ -306,7 +313,7 @@ spawn 元のタスクを自動で `completed` にすることがあり、**途�
 終了すれば `completed` が付く**。完了の根拠は次の 3 つだけである。
 
 1. 承認報告の形
-2. `lane.py verify`（ブランチ・コミット・PR の実在）
+2. `verify.py`（ブランチ・コミット・PR の実在）
 3. `gh-review.py gate`（未解決 0 件・PENDING 0 件・要求した役割のレビュー提出）
 
 ### 止まったサブリーダーを再開する（立て直さない）
@@ -317,7 +324,7 @@ spawn 元のタスクを自動で `completed` にすることがあり、**途�
    のはスクリプトの仕事で、リードは終了コードだけ見る）。
 
    ```bash
-   ~/.claude/skills/team-supervisor/scripts/lane.py state-resume --task 4
+   ~/.claude/skills/team-supervisor/scripts/state.py resume --task 4
    ```
 
 2. 終了コードが 0 なら送る。**再開先はそのサブリーダー自身の worktree なので、作り直す指示は
@@ -333,7 +340,7 @@ spawn 元のタスクを自動で `completed` にすることがあり、**途�
    実行してユーザーへ上げる（[hooks.md](hooks.md)）。**他のタスクは止めずに進める。**
 
    ```bash
-   ~/.claude/skills/team-supervisor/scripts/lane.py state-block --agent <agentId>
+   ~/.claude/skills/team-supervisor/scripts/state.py block --agent <agentId>
    ```
 
 利用制限で止まったときはリードも同時に止まるので、この手順は実行できない。リードが再び

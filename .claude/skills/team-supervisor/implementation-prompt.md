@@ -39,7 +39,7 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 - ベース資料（brief.md / map.md / ledger.md）は git の追跡対象外で、作業ツリーには現れない。
   置き場は次で 1 行受け取る（サブリーダーが渡したパスがあればそれでよい）。
 
-    ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+    ~/.claude/skills/team-supervisor/scripts/place.py base-dir --work <作業名> --require
 
 - commit はプロジェクトの署名規約に従う（brief.md に書いてある）。
 - push は `git push origin HEAD:refs/heads/<タスクブランチ>` で行う
@@ -63,7 +63,7 @@ modelは `standard` タスクなら `"opus"`、`light` なら `"sonnet"`、差�
 1. どこへ入るべきかを聞く。--parent-worktree にはサブリーダーが再開メッセージに書いた
    worktree の絶対パスを渡す。
 
-   ~/.claude/skills/team-supervisor/scripts/lane.py where --role impl \
+   ~/.claude/skills/team-supervisor/scripts/place.py where --role impl \
      --parent-worktree "<サブリーダーの worktree の絶対パス>"
 
    メインツリーにいればそのパスをそのまま返し、既に worktree にいれば STAY を返す。

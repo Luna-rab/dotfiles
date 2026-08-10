@@ -12,7 +12,7 @@
 残る（`/tmp` は WSL の再起動で消えるので使えない）。
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名>
+~/.claude/skills/team-supervisor/scripts/place.py base-dir --work <作業名>
 ```
 
 **サブリーダーはタスクリストに触れない。** バックグラウンドの subagent には `TaskCreate` /
@@ -96,7 +96,7 @@ ID が再利用されるので残る）。したがって再開の足場は台�
    （`.git` 配下にあり、`git checkout` では作業ツリーに現れない）。
 
    ```bash
-   ~/.claude/skills/team-supervisor/scripts/lane.py base-dir --work <作業名> --require
+   ~/.claude/skills/team-supervisor/scripts/place.py base-dir --work <作業名> --require
    ```
 
    **終了コードが 1 なら、この足場は失われている**（クローンを作り直した、`.git` を消した、
@@ -139,12 +139,12 @@ ID が再利用されるので残る）。したがって再開の足場は台�
    - worktree に未コミットの変更が残っていたら、先に保全する
      （[integration.md](integration.md) §4）。
    - push も未コミットの変更も無ければ成果はゼロなので、最初から立て直す。
-3. **3 回の再開に失敗したら打ち切る**（回数は `lane.py state-resume` が数え、上限を超えると
+3. **3 回の再開に失敗したら打ち切る**（回数は `state.py resume` が数え、上限を超えると
    終了コード 1 を返す。`SKILL.md` §7）。台帳でそのタスクを `blocked` にし、通知に載ったエラー
    本文を写し、次を実行してユーザーへ上げる。**他のタスクは止めずに進める。**
 
    ```bash
-   ~/.claude/skills/team-supervisor/scripts/lane.py state-block --agent <agentId>
+   ~/.claude/skills/team-supervisor/scripts/state.py block --agent <agentId>
    ```
 
 利用制限で止まった場合、リードも同時に止まるので 1 を実行できない。リードが再び動けるように

@@ -120,18 +120,16 @@ checkout すると worktree がそれを掴んだままになる（`already used
 ```text
 PR を作ったらレビュー subagent を起動する。契約は review-prompt.md に従う。
 
-standard: 通常レビューと敵対的レビューを 2 体、同じ応答の中で並列に起動する。
-          両方が approved を返したときだけ承認とみなす。
-light:    通常レビュー 1 体のみ。
+レビューは 1 体だけ起動する。model は standard なら "opus"、light なら "sonnet"。
 
-  Agent(name: "review-task<番号>-normal", model: "opus"（light は "sonnet"）,
+  Agent(name: "review-task<番号>", model: "opus"（light は "sonnet"）,
         isolation: "worktree", run_in_background: false, prompt: <レビューの契約>)
 
 レビューには必ず isolation: "worktree" を付ける。あなたの worktree を共有させると、
-2 体が同時に検証コマンドを走らせて互いの結果を汚す。各レビュアーは自分の worktree で
+検証コマンドの結果が互いに汚れ、レビュー中に足元が書き換わる。レビュアーは自分の worktree で
 `git fetch origin` → `git checkout --detach origin/<タスクブランチ>` してから検証する。
 
-run_in_background: false でも、1 つの応答に 2 つの Agent 呼び出しを並べれば 2 体は並列に動く。
+そのレビュアーが approved を返したときだけ承認とみなす。
 
 レビュアーは指摘を PR のレビュースレッドとして投稿する（github-comments.md）。
 あなたが受け取るのは verdict と件数だけで、指摘の本文は PR 上にある。
@@ -177,8 +175,8 @@ R1〜R3:
   2. push されたことを `git ls-remote origin refs/heads/<タスクブランチ>` で確かめる。
   3. 再レビュー subagent を新しく起動する（同じレビュアーを再開しない。修正の自己承認を防ぐ）。
      再レビューは未解決スレッドを 1 件ずつ確かめ、直っているものだけ resolve する。
-  4. 修正が doc・コメントだけなら通常レビュー 1 本（model: "sonnet"）でよい。
-     ロジックに触れたなら tier どおり（standard は通常＋敵対的）。
+  4. 修正が doc・コメントだけなら model: "sonnet" に下げてよい。ロジックに触れたなら
+     tier どおりの model を使う。
      （Agent ツールに effort の指定は無い。軽くしたいときは model で下げる）
 
 打ち切る条件は 2 つ。

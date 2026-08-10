@@ -83,6 +83,32 @@ mkdir -p "$HOME" || die "HOME の差し替え先を作れません: $HOME"
 hook_log="$sandbox/hook-stderr.log"
 : >"$hook_log" || die "フックの標準エラーを受ける一時ファイルを作れません: $hook_log"
 
+# 試験自身の下ごしらえ（git init / push / worktree add）が標準エラーへ書いた内容の受け皿。
+# $hook_log とは別に持つ: あちらはフックが書いたもの、こちらは試験のセットアップが書いたもので、
+# 混ぜると FAIL の表示にセットアップの出力が紛れ込む。
+#
+# なぜ取るか: セットアップが失敗すると die が走って試験全体が exit 1 で止まるが、die の 1 行
+# だけでは git が何を言って失敗したのかが残らない。CI で落ちたとき、それが「フックが仕様どおり
+# 動いていない」のか「CI の環境でセットアップが失敗した」のかを分けたあと、後者なら次に何を
+# 調べればよいかの手掛かりが要る。とくに git init の -b は git 2.28 以降、git worktree add は
+# git の版・ファイルシステム・既存のブランチ名に左右されるので、理由が消えると調べ直しが長引く。
+setup_log="$sandbox/setup-stderr.log"
+: >"$setup_log" || die "セットアップの標準エラーを受ける一時ファイルを作れません: $setup_log"
+
+# セットアップの git を、標準出力を捨てて標準エラーだけ $setup_log に取って実行する。
+# 呼ぶ git にはすべて -q が付いているので、成功したときの出力は増えない。
+run_setup() { # $@ = 実行するコマンド。終了コードはそのまま返す
+  : >"$setup_log"
+  "$@" >/dev/null 2>"$setup_log"
+}
+
+# 直前の run_setup が拾った理由を「 (理由)」の形で返す。何も書かれていなければ何も返さないので、
+# die のメッセージへそのまま連結できる。改行は空白に潰して 1 行に収める。
+setup_reason() {
+  [ -s "$setup_log" ] || return 0
+  printf ' (%s)' "$(tr '\n' ' ' <"$setup_log" | sed 's/ *$//')"
+}
+
 # git ls-remote がうっかりネットワークへ出た場合に固まらないよう、あれば timeout を挟む。
 timeout_cmd=()
 command -v timeout >/dev/null 2>&1 && timeout_cmd=(timeout 30)
@@ -91,15 +117,19 @@ command -v timeout >/dev/null 2>&1 && timeout_cmd=(timeout 30)
 # origin を実在させるのは、ケース 2 で確かめたいのが「origin へは届くが、そのブランチだけが
 # 無い」状態だから。origin 自体を作らないと git ls-remote は「remote が解決できない」で落ち、
 # ブランチの有無を見ずに同じ終了コードになってしまい、試験としてざるになる。
+#
+# 失敗したときは return 1 だけを返し、git が言った理由は $setup_log に残す。呼び出し元は
+# die のメッセージに $(setup_reason) を足して理由を出す。new_repo は $(new_repo case1) という
+# コマンド置換のサブシェルで動くので、変数に取っても呼び出し元へ届かない。ファイルなら届く。
 new_repo() { # $1 = 名前。作業リポジトリのパスを標準出力に返す
   local name=$1
   local origin="$sandbox/$name-origin.git"
   local work="$sandbox/$name"
-  git init -q --bare -b main "$origin" >/dev/null 2>&1 || return 1
-  git init -q -b main "$work" >/dev/null 2>&1 || return 1
-  git -C "$work" remote add origin "$origin" || return 1
-  git -C "$work" commit -q --allow-empty -m "init" || return 1
-  git -C "$work" push -q origin main >/dev/null 2>&1 || return 1
+  run_setup git init -q --bare -b main "$origin" || return 1
+  run_setup git init -q -b main "$work" || return 1
+  run_setup git -C "$work" remote add origin "$origin" || return 1
+  run_setup git -C "$work" commit -q --allow-empty -m "init" || return 1
+  run_setup git -C "$work" push -q origin main || return 1
   printf '%s' "$work"
 }
 
@@ -181,7 +211,7 @@ report() { # $1 = ラベル, $2 = 説明, $3 = 期待, $4 = 実測
 # リードが登録していない subagent が終わるときの状態を再現する。
 run_case_1() {
   local work state agent_id=a0000000000000001
-  work=$(new_repo case1) || die "ケース1 の使い捨てリポジトリを作れません"
+  work=$(new_repo case1) || die "ケース1 の使い捨てリポジトリを作れません$(setup_reason)"
   state=$(state_dir_of "$work") || die "ケース1 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース1 の状態ディレクトリを作れません"
   register_other_agent "$state" || die "ケース1 の別 agentId の登録を書けません"
@@ -194,7 +224,7 @@ run_case_1() {
 # origin は生きていて main も push 済み。登録するブランチ名だけを push しないでおく。
 run_case_2() {
   local work state agent_id=a0000000000000002
-  work=$(new_repo case2) || die "ケース2 の使い捨てリポジトリを作れません"
+  work=$(new_repo case2) || die "ケース2 の使い捨てリポジトリを作れません$(setup_reason)"
   state=$(state_dir_of "$work") || die "ケース2 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース2 の状態ディレクトリを作れません"
   printf '%s' "topic/demo--task-1" >"$state/branch-$agent_id" || die "ケース2 のブランチ登録を書けません"
@@ -208,7 +238,7 @@ run_case_2() {
 # 「目印が効いた」のか「ブランチが有ったから素通しした」のか区別できなくなる。
 run_case_3() {
   local work state agent_id=a0000000000000003
-  work=$(new_repo case3) || die "ケース3 の使い捨てリポジトリを作れません"
+  work=$(new_repo case3) || die "ケース3 の使い捨てリポジトリを作れません$(setup_reason)"
   state=$(state_dir_of "$work") || die "ケース3 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース3 の状態ディレクトリを作れません"
   printf '%s' "topic/demo--task-1" >"$state/branch-$agent_id" || die "ケース3 のブランチ登録を書けません"
@@ -225,7 +255,7 @@ run_case_3() {
 # 「押し戻すたびに数える」という遷移そのものを飛ばしてしまう。
 run_case_4() {
   local work state actual="" agent_id=a0000000000000004
-  work=$(new_repo case4) || die "ケース4 の使い捨てリポジトリを作れません"
+  work=$(new_repo case4) || die "ケース4 の使い捨てリポジトリを作れません$(setup_reason)"
   state=$(state_dir_of "$work") || die "ケース4 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース4 の状態ディレクトリを作れません"
   printf '%s' "topic/demo--task-1" >"$state/branch-$agent_id" || die "ケース4 のブランチ登録を書けません"
@@ -247,9 +277,9 @@ run_case_4() {
 # push したあとに次の押し戻しがすぐ上限に届いてしまう。
 run_case_5() {
   local work state agent_id=a0000000000000005 counter
-  work=$(new_repo case5) || die "ケース5 の使い捨てリポジトリを作れません"
-  git -C "$work" push -q origin HEAD:refs/heads/topic/demo--task-1 >/dev/null 2>&1 ||
-    die "ケース5 のタスクブランチを push できません"
+  work=$(new_repo case5) || die "ケース5 の使い捨てリポジトリを作れません$(setup_reason)"
+  run_setup git -C "$work" push -q origin HEAD:refs/heads/topic/demo--task-1 ||
+    die "ケース5 のタスクブランチを push できません$(setup_reason)"
   state=$(state_dir_of "$work") || die "ケース5 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース5 の状態ディレクトリを作れません"
   printf '%s' "topic/demo--task-1" >"$state/branch-$agent_id" || die "ケース5 のブランチ登録を書けません"
@@ -270,10 +300,10 @@ run_case_5() {
 # ケース 2 だけではこの退化に気づけない。
 run_case_6() {
   local work worktree state agent_id=a0000000000000006
-  work=$(new_repo case6) || die "ケース6 の使い捨てリポジトリを作れません"
+  work=$(new_repo case6) || die "ケース6 の使い捨てリポジトリを作れません$(setup_reason)"
   worktree="$sandbox/case6-worktree"
-  git -C "$work" worktree add -q -b demo-worktree "$worktree" >/dev/null 2>&1 ||
-    die "ケース6 の worktree を作れません: $worktree"
+  run_setup git -C "$work" worktree add -q -b demo-worktree "$worktree" ||
+    die "ケース6 の worktree を作れません: $worktree$(setup_reason)"
   # 状態ディレクトリは共有の .git の下（＝作業リポジトリ本体と同じ場所）に置く。
   state=$(state_dir_of "$worktree") || die "ケース6 の状態ディレクトリを求められません"
   mkdir -p "$state" || die "ケース6 の状態ディレクトリを作れません"

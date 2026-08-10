@@ -21,7 +21,10 @@
 | # | 件名 | tier | 依存 | ブランチ | PR | agentId | 状態 | must | should |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | スキル検査スクリプトを作る | standard | — | topic/skill-checks--task-1 | #9 | a3ae954acf424418b | running | — | — |
-| 2 | subagent-stop.sh の自動テストを作る | standard | — | topic/skill-checks--task-2 | #8 | ab21787d905dd27f9 | running | — | — |
+| 2 | subagent-stop.sh の自動テストを作る | standard | — | topic/skill-checks--task-2 | #8 | ab21787d905dd27f9 | merged | 0 | 0 |
+| 3 | CI と README に載せる | light | 1,2 | topic/skill-checks--task-3 | — | — | pending | — | — |
+
+状態は `pending` / `running` / `approved` / `merged` / `blocked` / `failed`。
 
 ### 中断の記録
 
@@ -33,10 +36,8 @@ PR を作り、レビュアーを起動する直前だった。
   **両サブリーダーの worktree に未コミットの変更は 0 件**——実装 subagent への
   「意味のある単位ごとに commit・push」の義務づけが効いた。
 - worktree は 6 つ残っている（サブリーダー 2 ＋ レビュアー 4）。再開を打ち切るまで消さない。
-- 再開は 1 回目（`resume-count-task1` / `resume-count-task2` に記録）。
-| 3 | CI と README に載せる | light | 1,2 | topic/skill-checks--task-3 | — | — | pending | — | — |
-
-状態は `pending` / `running` / `approved` / `merged` / `blocked` / `failed`。
+- 再開は task1・task2 とも 1 回目（`resume-count-task<番号>` に記録）。task2 はその後、
+  進行中の舵取りとして 1 回追加で `SendMessage` を受けた（失敗からの再開ではない）。
 
 ## タスクの詳細
 
@@ -66,16 +67,16 @@ PR を作り、レビュアーを起動する直前だった。
 ### task 2: subagent-stop.sh の自動テストを作る
 
 - **DoD**: `.claude/scripts/test-subagent-stop.sh` があり、引数なしで実行すると
-  `.claude/skills/team-supervisor/scripts/subagent-stop.sh` の 4 つの分岐について期待どおりの
-  終了コードが返ることを確かめ、全部通れば 0、1 つでも外れれば 1 を返す状態。4 つの分岐は
-  `hooks.md` の「振る舞い」表にある。
+  `.claude/skills/team-supervisor/scripts/subagent-stop.sh` の分岐ごとに期待どおりの終了コードが
+  返ることを確かめ、全部通れば 0、1 つでも外れれば 1 を返す状態。**最低限の 4 分岐**は
+  `hooks.md` の「振る舞い」表にある（実装では 6 ケースまで増やした。下記 decisions）。
   - ブランチ登録が無い → 素通し（0）
   - 登録があり、そのブランチが origin に push されていない → 押し戻し（2）
   - `blocked-<agentId>` の目印がある → 素通し（0）
   - 押し戻しが 3 回を超えた → 打ち切り（1）
 - **受け入れ基準と検証**:
   - `bash -n .claude/scripts/test-subagent-stop.sh` が通る
-  - `.claude/scripts/test-subagent-stop.sh` が終了コード 0 を返し、4 ケースの結果が出力に出る
+  - `.claude/scripts/test-subagent-stop.sh` が終了コード 0 を返し、各ケースの結果が出力に出る
   - **このリポジトリを汚さない**: 実行の前後で `git status --porcelain` の出力が変わらず、
     `.git/team-supervisor/` が残らない。検査は使い捨ての一時 git リポジトリで行う
 - **スコープ境界**: 作ってよいのは `.claude/scripts/test-subagent-stop.sh` の 1 本だけ。
@@ -85,6 +86,16 @@ PR を作り、レビュアーを起動する直前だった。
 - **隣接タスクとの契約**: task3 が CI から `.claude/scripts/test-subagent-stop.sh` の形で呼ぶ。
   **引数なし・リポジトリのルートから実行・終了コード 0 / 1** を変えない。
 - **tier**: standard
+- **結果**: merged（PR #8、5 コミット、377 行）。レビュー 4 巡で 8 件の指摘が挙がり全件解消。
+  must 0 / should 0。リードが取り込み後に実際に走らせて **6 件中 6 件 PASS・終了コード 0・
+  リポジトリを汚さない**ことを確かめた。
+- **findings**: must 0 / should 0（PR #8 のスレッドに履歴が残っている）
+- **decisions**: DoD の 4 分岐に加えてケース 5（ブランチ push 済み → 0、カウンタも消える）と
+  ケース 6（git worktree の中から叩く → 2）を足した。**減らすと DoD 違反だが足すのは違反せず**、
+  task3 との契約（引数なし・ルートから実行・終了コード 0/1）も変わらないため。
+  押し戻し本文の照合を「3 語が同じ行に載るか」まで強める指摘は overruled で畳んだ——フックの
+  文面を書き直すたびに落ちる誤検知と引き換えになり、黒箱で確かめるという設計に反するため。
+- **deferrals**: 「origin remote 自体が無い → 2」のケースは未追加（PR #8 の本文に記載）。
 
 ### task 3: CI と README に載せる
 

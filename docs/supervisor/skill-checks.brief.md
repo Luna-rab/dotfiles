@@ -38,7 +38,7 @@ python3 .claude/scripts/check-skills.py          # task1 の成果物
 # task1 の成果物: 正常系は終了コード 0、検査に落ちる入力では 0 以外
 python3 .claude/scripts/check-skills.py; echo "exit=$?"
 
-# task2 の成果物: 4 ケースが期待どおりの終了コードを返すこと
+# task2 の成果物: 6 ケースが期待どおりの終了コードを返すこと
 .claude/scripts/test-subagent-stop.sh; echo "exit=$?"
 
 # task2 が検査する対象（フック本体）を手で叩く場合

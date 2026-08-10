@@ -72,8 +72,13 @@ LINK_TEXT = r"\[(?:[^\[\]]|\[[^\[\]]*\])*\]"
 LINK_RE = re.compile(LINK_TEXT + r"\(\s*(?:<(?P<angle>[^<>]*)>|(?P<target>[^)\s]+))")
 
 # 参照方式のリンク定義 `[r1]: a.md`。行頭（インデントは CommonMark に合わせて 3 桁まで）。
+# ラベルが `^` で始まる行は除く。GitHub Flavored Markdown の脚注定義 `[^1]: 説明文` が
+# 同じ形をしているためで、除かないと説明文をリンク先として拾う。日本語は語の間に空白を
+# 入れないので `\S+` が説明文を丸ごと飲み、末尾がたまたま `.md` になると
+# 「リンク先が無い: 設定はsettings.md」と誤って落とす。CommonMark の参照方式で
+# ラベルを `^` から始める慣習は無いので、除いても取りこぼしは増えない。
 REF_DEF_RE = re.compile(
-    r"^ {0,3}\[(?P<label>[^\]]+)\]:\s*(?:<(?P<angle>[^<>]*)>|(?P<target>\S+))"
+    r"^ {0,3}\[(?P<label>[^\^\]][^\]]*)\]:\s*(?:<(?P<angle>[^<>]*)>|(?P<target>\S+))"
 )
 
 # HTML で書いたリンク `<a href="a.md">`。markdown の中に直接書ける。
@@ -82,6 +87,10 @@ HTML_LINK_RE = re.compile(
     r"(?:\"(?P<dquote>[^\"]*)\"|'(?P<squote>[^']*)'|(?P<bare>[^\s>]+))",
     re.IGNORECASE,
 )
+
+# コードブロックの囲い（フェンス）。CommonMark に合わせて、記号は ``` と ~~~ の 2 種類、
+# 3 つ以上並べる、前のインデントは 3 桁まで。開いた記号と同じ記号でしか閉じられない。
+FENCE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 
 # `https:` や `mailto:` のようなスキーム付き。相対リンクではないので検査しない。
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
@@ -122,10 +131,16 @@ NOT_BEFORE = r"A-Za-z0-9_/~.\-"
 #   3. 同じスキルの中を指す形（`scripts/x.sh`、`./scripts/x.sh`）
 #      → そのファイルが属するスキルのディレクトリから解決する
 #   4. スキル名から書いた形（`team-supervisor/scripts/gh-review.py`）
-#      → 2 と同じ場所から解決する。ただし名前が実在するスキルのときだけ参照として扱う
-#        （`docs/scripts/x.sh` や `.claude/scripts/x.sh` を誤って拾わないため）
+#      → 1 と同じ skills ルートから解決する。ただし名前が実在するスキルのときだけ参照として
+#        扱う（`docs/scripts/x.sh` や `.claude/scripts/x.sh` を誤って拾わないため）
 # 拾わない書き方: `../scripts/x.sh`（`..` はスキル名ではないので 4 の検証で落ちる）、
-# 実在しないスキル名から書いた形（同上。名前を間違えた参照は検査されない）。
+# 実在しないスキル名から書いた形（同上。名前を間違えた参照は検査されないが、捨てた件数は
+# `Counts.script_refs_unknown_skill` に数えて集計行に出す）。
+# 3 の `./scripts/` は、書かれた場所のスキルの `scripts/` とみなす。検査スクリプトはシェルの
+# 作業ディレクトリを追えないので、直前の `cd` は見ない。スキルのディレクトリ以外へ移動してから
+# 叩く例（`cd .claude && ./scripts/statusline.sh`）を書くと、実在するファイルを
+# 「参照先が無い」と誤って報告する。そういう例は `cd` 先からの形（`.claude/scripts/...`）で
+# 書けば、1〜4 のどれにも当たらないので検査されない。
 SCRIPT_REF_RE = re.compile(
     r"\.claude/skills/(?P<root_skill>[{name}]+)/scripts/(?P<root_path>[{chars}]+)"
     r"|(?<![{lead}])\.\./(?P<up_skill>[{name}]+)/scripts/(?P<up_path>[{chars}]+)"
@@ -137,6 +152,12 @@ SCRIPT_REF_RE = re.compile(
 
 # 参照の直後に付く句読点。パス名の一部ではないので落とす。
 TRAILING_PUNCT = "。、，．；：！？."
+
+# `scripts/` 参照を解決するときの起点。どの書き方がどれを使うかは check_script_refs() の
+# docstring に書いてある。
+REF_BASE_SKILLS_ROOT = "skills-root"  # skills ルート（スキルを名前で指した形）
+REF_BASE_MD_PARENT = "md-parent"  # その md が置かれたディレクトリ（`../` で書いた形）
+REF_BASE_SKILL_DIR = "skill-dir"  # そのファイルが属するスキルのディレクトリ
 
 
 class Failure:
@@ -164,6 +185,8 @@ class Counts:
         self.links_checked = 0
         self.links_skipped = dict.fromkeys(LINK_SKIP_REASONS, 0)
         self.script_refs = 0
+        # `<スキル名>/scripts/x.sh` の形で、スキル名が実在しないので検査しなかった件数。
+        self.script_refs_unknown_skill = 0
 
     def links_skipped_total(self):
         return sum(self.links_skipped.values())
@@ -201,11 +224,16 @@ def stat_path(path):
     `scripts/` を `chmod 000` にしたスキルが 1 つあるだけで走査全体が traceback で止まり、
     後続のスキルが 1 つも検査されなくなる。read_text() と同じく、1 件の失敗として記録して
     先へ進めるようにここで受ける。
+
+    `ValueError` も受ける。`Path.stat()` はパスに NUL バイト（`\\x00`）が入っていると
+    `ValueError: embedded null byte` を投げ、これは `OSError` ではないので取りこぼすと
+    走査が止まる。`ValueError` に `errno` は無いので、有無を `getattr` で見て
+    「確かめられない」に振り分ける。
     """
     try:
         return path.stat(), None
-    except OSError as err:
-        if err.errno in MISSING_ERRNOS:
+    except (OSError, ValueError) as err:
+        if getattr(err, "errno", None) in MISSING_ERRNOS:
             return None, None
         return None, str(err)
 
@@ -313,15 +341,51 @@ def check_line_limit(skill_md, text):
 # --- 検査 3: 相対リンク ---
 
 
-def iter_link_targets(line):
+def iter_md_lines(text):
+    """md の各行を (行番号, 行, コードブロックの内側か) で返す。
+
+    コードブロックはフェンス（``` または ~~~ を 3 つ以上並べた行）で囲まれた範囲である。
+    開いた記号と同じ記号で、開いたときと同じ数以上並べた行でしか閉じない。閉じる側の行に
+    情報文字列（```markdown の `markdown` の部分）は書けないので、付いていたら閉じとみなさない。
+    フェンスの行そのものは内側として返す（囲いの記号であって本文ではない）。
+    """
+    fence_char = ""
+    fence_len = 0
+    for lineno, line in enumerate(text.split("\n"), start=1):
+        match = FENCE_RE.match(line)
+        marker = match.group("fence") if match is not None else ""
+        info = match.group("info").strip() if match is not None else ""
+        if fence_char:
+            if marker[:1] == fence_char and len(marker) >= fence_len and not info:
+                fence_char, fence_len = "", 0
+            yield lineno, line, True
+            continue
+        # ``` で開くときは情報文字列にバッククォートを書けない（CommonMark の規定）。
+        if marker and (marker[0] == "~" or "`" not in info):
+            fence_char, fence_len = marker[0], len(marker)
+            yield lineno, line, True
+            continue
+        yield lineno, line, False
+
+
+def iter_link_targets(line, in_fence=False):
     """1 行に書かれたリンク先を順に返す。
 
     3 通りの書き方を拾う。`[x](a.md)`（山括弧つきの `[x](<a.md>)` を含む）、
     参照方式の定義 `[r1]: a.md`、HTML の `<a href="a.md">`。
+
+    コードブロックの内側（`in_fence` が真）では、後ろの 2 つ（参照方式の定義と HTML の
+    リンク）を拾わない。この 2 つは「markdown の書き方を説明する文書」でコードブロックの中に
+    例として置かれるのが典型で、そこを検査すると中身が正しい文書を誤って落とす。
+    `[x](a.md)` の形はコードブロックの中も検査する。スキルの文書はコマンド例や設定例を
+    コードブロックに入れて書くので、そこを外すと検査の主戦場が抜け落ちるからである
+    （`scripts/` 参照 23 件のうち 17 件がコードブロックの中にある）。
     """
     for match in LINK_RE.finditer(line):
         angle = match.group("angle")
         yield angle.strip() if angle is not None else match.group("target")
+    if in_fence:
+        return
     ref_def = REF_DEF_RE.match(line)
     if ref_def is not None:
         angle = ref_def.group("angle")
@@ -362,8 +426,8 @@ def link_skip_reason(target):
 def check_md_links(md_path, text, counts):
     """md から張られた相対リンクの参照先が実在することを確かめる。"""
     failures = []
-    for lineno, line in enumerate(text.split("\n"), start=1):
-        for target in iter_link_targets(line):
+    for lineno, line, in_fence in iter_md_lines(text):
+        for target in iter_link_targets(line, in_fence):
             reason = link_skip_reason(target)
             if reason is not None:
                 counts.links_skipped[reason] += 1
@@ -396,42 +460,52 @@ def check_md_links(md_path, text, counts):
 
 
 def iter_script_refs(text):
-    """`scripts/` 配下への参照を (行番号, スキル名 or None, 相対パス, 実在検証の要否) で返す。
+    """`scripts/` 配下への参照を (行番号, スキル名 or None, 相対パス, 起点, 名前検証の要否) で返す。
 
-    スキル名が None なら、そのファイルが属するスキルのディレクトリから解決する
-    （`scripts/x.sh`、`./scripts/x.sh`）。スキル名が付くなら、スキルのディレクトリの
-    1 つ上から解決する。
+    「起点」は解決の基準にするディレクトリの種類で、次の 3 つ。値は check_script_refs() が
+    実際のパスに変える。
+    - REF_BASE_SKILLS_ROOT: skills ルート（`<スキル名>` を名前として書いた形）
+    - REF_BASE_MD_PARENT: その md が置かれたディレクトリ（`../` で書いた形）
+    - REF_BASE_SKILL_DIR: そのファイルが属するスキルのディレクトリ（`scripts/x.sh` の形）
 
-    4 番目の値が True の書き方（`team-supervisor/scripts/x.sh`）は、スキル名の位置に
+    5 番目の値が True の書き方（`team-supervisor/scripts/x.sh`）は、スキル名の位置に
     何が書かれていても形が同じなので、実在するスキル名のときだけ参照として扱う。
     そうしないと `docs/scripts/x.sh` を「スキル docs の参照」と誤って拾ってしまう。
     """
     for lineno, line in enumerate(text.split("\n"), start=1):
         for match in SCRIPT_REF_RE.finditer(line):
             if match.group("root_skill"):
-                skill, rel, verify_name = (
+                skill, rel, base, verify_name = (
                     match.group("root_skill"),
                     match.group("root_path"),
+                    REF_BASE_SKILLS_ROOT,
                     False,
                 )
             elif match.group("up_skill"):
-                skill, rel, verify_name = (
+                skill, rel, base, verify_name = (
                     match.group("up_skill"),
                     match.group("up_path"),
+                    REF_BASE_MD_PARENT,
                     False,
                 )
             elif match.group("same_path"):
-                skill, rel, verify_name = None, match.group("same_path"), False
+                skill, rel, base, verify_name = (
+                    None,
+                    match.group("same_path"),
+                    REF_BASE_SKILL_DIR,
+                    False,
+                )
             else:
-                skill, rel, verify_name = (
+                skill, rel, base, verify_name = (
                     match.group("named_skill"),
                     match.group("named_path"),
+                    REF_BASE_SKILLS_ROOT,
                     True,
                 )
             rel = rel.rstrip(TRAILING_PUNCT)
             if not rel:
                 continue
-            yield lineno, skill, rel, verify_name
+            yield lineno, skill, rel, base, verify_name
 
 
 def check_script_refs(md_path, skill_dir, known_skills, text, counts):
@@ -441,14 +515,32 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
     拡張子 `.sh` に加えて、1 行目が `#!` で始まるファイル（`gh-review.py` など）も見る。
     拡張子を並べる代わりに shebang を見るのは、`.py` `.pl` と増えるたびに漏れるのを避け、
     「直接起動される」という事実に近い指標で判定するためである。
+
+    解決の起点は書き方ごとに違う。理由は書き方ごとに読み手への意味が違うからである。
+    - `../<スキル名>/scripts/x.sh`（REF_BASE_MD_PARENT）: `..` は「1 つ上」と読める
+      相対パスの記法なので、その md が置かれたディレクトリ（`md_path.parent`）を起点にする。
+    - `.claude/skills/<スキル名>/scripts/x.sh` と `<スキル名>/scripts/x.sh`
+      （REF_BASE_SKILLS_ROOT）: スキルを名前で指しているので、skills ルート
+      （`skill_dir.parent`）を起点にする。
+    - `scripts/x.sh`、`./scripts/x.sh`（REF_BASE_SKILL_DIR）: 「このスキルの `scripts/`」と
+      いう意味で書かれるので、md がスキルの何段目にあってもスキルのディレクトリを起点にする。
+      md をサブディレクトリに置いても指す先が変わらないようにするための決めごとである。
     """
     failures = []
-    for lineno, skill, rel, verify_name in iter_script_refs(text):
+    for lineno, skill, rel, ref_base, verify_name in iter_script_refs(text):
         if verify_name and skill not in known_skills:
-            # スキル名ではない（`docs/scripts/...` など）。スキルの参照ではないので数えない。
+            # スキル名が実在しない。`docs/scripts/x.sh` のようにスキルの参照ではない行と、
+            # スキル名を打ち間違えた行が、字面が同じなのでここに混ざる。検査はできないが、
+            # 捨てた件数は集計行に出す（「参照が無い」と「拾えなかった」を読み分けるため）。
+            counts.script_refs_unknown_skill += 1
             continue
         counts.script_refs += 1
-        base = (skill_dir.parent / skill) if skill else skill_dir
+        if ref_base == REF_BASE_MD_PARENT:
+            base = md_path.parent.parent / skill
+        elif ref_base == REF_BASE_SKILLS_ROOT:
+            base = skill_dir.parent / skill
+        else:
+            base = skill_dir
         target = base / "scripts" / rel
         result, error = stat_path(target)
         if error is not None:
@@ -522,7 +614,20 @@ def check_skill(skill_dir, known_skills, counts):
     """1 スキルを検査して、落ちた件を返す。"""
     failures = []
     skill_md = skill_dir / "SKILL.md"
-    if not skill_md.is_file():
+    # `skill_md.is_file()` を直に呼ばないのは stat_path() と同じ理由である。スキルの
+    # ディレクトリを `chmod 000` にすると EACCES（権限が無い）で PermissionError が外へ出て、
+    # 後続のスキルが 1 つも検査されなくなる。
+    skill_md_stat, stat_error = stat_path(skill_md)
+    if stat_error is not None:
+        failures.append(
+            Failure(
+                skill_md,
+                1,
+                CHECK_READ,
+                "SKILL.md を確かめられない: {}".format(stat_error),
+            )
+        )
+    elif skill_md_stat is None or not stat.S_ISREG(skill_md_stat.st_mode):
         # SKILL.md を消せば検査が静かになる、という抜け道を作らない。
         failures.append(
             Failure(skill_md, 1, CHECK_FRONTMATTER, "SKILL.md が無い")
@@ -590,13 +695,15 @@ def main(argv=None):
 
     summary = (
         "check-skills: {} スキル / {} ファイルを検査した"
-        "（リンク {} 件・scripts 参照 {} 件を確認、リンク {} 件は対象外: {}）。".format(
+        "（リンク {} 件・scripts 参照 {} 件を確認、リンク {} 件は対象外: {}、"
+        "scripts 参照 {} 件はスキル名が実在せず対象外）。".format(
             counts.skills,
             counts.files,
             counts.links_checked,
             counts.script_refs,
             counts.links_skipped_total(),
             counts.links_skipped_detail(),
+            counts.script_refs_unknown_skill,
         )
     )
     if failures:

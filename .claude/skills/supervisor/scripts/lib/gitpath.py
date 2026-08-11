@@ -1,4 +1,4 @@
-"""git のディレクトリ配置と、team-supervisor が使う場所の求め方。
+"""git のディレクトリ配置と、supervisor が使う場所の求め方。
 
 worktree・状態ファイル・ベース資料の置き場を決める式をここ 1 か所に置く。同じ式を複数の
 スクリプトに書き写すと、片方だけ直したときに 2 つのスクリプトが別の場所を指す。
@@ -12,37 +12,19 @@ from .shell import die, out
 BASE_FILES = ("brief.md", "map.md", "ledger.md")
 
 
-def git_dir():
-    return out(["git", "rev-parse", "--path-format=absolute", "--git-dir"])
-
-
 def git_common_dir():
     """共有の .git の絶対パス。worktree の中からでもメインツリーの .git を指す。
 
     `--path-format=absolute` を省いてはならない。省くとサブディレクトリにいるとき
-    --git-common-dir だけが相対パス（`../../../.git`）になり、下の in_main_worktree が
-    メインツリーを worktree と誤判定する。実際に観測された挙動である。
+    --git-common-dir だけが相対パス（`../../../.git`）になり、worktree の中から呼んだときに
+    別の場所を指す。実際に観測された挙動である。
     """
     return out(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"])
 
 
-def in_main_worktree():
-    return git_dir() == git_common_dir()
-
-
-def repo_root():
-    return os.path.dirname(git_common_dir())
-
-
 def state_dir():
-    """フックと共有する状態ディレクトリ。scripts/subagent-stop.sh と同じ式で求める。"""
-    return os.path.join(git_common_dir(), "team-supervisor")
-
-
-def ensure_state_dir():
-    sd = state_dir()
-    os.makedirs(sd, exist_ok=True)
-    return sd
+    """ベース資料と引き継ぎノートを置くディレクトリ。作業ツリーに出ないので差分を汚さない。"""
+    return os.path.join(git_common_dir(), "supervisor")
 
 
 def base_dir(work):
@@ -57,15 +39,6 @@ def base_dir(work):
     return os.path.join(state_dir(), "base", work)
 
 
-def worktrees_dir():
-    return os.path.join(repo_root(), ".claude", "worktrees")
-
-
-def agent_worktree(agent):
-    """`isolation: "worktree"` で起動した subagent に割り当てられるパス。"""
-    return os.path.join(worktrees_dir(), f"agent-{agent}")
-
-
 def listed_worktrees():
     """`git worktree list` が挙げるパスの集合。
 
@@ -77,3 +50,15 @@ def listed_worktrees():
         if line.startswith("worktree "):
             paths.add(os.path.realpath(line[len("worktree "):]))
     return paths
+
+
+def run_worktrees(run_id):
+    """ある dynamic workflow の run が作った worktree のパス（realpath）を返す。
+
+    ワークフローの worktree は `wf_<runId>-<連番>` の名前になる。**`git worktree list` に
+    載っているものだけ**を、名前が runId で始まるものに限って返す。`.claude/worktrees/`
+    配下を名前で一括に舐めない——他プロセスの worktree まで削除した事故がある。
+    """
+    prefix = run_id if run_id.startswith("wf_") else f"wf_{run_id}"
+    return sorted(p for p in listed_worktrees()
+                  if os.path.basename(p).startswith(prefix))

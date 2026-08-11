@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""team-supervisor スキルの GitHub レビューコメント操作。
+"""supervisor スキルの GitHub レビューコメント操作。
 
 各 subagent はこのスクリプトを引数付きで呼ぶ。GraphQL の組み立てと JSON の
 エスケープを閉じ込め、エージェント側が書き間違える余地をなくす。

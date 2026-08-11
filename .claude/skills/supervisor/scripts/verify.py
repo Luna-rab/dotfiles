@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""サブリーダーの承認報告を、ブランチ・コミット・PR の実物で確かめる。
+"""ワークフローの承認の返り値を、ブランチ・コミット・PR の実物で確かめる。
 
 実行中の run に完了通知が誤って発火し、PR 番号もマージも含む捏造レポートが届いた実績が
 あるため、リードは報告に基づいて動く前にこれを通す。報告ではなく実物を見るのが要点である。
@@ -12,7 +12,7 @@
 base が報告どおり / PR が OPEN）が全部通ったときだけ終了コード 0 を返す。
 
 **GitHub のレビュー状態は見ない。** 未解決スレッドと提出済みレビューの判定は
-`gh-review.py gate` が持つ（integration.md §3）。
+`gh-review.py gate` が持つ（integration.md §1）。
 """
 
 import argparse
@@ -64,7 +64,8 @@ def main(args):
           "pr": args.pr, "commits": commits, "pr_state": pr["state"],
           "checks": checks}, pretty=True)
     if not clean:
-        warn("実物と報告が合いません。取り込まずにサブリーダーへ差し戻してください")
+        warn("実物と返り値が合いません。取り込まずに、resumeFrom を付けてワークフローを"
+             "起動し直してください")
     raise SystemExit(0 if clean else 1)
 
 

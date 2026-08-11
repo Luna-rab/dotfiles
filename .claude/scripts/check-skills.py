@@ -124,13 +124,13 @@ NOT_BEFORE = r"A-Za-z0-9_/~.\-"
 
 # `scripts/` 配下への参照。4 つの書き方を 1 本の正規表現で拾う。並び順に意味がある
 # （前の候補から順に試されるので、より長い書き方を先に置く）。
-#   1. skills ルートから書いた形（`~/.claude/skills/team-supervisor/scripts/gh-review.py`）
+#   1. skills ルートから書いた形（`~/.claude/skills/supervisor/scripts/gh-review.py`）
 #      → skills ルートから解決する
-#   2. 隣のスキルを相対で指す形（`../team-supervisor/scripts/gh-review.py`）
+#   2. 隣のスキルを相対で指す形（`../supervisor/scripts/gh-review.py`）
 #      → そのスキルのディレクトリの 1 つ上から解決する
 #   3. 同じスキルの中を指す形（`scripts/x.sh`、`./scripts/x.sh`）
 #      → そのファイルが属するスキルのディレクトリから解決する
-#   4. スキル名から書いた形（`team-supervisor/scripts/gh-review.py`）
+#   4. スキル名から書いた形（`supervisor/scripts/gh-review.py`）
 #      → 1 と同じ skills ルートから解決する。ただし名前が実在するスキルのときだけ参照として
 #        扱う（`docs/scripts/x.sh` や `.claude/scripts/x.sh` を誤って拾わないため）
 # 拾わない書き方: `../scripts/x.sh`（`..` はスキル名ではないので 4 の検証で落ちる）、
@@ -468,7 +468,7 @@ def iter_script_refs(text):
     - REF_BASE_MD_PARENT: その md が置かれたディレクトリ（`../` で書いた形）
     - REF_BASE_SKILL_DIR: そのファイルが属するスキルのディレクトリ（`scripts/x.sh` の形）
 
-    5 番目の値が True の書き方（`team-supervisor/scripts/x.sh`）は、スキル名の位置に
+    5 番目の値が True の書き方（`supervisor/scripts/x.sh`）は、スキル名の位置に
     何が書かれていても形が同じなので、実在するスキル名のときだけ参照として扱う。
     そうしないと `docs/scripts/x.sh` を「スキル docs の参照」と誤って拾ってしまう。
     """

@@ -1,10 +1,8 @@
-# .claude/skills/ 配下の壊れ（frontmatter の YAML 崩れ、リンク切れ、実行権限の欠落など）と、
-# team-supervisor の SubagentStop フック（.claude/skills/team-supervisor/scripts/subagent-stop.sh）
-# の分岐の壊れを、push と pull request のたびに検出する。
+# .claude/skills/ 配下の壊れ（frontmatter の YAML 崩れ、リンク切れ、実行権限の欠落など）を、
+# push と pull request のたびに検出する。
 #
-# 2 本の検査スクリプトは .claude/scripts/check-skills.py（task1）と
-# .claude/scripts/test-subagent-stop.sh（task2）が提供する。どちらも引数なし・
-# リポジトリのルートから実行・終了コード 0（合格）/ 1（不合格）という形を守って呼ぶ。
+# 検査スクリプトは .claude/scripts/check-skills.py が提供する。引数なし・リポジトリのルートから
+# 実行・終了コード 0（合格）/ 1（不合格）という形を守って呼ぶ。
 name: skill-checks
 
 on:
@@ -27,11 +25,3 @@ jobs:
 
       - name: Check .claude/skills/ の frontmatter・行数・リンク・実行権限
         run: python3 .claude/scripts/check-skills.py
-
-  test-subagent-stop:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Test SubagentStop フックの分岐ごとの終了コード
-        run: .claude/scripts/test-subagent-stop.sh

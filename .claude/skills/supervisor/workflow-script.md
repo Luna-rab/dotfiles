@@ -1,118 +1,131 @@
 # オーケストレーションスクリプトの骨組み（テンプレート）
 
-監督者が Workflow ツールに渡す dynamic workflow スクリプトの骨組み。**1 ステップ = 1 ワークフロー**で、
-範囲は「レビュー承認まで」。ステップ内のタスクを並列に走らせ、各タスクは
-`計画 → 実装 → レビュー ↔ 修正ループ → polish` を回して、承認済みタスクブランチの一覧を返す。
-修正しきれないタスクはタスク単位でエスカレーションする。
-**topic へのマージ・PR のクローズはスクリプトに載せない**——マージを指示されたサブエージェントは
-安全クラシファイアに確率的に遮断される。統合はワークフロー完了後に監督者本体が行う
-（[integration.md](integration.md)。理由は [design-notes.md](design-notes.md)）。
+リードが `Workflow` ツールに渡す dynamic workflow スクリプトの骨組み。**1 タスク = 1 ワークフロー**で、
+範囲は「レビュー承認まで」。実装 → レビュー → 裁定 → 修正を回し、承認したブランチと PR 番号を返す。
+**topic へのマージと PR のクローズはスクリプトに載せない**（[integration.md](integration.md) の
+とおりリード本体が行う。理由は [design-notes.md](design-notes.md)）。
 
-各 `agent()` プロンプトの中身は [implementation-prompt.md](implementation-prompt.md) /
-[review-prompt.md](review-prompt.md) / [escalation-prompt.md](escalation-prompt.md) の契約に
-従って組み立てる。
+各 `agent()` のプロンプトは、[implementation-prompt.md](implementation-prompt.md) /
+[review-prompt.md](review-prompt.md) / [judge-prompt.md](judge-prompt.md) /
+[escalation-prompt.md](escalation-prompt.md) の契約に従って組み立てる。
 
-**重要な制約: subagent は subagent を起動できない**（`agent()` の入れ子は 1 レベルまで）。
-「エスカレーションの中で fix/review を回す」といった入れ子は、そのままは書けない。
-**エスカレーションはスクリプト側の制御フロー**として書き、fix・review・再計画などの実務だけを
-`agent()` にする。
+## 守ること
 
-## 原則
+- **`agent()` の入れ子はできない。** ループ・分岐・打ち切り条件はスクリプトの制御フローに書き、
+  `agent()` には実務だけを載せる。
+- **エージェントは再開できない。** `agent()` に再開の引数は無く、`SendMessage` の宛先にもならない。
+  文脈は `<ベース>/notes/task<番号>/` の引き継ぎノートで運ぶ（[design-notes.md](design-notes.md)）。
+- **ブランチを checkout する全エージェントに `isolation: 'worktree'` を付ける**（実装・修正・
+  レビュー・裁定・再計画）。worktree の中は detached HEAD で作業させ、push は
+  `git push origin HEAD:refs/heads/<ブランチ>` にする。
+- **修正とレビューは必ず別の `agent()`**（修正の自己承認を防ぐ）。
+- **すべての `agent()` に `model` を明示し、機械的な段階には `effort` を効かせる**
+  （`SKILL.md` の「役割ごとのモデルと effort」）。
+- **指摘の本文は返り値に含めない。** 本文は GitHub のレビュースレッドにあり、返すのは件数と
+  検証の要約だけ（[github-comments.md](github-comments.md)）。
+- **`args` は実オブジェクトで渡す。** JSON 文字列で渡すとスクリプト側で全フィールドが
+  `undefined` になるので、冒頭で防御パースと必須フィールドの検査を行う。
+- `Date.now()` / `Math.random()` / 引数なしの `new Date()` は使えない（起動が拒否される）。
 
-- **タスクは並列（`parallel`）**。各タスクは独立したパイプラインで、他タスクの完了を待たない。
-- **standard タスクのレビューは通常＋敵対的を並列で走らせる**（`runReview`）。敵対的レビューは
-  「加えられた変更はすべて誤りである」という前提で粗探しをする独立レビューで、通常レビューが
-  見落とす前提の誤りを拾う。両方が承認したときだけ `approved: true`、指摘は両者を結合する。
-  **light タスク（docs・機械的・影響小）は通常レビュー 1 本のみ**（敵対的を省いてコストを下げる）。
-  タスクの `tier` で切り替える。
-- **fix と review は必ず別 `agent()`**（修正の自己承認を防ぐ）。
-- **承認時に should-fix が残っていれば polish を 1 回だけ回す**（素通り防止。無限に回すと
-  再レビューが毎回新しい should-fix を見つけて収束しないので 1 回で止める。残った should-fix は
-  findings として返し、監督者が統合後に回収する。[integration.md](integration.md) §4）。
-- **エスカレーションはタスク単位**。あるタスクの修正ループが未承認で返ったら、そのタスクのパイプラインの
-  中で再計画（`agent`, `fable`, コードは書かない）→ fix↔review を回す。直れば承認済みとして返し、
-  直らなければそのタスクを失敗として返す。
-- **`agent()` の null・no-op は 1 回だけリトライする**（`agentRetry`）。throw は null になり、
-  実作業ゼロの定型文応答が正常終了扱いになることもある。schema があれば定型文は弾かれやすいが、
-  null は必ず拾う。
-- **すべての `agent()` に `model` を明示し、機械的な作業には `effort` で軽さを与える**
-  （SKILL.md「役割ごとのモデルと effort」）。standard の実装・修正は `'opus'`、light の
-  実装・修正は `'sonnet'`（effort `'medium'`）、レビューは effort `'medium'`、再計画は `'fable'`。
-  指定したモデルが使えないときは 1 つ下（`'fable'` → `'opus'` → `'sonnet'`）に落とす。
-- **worktree はブランチを checkout する全エージェントに付ける**（実装・修正・レビュー・再計画）。
-  worktree なしで checkout させるとメイン作業ツリーを汚染する。worktree 内は detached HEAD で
-  作業させ、push は `git push origin HEAD:refs/heads/<ブランチ>` にする（ブランチ掴み防止。
-  [implementation-prompt.md](implementation-prompt.md) §1）。ステージ間の受け渡しは push 済みの
-  タスクブランチ経由で行う（worktree は他ステージから見えない）。
-- **起動前に権限を解消する**。ファイル編集以外（検証コマンド・git・`gh`・外形動作の起動・
-  許可リスト外の MCP）は許可リストに無いと権限プロンプトでワークフローを止める。
-- **`args` は実オブジェクトで渡し、冒頭で防御パースする**（JSON 文字列で渡すと全フィールド
-  undefined になる既知の落とし穴）。
-- `Date.now()` / `Math.random()` / `new Date()` は使えない（resume を壊すため）。
+## 呼び出し方
+
+```
+Workflow({ script: <下の骨組み>, args: {
+  task: { id, subject, tier, branch, dod, acceptance, scope, entrypoints, contracts },
+  topic: "topic/<作業名>",
+  base:  "<place.py base-dir が返した絶対パス>",
+  work:  "<作業名>",
+  resumeFrom: { branch, sha, pr, transcriptDir }   // 立て直しのときだけ。無ければ省く
+}})
+```
+
+`light` を束ねたタスクは `task.dod` に束ねた全 DoD を並べ、`task.id` は代表の番号にする
+（ブランチと PR は 1 本にまとめる）。
 
 ## 骨組み
 
 ```javascript
 export const meta = {
-  name: 'supervisor-step<N>',
-  description: 'ステップ<N>: タスクを並列に実装→レビュー→修正し、承認済みブランチ一覧を返す（統合は監督者）',
+  name: 'supervisor-task',
+  description: '1 タスクを実装→レビュー→裁定→修正で承認まで進め、ブランチと PR を返す（統合はリード）',
   phases: [
-    { title: 'Implement' }, { title: 'Review' }, { title: 'Fix' },
-    { title: 'Escalation' }, { title: 'Polish' },
+    { title: 'Implement' }, { title: 'Review' }, { title: 'Judge' },
+    { title: 'Fix' }, { title: 'Escalation' }, { title: 'Polish' },
   ],
 }
 
-// args の防御パース（JSON 文字列で渡された場合に備える）
+// --- args の防御パース（JSON 文字列で渡された場合に備える） ---
 const input = typeof args === 'string' ? JSON.parse(args) : args
-const tasks = input?.tasks
-const TOPIC = input?.topic
-if (!Array.isArray(tasks) || !tasks.length || !TOPIC)
-  return { failed: true, reason: 'args.tasks / args.topic が不正（実オブジェクトで渡すこと）' }
+const task = input?.task
+const TOPIC = input?.topic          // 例: topic/<作業名>
+const BASE = input?.base            // place.py base-dir が返した絶対パス
+const RESUME = input?.resumeFrom    // { branch, sha, pr, transcriptDir } | undefined
+if (!task?.id || !task?.branch || !TOPIC || !BASE)
+  return { failed: true, reason: 'args.task / args.topic / args.base が不正（実オブジェクトで渡すこと）' }
 
-// レビュー結果（review-prompt.md「報告形式」に対応）。severity は required
-// （欠落した指摘が polish 分岐をすり抜けた実績があるため）。
-const REVIEW = {
-  type: 'object',
-  properties: {
-    approved: { type: 'boolean' },
-    findings: { type: 'array', items: { type: 'object', properties: {
-      severity: { enum: ['must-fix', 'should-fix', 'nit'] },
-      file: { type: 'string' }, line: { type: 'number' },
-      summary: { type: 'string' }, rationale: { type: 'string' },
-      confirmedBy: { type: 'string' },  // どう裏づけたか（実行したテスト・検証、または「差分の精読のみ」）
-    }, required: ['severity', 'summary'] } },
-    notes: { type: 'string' },  // 実施した検証と問題なしと判断した観点の要約（空なら no-op を疑う）
-  },
-  required: ['approved', 'notes'],
-}
-// 実装/修正の結果（PR 番号・タスクブランチ・DoD 要約・検証結果を返させる）
+const LIGHT = task.tier === 'light'
+const NOTES = `${BASE}/notes/${task.id}`                       // 引き継ぎノートの置き場
+const ROLES = LIGHT ? ['review:normal'] : ['review:normal', 'review:adversarial']
+const implOpts = LIGHT ? { model: 'sonnet', effort: 'medium' } : { model: 'opus' }
+
+// --- schema（返すのは判断に要る値だけ。指摘の本文は GitHub のスレッドにある） ---
 const IMPL = { type: 'object', properties: {
-  pr: { type: 'number' }, branch: { type: 'string' },
-  summary: { type: 'string' }, verified: { type: 'boolean' },
-  changeKind: { enum: ['docs', 'logic'] },  // 修正が doc/コメントのみか（再レビューの軽重に使う）
-  blocked: { type: 'boolean' },             // DoD が曖昧で実装に入れない（計画段階で判定）
-  questions: { type: 'string' },            // blocked のとき監督者に確認したい点
-  decisions: { type: 'array', items: { type: 'string' } },  // 自分の判断で変えた目標・DoD・スコープ
-  deferrals: { type: 'array', items: { type: 'string' } },  // 先延ばし・対象外にした作業
-}, required: ['branch'] }
-// 再計画（escalation-prompt.md に対応）
-const PLAN = { type: 'object', properties: { plan: { type: 'string' } }, required: ['plan'] }
+  branch: { type: 'string' }, pr: { type: 'number' },
+  commits: { type: 'array', items: { type: 'string' } },
+  changeKind: { enum: ['docs', 'logic'] },     // 再レビューの軽重を決める
+  summary: { type: 'string' },
+  verified: { type: 'boolean' }, verification: { type: 'string' },
+  blocked: { type: 'boolean' },                 // DoD が曖昧で実装に入れない（計画の段階で判定）
+  questions: { type: 'string' },                // blocked のときリードに確認したい点
+  decisions: { type: 'array', items: { type: 'string' } },   // 自分の判断で変えた目標・DoD・スコープ
+  deferrals: { type: 'array', items: { type: 'string' } },   // 先送り・対象外にした作業
+}, required: ['branch', 'summary'] }
 
-const mustFixCount = r => (r?.findings || []).filter(f => f.severity === 'must-fix').length
-const shouldFix = r => (r?.findings || []).filter(f => f.severity === 'should-fix')
-// タスク階層から実装/修正の model・effort を決める（light は下位モデル・低めの effort でコストを下げる）
-const implOpts = task => task?.tier === 'light' ? { model: 'sonnet', effort: 'medium' } : { model: 'opus' }
-// findings を file:line:severity:summary で重複除去（通常＋敵対的の同旨指摘を fix に二重に渡さない）
-const dedupeFindings = fs => {
-  const seen = new Set()
-  return (fs || []).filter(f => {
-    const k = `${f.file}:${f.line}:${f.severity}:${f.summary}`
-    return seen.has(k) ? false : (seen.add(k), true)
-  })
-}
+const REVIEW = { type: 'object', properties: {
+  verdict: { enum: ['approved', 'changes-requested', 'blocked'] },
+  mustFix: { type: 'number' }, shouldFix: { type: 'number' }, nit: { type: 'number' },
+  resolved: { type: 'number' }, stillOpen: { type: 'number' },   // 再レビューのとき
+  reviewUrl: { type: 'string' },
+  notes: { type: 'string' },   // 実施した検証と、問題なしと判断した観点。空なら no-op を疑う
+}, required: ['verdict', 'mustFix', 'notes'] }
 
-// agent() の起動失敗（null）と no-op を 1 回だけリトライする。
-// isNoop: 結果はあるが実作業の痕跡が無い応答（定型文）を検出する述語（省略可）。
+const JUDGE = { type: 'object', properties: {
+  remainingMustFix: { type: 'number' },      // 裁定を通したあとに残る must-fix
+  remainingShouldFix: { type: 'number' },
+  overruled: { type: 'number' }, upheld: { type: 'number' },
+  unresolved: { type: 'number' },            // 裁定後に未解決で残っているスレッド数
+  gateClean: { type: 'boolean' },            // must-fix も should-fix も 0 のとき gate を叩いた結果
+  notes: { type: 'string' },
+  decisions: { type: 'array', items: { type: 'string' } },
+  deferrals: { type: 'array', items: { type: 'string' } },
+}, required: ['remainingMustFix', 'unresolved', 'notes'] }
+
+const PLAN = { type: 'object', properties: {
+  plan: { type: 'string' }, unsolvable: { type: 'boolean' }, reason: { type: 'string' },
+}, required: ['plan'] }
+
+// --- 共通の前置き（worktree の規律・前提資料・引き継ぎノート） ---
+// startPoint はこのエージェントが detached で載る先。実装の初回だけ topic、以降はタスクブランチ。
+const preamble = (role, round, startPoint) => `
+カレントディレクトリ（割り当てられた worktree）で作業する。他のディレクトリのチェックアウトに
+触れない。リポジトリの絶対パスはプロンプトに書かれていない。
+
+1. \`git fetch origin\` を実行する。
+2. \`git checkout --detach ${startPoint}\` で起点に載る（ブランチ名を checkout しない）。
+3. 前提資料を読む（git の追跡対象外なので checkout では作業ツリーに現れない）:
+   ${BASE}/brief.md（検証コマンド・外形動作の手順・不可侵パス・規約）
+   ${BASE}/map.md（コードベースの入口）
+   ${BASE}/ledger.md（他タスクとの関係）
+4. **コードを読む前に引き継ぎノートを読む**: ${NOTES}/${role}-*.md（あるものすべて）。
+   前のラウンドの同じ役割が、読んだ箇所・実行した検証と結果・構造の要点を残している。
+5. 終える前に \`mkdir -p ${NOTES}\` して ${NOTES}/${role}-r${round}.md を書く。
+   中身は「読んだファイルとその要点」「実行したコマンドとその結果」「まだ確かめていない箇所」。
+   会話をそのまま貼らない。次のエージェントがコードを読み直さずに済む要約にする。
+6. push は \`git push origin HEAD:refs/heads/${task.branch}\` で行う（リモートにだけ作る）。
+`
+
+// --- agent() の起動失敗（null）と no-op を 1 回だけリトライする ---
+// isNoop: 結果はあるが実作業の痕跡が無い応答（定型文）を検出する述語（省略可）
 async function agentRetry(prompt, opts, isNoop) {
   let r = await agent(prompt, opts)
   if (!r || (isNoop && isNoop(r)))
@@ -120,128 +133,184 @@ async function agentRetry(prompt, opts, isNoop) {
   return r
 }
 
-// 1 回のレビュー。standard タスクは通常＋敵対的を並列で起動して結合、light タスクは通常レビュー 1 本。
-// レビューはブランチを checkout するので worktree を付ける（メインツリー汚染防止）。
-// approved は走らせた全レビューが承認したときだけ true、findings は結合して重複を除く。
-async function runReview({ id, branch, task, phase = 'Review',
-    prompt = reviewPrompt, adversarialPrompt = adversarialReviewPrompt,
-    adversarial = task?.tier !== 'light', effort = 'medium' }) {
-  const normalModel = task?.tier === 'light' ? 'sonnet' : 'opus'
-  const noop = r => !(r.findings || []).length && !r.notes   // 指摘も検証記録も無い応答は no-op
+// --- 1 ラウンドのレビュー。standard は通常＋敵対的を並列、light は通常 1 本 ---
+// 走らせた全レビューが approved を返したときだけ approved。null が 1 つでもあれば未承認。
+async function runReview({ round, adversarial = !LIGHT, effort = 'medium' }) {
+  const noop = r => !r.notes                       // 検証の記録が無い応答は no-op を疑う
   const runs = [
-    () => agentRetry(prompt(branch, task),
-      { label: `review:${id}`, phase, model: normalModel, effort, isolation: 'worktree', schema: REVIEW }, noop),
+    () => agentRetry(reviewPrompt('review:normal', round),
+      { label: `review:${task.id}#${round}`, phase: 'Review',
+        model: LIGHT ? 'sonnet' : 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop),
   ]
   if (adversarial) runs.push(
-    () => agentRetry(adversarialPrompt(branch, task),
-      { label: `review-adv:${id}`, phase, model: 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop))
-  const done = (await parallel(runs)).filter(Boolean)
+    () => agentRetry(reviewPrompt('review:adversarial', round),
+      { label: `review-adv:${task.id}#${round}`, phase: 'Review',
+        model: 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop))
+  const done = await parallel(runs)
+  const ok = done.filter(Boolean)
   return {
-    approved: done.length === runs.length && done.every(r => r.approved),  // null（失敗）が 1 つでもあれば未承認
-    findings: dedupeFindings(done.flatMap(r => r.findings || [])),
+    approved: ok.length === runs.length && ok.every(r => r.verdict === 'approved'),
+    blocked: ok.some(r => r.verdict === 'blocked'),
+    mustFix: ok.reduce((n, r) => n + (r.mustFix || 0), 0),
+    shouldFix: ok.reduce((n, r) => n + (r.shouldFix || 0), 0),
+    missing: runs.length - ok.length,             // 起動できなかったレビュー
   }
 }
 
-// fix↔review ループ（タスク内・エスカレーションで共通）。
-// review が approve するまで（または 3 回・無進捗で）fix→review を回す。
-// fix の decisions/deferrals も carry に集める（取りこぼし防止）。
-async function fixReviewLoop({ id, startBranch, review, task, carry, maxRounds = 3 }) {
-  let branch = startBranch, round = 0, prevMustFix = mustFixCount(review)
-  while (review && !review.approved && round < maxRounds) {
-    round++
-    const fix = await agentRetry(fixPrompt(branch, review.findings, task),
-      { label: `fix:${id}#${round}`, phase: 'Fix', ...implOpts(task), isolation: 'worktree', schema: IMPL })
-    if (!fix) break
-    branch = fix.branch
-    carry.decisions.push(...(fix.decisions || [])); carry.deferrals.push(...(fix.deferrals || []))
-    // doc・コメントのみの修正は通常レビュー 1 本・effort 低で再確認、ロジック修正はタスク階層どおり
-    review = fix.changeKind === 'docs'
-      ? await runReview({ id: `${id}#${round}`, branch, task, adversarial: false, effort: 'low' })
-      : await runReview({ id: `${id}#${round}`, branch, task })
-    const mf = mustFixCount(review)
-    if (mf >= prevMustFix) break   // 無進捗 = スタック
-    prevMustFix = mf
+// --- 状態（ループとエスカレーションで共有する） ---
+const carry = { decisions: [], deferrals: [] }
+const collect = r => {
+  carry.decisions.push(...(r?.decisions || []))
+  carry.deferrals.push(...(r?.deferrals || []))
+}
+let branch = task.branch, pr = RESUME?.pr, changeKind = 'logic'
+
+// 途中で止まったときの共通の返し方
+const fail = reason => ({ task: task.id, branch, pr, failed: true,
+                          reason, notesDir: NOTES, ...carry })
+
+// --- レビュー → 裁定 → 修正のループ（初回とエスカレーション後で共通） ---
+// 打ち切りは 2 つ: ラウンド上限に達した / 無進捗（must-fix が前ラウンド以上）
+async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
+  let prevMustFix = Infinity
+  for (let i = 1; ; i++) {
+    const round = `${tag}${i}`
+    const review = await runReview({ round,
+      adversarial: !LIGHT && changeKind !== 'docs',
+      effort: changeKind === 'docs' ? 'low' : 'medium' })
+    if (review.blocked)
+      return { approved: false, blocked: true, round,
+               reason: 'タスクブランチかベース資料が見つからない' }
+
+    const judge = await agentRetry(judgePrompt(round),
+      { label: `judge:${task.id}#${round}`, phase: 'Judge',
+        model: 'opus', effort: 'medium', isolation: 'worktree', schema: JUDGE })
+    if (!judge)
+      return { approved: false, round, reason: '裁定エージェントが起動しなかった（2 回）' }
+    collect(judge)
+
+    if (judge.remainingMustFix === 0)
+      return { approved: true, round, shouldFix: judge.remainingShouldFix ?? review.shouldFix,
+               unresolved: judge.unresolved, gateClean: judge.gateClean }
+    if (i >= maxRounds)
+      return { approved: false, round, reason: `ラウンド上限（must-fix ${judge.remainingMustFix} 件）` }
+    if (judge.remainingMustFix >= prevMustFix)
+      return { approved: false, round, reason: `無進捗（must-fix ${judge.remainingMustFix} 件）` }
+    prevMustFix = judge.remainingMustFix
+
+    const fix = await agentRetry(fixPrompt(`${tag}${i + 1}`),
+      { label: `fix:${task.id}#${tag}${i + 1}`, phase: 'Fix',
+        ...implOpts, isolation: 'worktree', schema: IMPL })
+    if (!fix)
+      return { approved: false, round, reason: '修正エージェントが起動しなかった（2 回）' }
+    collect(fix)
+    branch = fix.branch || branch
+    changeKind = fix.changeKind || 'logic'
   }
-  return { branch, approved: !!review?.approved, review }
 }
 
-// --- 1 タスクの全ライフサイクル: 計画→実装→レビュー↔修正→(未承認ならエスカレーション)→polish ---
-async function runTask(task) {
-  const impl = await agentRetry(implPrompt(task),
-    { label: `impl:${task.id}`, phase: 'Implement', ...implOpts(task), isolation: 'worktree', schema: IMPL })
-  if (!impl) return { task: task.id, failed: true, reason: `実装起動失敗: ${task.id}` }
-  const carry = { decisions: impl.decisions || [], deferrals: impl.deferrals || [] }
-  // DoD が曖昧で計画段階で止まったら、実装・レビューに進まず blocked で返す（監督者がユーザーに確認）
-  if (impl.blocked) return { task: task.id, branch: impl.branch, blocked: true, questions: impl.questions, ...carry }
+// --- 1. 実装（resumeFrom があれば続きから） ---
+const impl = await agentRetry(implPrompt('impl', 0, RESUME),
+  { label: `impl:${task.id}`, phase: 'Implement', ...implOpts, isolation: 'worktree', schema: IMPL })
+if (!impl)
+  return { task: task.id, failed: true, reason: '実装エージェントが起動しなかった（2 回）' }
+collect(impl)
+if (impl.blocked)
+  return { task: task.id, branch: impl.branch, pr: impl.pr, blocked: true,
+           questions: impl.questions, ...carry }
+branch = impl.branch || branch
+pr = impl.pr || pr
+changeKind = impl.changeKind || 'logic'
+if (!pr)
+  return { task: task.id, branch, failed: true, reason: '実装が PR 番号を返さなかった', ...carry }
 
-  const review = await runReview({ id: task.id, branch: impl.branch, task })   // standard は通常＋敵対的、light は通常のみ
-  let r = await fixReviewLoop({ id: task.id, startBranch: impl.branch, review, task, carry })
+// --- 2. レビュー → 裁定 → 修正（3 ラウンドまで） ---
+let r = await reviewFixLoop({ tag: '', maxRounds: 3 })
 
-  // タスク内ループで直しきれなければ、このタスク単体でエスカレーション（再計画 → fix↔review）
-  if (!r.approved) {
-    const esc = { task: task.id, branch: r.branch, pr: impl.pr, dod: task.dod, findings: r.review?.findings || [] }
-    const plan = await agentRetry(replanPrompt(esc),
-      { label: `replan:${task.id}`, phase: 'Escalation', model: 'fable', isolation: 'worktree', schema: PLAN })
-    r = await fixReviewLoop({ id: `esc:${task.id}`, startBranch: r.branch,
-      review: { approved: false, findings: esc.findings },
-      task: { ...task, replan: plan?.plan }, carry })
-    if (!r.approved)
-      return { ...esc, branch: r.branch, findings: r.review?.findings || [],
-               failed: true, reason: `エスカレーション未解決: ${task.id}`, ...carry }
-  }
+// レビューが起点に載れなかった（ブランチが push されていない・ベース資料が無い）。
+// エスカレーションしても同じ壁に当たるので、ここで返す
+if (r.blocked) return fail(`レビューが起点に載れなかった: ${r.reason}`)
 
-  // polish: 承認済みでも should-fix が残っていれば 1 回だけ清掃する（素通り防止）。
-  // 再レビューが新規の should-fix を出しても回し続けない（収束しないため）。残りは findings として返す。
-  const sfx = shouldFix(r.review)
-  if (sfx.length) {
-    const fix = await agentRetry(fixPrompt(r.branch, sfx, task),
-      { label: `polish:${task.id}`, phase: 'Polish', ...implOpts(task), isolation: 'worktree', schema: IMPL })
-    if (fix) {
-      carry.decisions.push(...(fix.decisions || [])); carry.deferrals.push(...(fix.deferrals || []))
-      const re = fix.changeKind === 'docs'
-        ? await runReview({ id: `polish:${task.id}`, branch: fix.branch, task, adversarial: false, effort: 'low' })
-        : await runReview({ id: `polish:${task.id}`, branch: fix.branch, task })
-      // polish が must-fix を持ち込んだ場合だけ、通常の fix ループで回収する
-      const rec = re.approved ? { branch: fix.branch, approved: true, review: re }
-        : await fixReviewLoop({ id: `polish-fix:${task.id}`, startBranch: fix.branch, review: re, task, carry })
-      if (rec.approved) r = rec   // 回収できなければ polish 前の承認済みブランチを保持する
-    }
-  }
+// --- 3. 直しきれなければ 再計画 → impl-b → 新規レビューでやり直す ---
+if (!r.approved) {
+  const plan = await agentRetry(replanPrompt(r.reason),
+    { label: `replan:${task.id}`, phase: 'Escalation',
+      model: 'opus', isolation: 'worktree', schema: PLAN })
+  if (!plan) return fail(`再計画エージェントが起動しなかった（2 回）。直前: ${r.reason}`)
+  if (plan.unsolvable) return fail(`解決不能と判断された: ${plan.reason}`)
 
-  return { task: task.id, pr: impl.pr, branch: r.branch, dod: task.dod, approved: true,
-           findings: r.review?.findings || [], ...carry }
+  const implB = await agentRetry(implPrompt('impl-b', 0, null, plan.plan),
+    { label: `impl-b:${task.id}`, phase: 'Escalation',
+      model: 'opus', isolation: 'worktree', schema: IMPL })
+  if (!implB) return fail(`impl-b が起動しなかった（2 回）。直前: ${r.reason}`)
+  collect(implB)
+  branch = implB.branch || branch
+  changeKind = implB.changeKind || 'logic'
+
+  r = await reviewFixLoop({ tag: 'b', maxRounds: 3 })   // レビューは新規に立て直す
+  if (!r.approved) return fail(`impl-b でも承認に至らなかった: ${r.reason}`)
 }
 
-// --- ステップ本体: 全タスクを並列に起動し、承認済みブランチ一覧を返す（統合は監督者） ---
-const results = (await parallel(tasks.map(t => () => runTask({ ...t, startFrom: TOPIC })))).filter(Boolean)
+// --- 4. polish: 承認済みでも should-fix が残っていれば 1 回だけ清掃する ---
+if ((r.shouldFix || 0) > 0) {
+  const fix = await agentRetry(polishPrompt(),
+    { label: `polish:${task.id}`, phase: 'Polish', ...implOpts, isolation: 'worktree', schema: IMPL })
+  if (fix) {
+    collect(fix)
+    branch = fix.branch || branch
+    changeKind = fix.changeKind || 'logic'
+    const after = await reviewFixLoop({ tag: 'p', maxRounds: 2 })
+    // polish は最小の清掃なので must-fix を持ち込まないはずだが、持ち込んだら回収する。
+    // 回収できなければ失敗として返す（commit は push 済みで、承認前の状態には戻せない）
+    if (!after.approved)
+      return fail(`polish が持ち込んだ指摘を回収できなかった: ${after.reason}`)
+    r = after
+  }
+}
 
+// --- 5. 返す（統合はリードが行う） ---
 return {
-  topic: TOPIC,
-  tasks: results,
-  approved: results.filter(r => r.approved).map(r => ({ task: r.task, branch: r.branch, pr: r.pr })),
-  blocked: results.filter(r => r.blocked).map(r => ({ task: r.task, questions: r.questions })),
-  failed: results.filter(r => r.failed).map(r => ({ task: r.task, reason: r.reason, findings: r.findings })),
-  decisions: results.flatMap(r => r.decisions || []),
-  deferrals: results.flatMap(r => r.deferrals || []),
+  task: task.id, tier: task.tier, branch, pr,
+  approved: true,
+  requireRoles: ROLES,          // リードが gate --require-roles に渡す
+  shouldFix: r.shouldFix || 0,  // 畳んだが直していない残件（threads --all で拾える）
+  gateClean: r.gateClean,       // 裁定が最後に叩いた門の結果。リードは自分でも叩き直す
+  lastRound: r.round,
+  notesDir: NOTES,
+  decisions: carry.decisions,
+  deferrals: carry.deferrals,
 }
 ```
 
-各 `task` オブジェクトには `id` / `dod` に加え `tier`（`"light"` | `"standard"`）と構造化仕様
-（受け入れ基準・スコープ境界・調査の入口・隣接タスクとの契約。SKILL.md §4）を持たせ、Workflow ツールの
-`args` に **実オブジェクトとして** `{ topic, tasks }` を渡す。`tier` が `implOpts` と `runReview` の
-厳格さ（モデル・effort・敵対的レビューの有無）を決める。
+## プロンプト組み立て関数
 
-`implPrompt` / `reviewPrompt` / `adversarialReviewPrompt` / `fixPrompt` / `replanPrompt` は、
-監督者が「プロジェクト前提の解決」で特定した契約
-（DoD・検証コマンド一式・外形動作の確認手順・不可侵パス・ブランチ規約・起点の指定）を封入
-して組み立てる。解法（変更ファイルの列挙・行番号つき手順）は封入しない
-（[implementation-prompt.md](implementation-prompt.md) の §0）。`implPrompt` / `fixPrompt` は返り値に
-`changeKind`（doc のみか）・`blocked`＋`questions`（DoD が曖昧なら実装せず返す）・`decisions`
-（変えた目標）・`deferrals`（先延ばし）を含めるよう指示する。
+骨組みが呼んでいる 6 つの関数は、契約ファイルに従ってリードが組み立てる。どれも先頭に
+`preamble(役割, ラウンド, 起点)` を置く。
 
-## 監督者側の受け取り
+| 関数 | 契約 | 起点 | 役割タグ |
+| --- | --- | --- | --- |
+| `implPrompt(role, round, resume, plan)` | [implementation-prompt.md](implementation-prompt.md) | 初回は `origin/${TOPIC}`、`resume` があれば `origin/${task.branch}` | `impl:a` / `impl:b` |
+| `fixPrompt(round)` | [implementation-prompt.md](implementation-prompt.md) の「修正ラウンド」 | `origin/${task.branch}` | `impl:a`（impl-b の後は `impl:b`） |
+| `polishPrompt()` | 同上。**残っている should-fix だけを直し、範囲を広げない** | `origin/${task.branch}` | 同上 |
+| `reviewPrompt(role, round)` | [review-prompt.md](review-prompt.md) | `origin/${task.branch}` | `review:normal` / `review:adversarial` |
+| `judgePrompt(round)` | [judge-prompt.md](judge-prompt.md) | `origin/${task.branch}` | `judge:task<番号>` |
+| `replanPrompt(reason)` | [escalation-prompt.md](escalation-prompt.md) | `origin/${task.branch}` | 投稿しない（読み取りのみ） |
 
-ワークフローの返り値（`approved` / `blocked` / `failed` / `findings` / `decisions` / `deferrals`）を
-受け取ったら、**内容を鵜呑みにせず実地検証してから**（[integration.md](integration.md) §1）、
-統合レーンを回す。`blocked` / `failed` があればユーザーへのエスカレーション材料にする（承認済み分の
-統合は進めてよい）。
+どのプロンプトにも次を封入する。
+
+- タスクの DoD・受け入れ基準と検証・スコープ境界・調査の入口・隣接タスクとの契約・`tier`
+- タスクブランチ名（`${task.branch}`）、base ブランチ名（`${TOPIC}`）、PR 番号（作られた後）
+- ベース資料のパス（`${BASE}`）と引き継ぎノートのパス（`${NOTES}`）
+- **解法は封入しない**（変更するファイルの一覧・行番号つきの手順。理由は
+  [implementation-prompt.md](implementation-prompt.md) §0）
+
+## リード側の受け取り
+
+返り値（`approved` / `blocked` / `failed` / `branch` / `pr` / `requireRoles` / `shouldFix` /
+`decisions` / `deferrals`）を受け取ったら、**内容を鵜呑みにせず実地検証してから**
+（[integration.md](integration.md) §1 の `verify.py` と `gh-review.py gate`）取り込む。
+
+- `blocked` — `questions` をユーザーに上げ、答えを受けてタスクを組み直して起動し直す
+- `failed` — `reason` と PR のスレッドを見て、ユーザーに上げるか、`resumeFrom` を組み立てて
+  起動し直す
+- `notesDir` — 立て直しのとき、新しいワークフローの引き継ぎノートの置き場として同じパスを使う

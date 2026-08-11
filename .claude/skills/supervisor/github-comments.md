@@ -1,10 +1,10 @@
 # GitHub レビューコメントの手順と書式
 
-レビュー subagent・実装 subagent・サブリーダー・リードが共通で使う。**GraphQL を直接書かず、
+レビュー・実装・裁定の各エージェントとリードが共通で使う。**GraphQL を直接書かず、
 必ず次のスクリプトを引数付きで呼ぶ。**
 
 ```
-~/.claude/skills/team-supervisor/scripts/gh-review.py <サブコマンド> [引数]
+~/.claude/skills/supervisor/scripts/gh-review.py <サブコマンド> [引数]
 ```
 
 GraphQL の組み立てと JSON のエスケープはスクリプトの中に閉じてある。役割タグ・重大度・状態語の
@@ -30,8 +30,8 @@ GraphQL の組み立てと JSON のエスケープはスクリプトの中に閉
 
 スクリプトは投稿する本文の 1 行目に、GitHub 上で表示されない HTML コメントを置く。
 
-```
-<!-- team-supervisor {"kind":"finding","role":"review:normal","severity":"must-fix","category":"correctness"} -->
+```text
+<!-- supervisor {"kind":"finding","role":"review:normal","severity":"must-fix","category":"correctness"} -->
 **[review:normal]** `must-fix` / correctness
 
 境界値 `len == 0` のとき `slice[0]` で panic する。
@@ -48,16 +48,16 @@ GraphQL の組み立てと JSON のエスケープはスクリプトの中に閉
 
 | タグ | 誰 | 使える状態語（`reply` の `--status`） |
 | --- | --- | --- |
-| `review:normal` | 通常レビュー subagent | `still-open` / `resolved` |
-| `review:adversarial` | 敵対的レビュー subagent | 同上 |
-| `review:conflict` | コンフリクト解消レビュー subagent | 同上 |
-| `impl:a` / `impl:b` | 実装 subagent（`b` は差し替え後） | `fixed` / `partial` / `wont-fix` / `disputed` / `deferred` |
-| `subleader:task<番号>` | サブリーダー | `upheld` / `overruled` |
+| `review:normal` | 通常レビューエージェント | `still-open` / `resolved` |
+| `review:adversarial` | 敵対的レビューエージェント | 同上 |
+| `review:conflict` | コンフリクト解消レビューエージェント | 同上 |
+| `impl:a` / `impl:b` | 実装・修正エージェント（`b` は差し替え後） | `fixed` / `partial` / `wont-fix` / `disputed` / `deferred` |
+| `judge:task<番号>` | 裁定エージェント | `upheld` / `overruled` |
 | `lead` | リード | `note` |
 
 役割に許されない状態語を渡すとスクリプトが拒む。
 
-## レビューを投稿する（レビュー subagent）
+## レビューを投稿する（レビューエージェント）
 
 findings を JSON 配列で書き、`post` に渡す。**1 回の呼び出しで、PENDING レビューの作成 →
 行単位スレッド → ファイル単位スレッド → submit まで済む。**
@@ -85,7 +85,7 @@ cat > /tmp/findings.json <<'JSON'
 ]
 JSON
 
-~/.claude/skills/team-supervisor/scripts/gh-review.py post \
+~/.claude/skills/supervisor/scripts/gh-review.py post \
   --pr 123 --role review:normal --verdict changes-requested \
   --findings /tmp/findings.json --summary-file /tmp/summary.md
 ```
@@ -122,13 +122,13 @@ JSON
 `--dry-run` を付けると GitHub を呼ばず、組み立てた本文とスレッドを表示して終わる。書式を
 確かめたいときに使う。
 
-## スレッドを列挙する（実装・再レビュー・サブリーダー・リード）
+## スレッドを列挙する（実装・再レビュー・裁定・リード）
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/gh-review.py threads --pr 123
+~/.claude/skills/supervisor/scripts/gh-review.py threads --pr 123
 
 # 自分が立てたスレッドだけに絞る（再レビューで使う）
-~/.claude/skills/team-supervisor/scripts/gh-review.py threads --pr 123 --role review:normal
+~/.claude/skills/supervisor/scripts/gh-review.py threads --pr 123 --role review:normal
 ```
 
 既定は**未解決のみ**。`--all` で解決済みも含める。JSON で `id` / `isResolved` / `isOutdated` /
@@ -140,10 +140,10 @@ JSON
 **`isOutdated` が `true` のスレッドも未解決なら対象に含める。** 実装が push すると、その前に
 付いた行単位のコメントは outdated 表示になるが、指摘そのものは消えていない。
 
-## 返信する（実装 subagent）
+## 返信する（実装・修正エージェント）
 
 ```bash
-~/.claude/skills/team-supervisor/scripts/gh-review.py reply \
+~/.claude/skills/supervisor/scripts/gh-review.py reply \
   --thread <スレッド ID> --role impl:a --status fixed \
   --message "空スライスの早期 return を追加" --commit a1b2c3d
 ```
@@ -152,14 +152,14 @@ JSON
 | --- | --- | --- |
 | `fixed` | 直した | 再レビューが確かめて畳む |
 | `partial` | 一部だけ直した | 残した理由を `--message` に書く。再レビューが判断する |
-| `wont-fix` | 直さない | サブリーダーが裁く |
-| `disputed` | 指摘が誤りだと考える | 根拠を `--message` に書く。サブリーダーが裁く |
-| `deferred` | このタスクの範囲外 | 台帳の `deferrals` に載る。サブリーダーが裁く |
+| `wont-fix` | 直さない | 裁定エージェントが裁く |
+| `disputed` | 指摘が誤りだと考える | 根拠を `--message` に書く。裁定エージェントが裁く |
+| `deferred` | このタスクの範囲外 | 返り値の `deferrals` に載る。裁定エージェントが裁く |
 
-**実装 subagent は `--resolve` を使えない**（スクリプトが拒む）。自分で畳めるなら
+**実装・修正エージェントは `--resolve` を使えない**（スクリプトが拒む）。自分で畳めるなら
 `unresolved == 0` が自己承認になる。
 
-## 畳む（再レビュー subagent / サブリーダー）
+## 畳む（再レビューエージェント / 裁定エージェント）
 
 返信と同時に畳む場合:
 
@@ -168,8 +168,8 @@ JSON
 gh-review.py reply --thread <ID> --role review:normal --status resolved \
   --message "早期 return を確認。cargo test parser:: 通過" --resolve
 
-# サブリーダー: 指摘を退けたスレッド
-gh-review.py reply --thread <ID> --role subleader:task4 --status overruled \
+# 裁定: 指摘を退けたスレッド
+gh-review.py reply --thread <ID> --role judge:task4 --status overruled \
   --message "呼び出し元 mod.rs:71 の assert で非空が保証されている" --resolve
 ```
 
@@ -177,26 +177,26 @@ gh-review.py reply --thread <ID> --role subleader:task4 --status overruled \
 
 **畳んでよいのは 2 者だけ。**
 
-- **再レビュー subagent**: 実際の差分を見て直っていると確かめたスレッド
-- **サブリーダー**: 自分が `overruled` と裁定したスレッド
+- **再レビューエージェント**: 実際の差分を見て直っていると確かめたスレッド
+- **裁定エージェント**: 自分が `overruled` と裁定したスレッド
 
 直っていないスレッドには `--status still-open` で返信し、**畳まない**。
 
-## 承認の門を確かめる（サブリーダー / リード）
+## 承認の門を確かめる（裁定エージェント / リード）
 
 ```bash
 # standard（通常レビューと敵対的レビューの 2 本立て）
-~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr 123 \
+~/.claude/skills/supervisor/scripts/gh-review.py gate --pr 123 \
   --require-roles review:normal,review:adversarial
 
 # light（通常レビュー 1 本）
-~/.claude/skills/team-supervisor/scripts/gh-review.py gate --pr 123 \
+~/.claude/skills/supervisor/scripts/gh-review.py gate --pr 123 \
   --require-roles review:normal
 ```
 
 次の 3 つが**すべて満たされたときだけ終了コード 0**。そうでなければ 1 を返し、`missing_roles`
-と未解決スレッドの一覧を表示する。サブリーダーは承認を決める前に、リードは topic へ取り込む
-前にこれを通す。
+と未解決スレッドの一覧を表示する。裁定エージェントは must-fix と should-fix が 0 になった
+ラウンドで、リードは topic へ取り込む前に、これを通す。
 
 1. 未解決スレッドが 0 件
 2. 自分の PENDING レビューが 0 件
@@ -218,9 +218,9 @@ gh-review.py reply --thread <ID> --role subleader:task4 --status overruled \
 - `severity` が 3 種類以外
 - `verdict` が 2 種類以外
 - `path` の無い finding
-- 役割の接頭辞が `review` / `impl` / `subleader` / `lead` 以外
+- 役割の接頭辞が `review` / `impl` / `judge` / `lead` 以外
 - 役割に許されない状態語
-- 実装 subagent による `resolve`（返信を投稿する前に止める）
+- 実装・修正エージェントによる `resolve`（返信を投稿する前に止める）
 
 ## 直接 GraphQL を書かない理由
 

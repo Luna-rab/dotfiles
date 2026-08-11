@@ -4,7 +4,7 @@ GitHub を呼ばない。「どんな文字列を投稿するか」と「投稿�
 持つ。取得と投稿は reviewthreads.py と gh-review.py が行う。
 
 投稿する本文の 1 行目には、GitHub 上で表示されない HTML コメントの形で機械可読な
-メタデータ（`<!-- team-supervisor {...} -->`）を埋める。役割・重大度をここから読むので、
+メタデータ（`<!-- supervisor {...} -->`）を埋める。役割・重大度をここから読むので、
 表示用の `**[役割]**` タグの書式を変えてもパースが壊れない。
 """
 
@@ -17,14 +17,16 @@ SEVERITIES = ("must-fix", "should-fix", "nit")
 VERDICTS = ("approved", "changes-requested")
 
 # 本文の 1 行目に埋める隠しメタデータ。GitHub は HTML コメントを表示しない
-META_PREFIX = "<!-- team-supervisor "
+META_PREFIX = "<!-- supervisor "
 META_SUFFIX = " -->"
-META_RE = re.compile(r"<!--\s*team-supervisor\s+(\{.*?\})\s*-->", re.DOTALL)
+# 読む側は旧名 `team-supervisor` も受ける。スキルを改名する前に投稿されたスレッドが
+# 既存の PR に残っており、読めないと severity と role が null になって選別から漏れる
+META_RE = re.compile(r"<!--\s*(?:team-)?supervisor\s+(\{.*?\})\s*-->", re.DOTALL)
 
 # 役割の接頭辞ごとに使ってよい状態語
 STATUS_BY_ROLE = {
     "impl": ("fixed", "partial", "wont-fix", "disputed", "deferred"),
-    "subleader": ("upheld", "overruled"),
+    "judge": ("upheld", "overruled"),
     "review": ("still-open", "resolved"),
     "lead": ("note",),
 }
@@ -37,7 +39,7 @@ def check_role(role):
         die(
             f"役割 '{role}' は使えません。接頭辞は "
             + " / ".join(sorted(STATUS_BY_ROLE))
-            + " のいずれかにしてください（例: review:normal, impl:a, subleader:task4）"
+            + " のいずれかにしてください（例: review:normal, impl:a, judge:task4）"
         )
     return prefix
 

@@ -132,21 +132,18 @@ VS Code のユーザ設定に以下を追加すると、コンテナ作成時に
 
 ### 検証（`.claude/scripts/`）
 
-`.claude/skills/` 配下には Claude Code の skill 定義（`SKILL.md` と補助ファイル）、
-`.claude/skills/team-supervisor/scripts/subagent-stop.sh` には agent の終了を制御するフックが
-入っている。どちらも壊れていても、実際に Claude Code から起動するまで気づけない。それを
-commit の時点で捕まえるため、次の 2 本の検査スクリプトを用意している。
-`.github/workflows/skill-checks.yml` が push と pull request のたびに両方を自動で走らせる。
+`.claude/skills/` 配下には Claude Code の skill 定義（`SKILL.md` と補助ファイル）が入っている。
+壊れていても、実際に Claude Code から起動するまで気づけない。それを commit の時点で捕まえるため、
+検査スクリプトを用意している。`.github/workflows/skill-checks.yml` が push と pull request の
+たびに自動で走らせる。
 
 | コマンド | 何を検査するか |
 | --- | --- |
 | `python3 .claude/scripts/check-skills.py` | `.claude/skills/` 配下の全 skill について、frontmatter が YAML として読めるか、`SKILL.md` が 500 行以下か、本文中の相対リンクと `scripts/` 配下への参照先が実在するか、実行されるスクリプトに実行権限が付いているかを調べる |
-| `.claude/scripts/test-subagent-stop.sh` | `subagent-stop.sh` を実際に呼び出し、ブランチ登録の有無・登録したブランチが push 済みかどうか・打ち切り済みの目印の有無といった分岐ごとに、仕様どおりの終了コードを返すかを調べる |
 
-どちらもリポジトリのルートから引数なしで実行し、検査に通れば終了コード 0、落ちれば 0 以外を
-返す。手元で同じ確認をするときは次を実行する。
+リポジトリのルートから引数なしで実行し、検査に通れば終了コード 0、落ちれば 0 以外を返す。
+手元で同じ確認をするときは次を実行する。
 
 ```shell
 python3 .claude/scripts/check-skills.py
-.claude/scripts/test-subagent-stop.sh
 ```

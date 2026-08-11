@@ -1,7 +1,7 @@
 """外部コマンドの実行と、標準出力・エラー出力の書式。
 
-エラー行の頭に付ける名前は `sys.argv[0]` から取る（`state.py: ...` の形）。付属スクリプトが
-5 本に分かれているので、名前を各スクリプトに書き写すのではなく実行中のファイル名から
+エラー行の頭に付ける名前は `sys.argv[0]` から取る（`verify.py: ...` の形）。付属スクリプトが
+4 本に分かれているので、名前を各スクリプトに書き写すのではなく実行中のファイル名から
 取ることで、どれが止めたのかが出力だけで分かり、書き写し漏れも起きない。
 """
 
@@ -13,7 +13,7 @@ import sys
 
 def prog():
     """エラー行の頭に付ける名前。"""
-    return os.path.basename(sys.argv[0]) or "team-supervisor"
+    return os.path.basename(sys.argv[0]) or "supervisor"
 
 
 def die(message):

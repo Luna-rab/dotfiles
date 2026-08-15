@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["pyyaml"]
+# ///
 """`.claude/skills/` 配下のスキルが壊れていないかを検査する。
 
 このリポジトリは Claude Code の skills（`.claude/skills/<スキル名>/SKILL.md` と、そこから
@@ -13,7 +17,14 @@
 
 使い方（リポジトリのルートから、引数なしで実行する）:
 
-    python3 .claude/scripts/check-skills.py
+    .claude/scripts/check-skills.py
+
+shebang が `uv run --script` なので、上の 1 行だけで PyYAML が用意される（uv が入っている
+必要がある。`mise/config.toml` に入れてあるので install.sh を通したマシンにはある）。
+PyYAML が既に入っている環境なら `python3 .claude/scripts/check-skills.py` でも動く。
+
+**この依存は supervisor スキルには波及しない。** `.claude/skills/supervisor/scripts/` の
+4 本は標準ライブラリだけで動き、shebang も `#!/usr/bin/env python3` のままである。
 
 問題が無ければ終了コード 0、1 件でも見つかれば 1 を返す。落ちた箇所は
 `パス:行番号: 検査名: 説明` の形で 1 件 1 行ずつ標準出力に出す。
@@ -24,18 +35,24 @@
 ある。CI は引数なしで呼ぶので、既定値のままなら振る舞いは変わらない。
 """
 
+from __future__ import annotations
+
 import argparse
 import errno
+import os
 import re
 import stat
 import sys
+from collections.abc import Iterator
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 try:
     import yaml
 except ImportError:  # PyYAML が無い環境で traceback を出さない
     sys.stderr.write(
-        "check-skills: PyYAML が無い。`pip install PyYAML` などで入れてから実行する\n"
+        "check-skills: PyYAML が無い。`.claude/scripts/check-skills.py` として直接起動するか"
+        "（shebang の uv が用意する）、`uv run --script` で実行する\n"
     )
     sys.exit(1)
 
@@ -142,12 +159,10 @@ NOT_BEFORE = r"A-Za-z0-9_/~.\-"
 # 「参照先が無い」と誤って報告する。そういう例は `cd` 先からの形（`.claude/scripts/...`）で
 # 書けば、1〜4 のどれにも当たらないので検査されない。
 SCRIPT_REF_RE = re.compile(
-    r"\.claude/skills/(?P<root_skill>[{name}]+)/scripts/(?P<root_path>[{chars}]+)"
-    r"|(?<![{lead}])\.\./(?P<up_skill>[{name}]+)/scripts/(?P<up_path>[{chars}]+)"
-    r"|(?<![{lead}])(?:\./)?scripts/(?P<same_path>[{chars}]+)"
-    r"|(?<![{lead}])(?P<named_skill>[{name}]+)/scripts/(?P<named_path>[{chars}]+)".format(
-        name=SKILL_NAME_CHARS, chars=PATH_CHARS, lead=NOT_BEFORE
-    )
+    rf"\.claude/skills/(?P<root_skill>[{SKILL_NAME_CHARS}]+)/scripts/(?P<root_path>[{PATH_CHARS}]+)"
+    rf"|(?<![{NOT_BEFORE}])\.\./(?P<up_skill>[{SKILL_NAME_CHARS}]+)/scripts/(?P<up_path>[{PATH_CHARS}]+)"
+    rf"|(?<![{NOT_BEFORE}])(?:\./)?scripts/(?P<same_path>[{PATH_CHARS}]+)"
+    rf"|(?<![{NOT_BEFORE}])(?P<named_skill>[{SKILL_NAME_CHARS}]+)/scripts/(?P<named_path>[{PATH_CHARS}]+)"
 )
 
 # 参照の直後に付く句読点。パス名の一部ではないので落とす。
@@ -163,23 +178,23 @@ REF_BASE_SKILL_DIR = "skill-dir"  # そのファイルが属するスキルの�
 class Failure:
     """検査に落ちた 1 件。パス・行番号・検査名・説明を持つ。"""
 
-    def __init__(self, path, line, check, message):
+    def __init__(self, path: Path | str, line: int, check: str, message: str) -> None:
         self.path = str(path)
         self.line = line
         self.check = check
         self.message = message
 
-    def sort_key(self):
+    def sort_key(self) -> tuple[str, int, str]:
         return (self.path, self.line, self.check)
 
-    def format(self):
-        return "{}:{}: {}: {}".format(self.path, self.line, self.check, self.message)
+    def format(self) -> str:
+        return f"{self.path}:{self.line}: {self.check}: {self.message}"
 
 
 class Counts:
     """検査した件数。0 件しか見ていないのに「問題なし」と出る状態を見分けるために数える。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.skills = 0
         self.files = 0
         self.links_checked = 0
@@ -188,20 +203,17 @@ class Counts:
         # `<スキル名>/scripts/x.sh` の形で、スキル名が実在しないので検査しなかった件数。
         self.script_refs_unknown_skill = 0
 
-    def links_skipped_total(self):
+    def links_skipped_total(self) -> int:
         return sum(self.links_skipped.values())
 
-    def links_skipped_detail(self):
-        return "・".join(
-            "{} {}".format(reason, self.links_skipped[reason])
-            for reason in LINK_SKIP_REASONS
-        )
+    def links_skipped_detail(self) -> str:
+        return "・".join(f"{reason} {self.links_skipped[reason]}" for reason in LINK_SKIP_REASONS)
 
 
 # --- ファイルの読み込み ---
 
 
-def read_text(path):
+def read_text(path: Path) -> tuple[str | None, Failure | None]:
     """テキストを読む。読めなければ (None, Failure) を返す。
 
     UTF-8 以外や読み取り権限の無いファイルで例外を投げて止まると、残りのスキルが検査されない。
@@ -210,10 +222,10 @@ def read_text(path):
     try:
         return path.read_text(encoding="utf-8-sig"), None
     except (OSError, UnicodeDecodeError) as err:
-        return None, Failure(path, 1, CHECK_READ, "読めない: {}".format(err))
+        return None, Failure(path, 1, CHECK_READ, f"読めない: {err}")
 
 
-def stat_path(path):
+def stat_path(path: Path) -> tuple[os.stat_result | None, str | None]:
     """`path` の stat を取る。戻り値は (stat 結果, 確かめられない理由)。
 
     - (stat 結果, None): 在る
@@ -238,7 +250,7 @@ def stat_path(path):
         return None, str(err)
 
 
-def starts_with_shebang(path):
+def starts_with_shebang(path: Path) -> tuple[bool | None, str | None]:
     """1 行目が `#!` で始まるかを返す。戻り値は (真偽, 読めない理由)。
 
     読めない理由には対象のパスも含まれる。read_text() と同じく、例外で走査を止めない。
@@ -255,7 +267,7 @@ def starts_with_shebang(path):
 # --- 検査 1: frontmatter ---
 
 
-def split_frontmatter(text):
+def split_frontmatter(text: str) -> tuple[str | None, str | None]:
     """先頭の frontmatter を取り出す。(YAML 本文, エラー説明) を返す。
 
     frontmatter は 1 行目の `---` で始まり、次に現れる `---` または `...` で終わる。
@@ -271,7 +283,7 @@ def split_frontmatter(text):
     return None, "frontmatter が閉じていない（2 行目以降に `---` が無い）"
 
 
-def check_frontmatter(skill_md, text):
+def check_frontmatter(skill_md: Path, text: str) -> list[Failure]:
     """SKILL.md の frontmatter が YAML の mapping として読めることを確かめる。"""
     source, error = split_frontmatter(text)
     if error is not None:
@@ -287,7 +299,7 @@ def check_frontmatter(skill_md, text):
                 skill_md,
                 line,
                 CHECK_FRONTMATTER,
-                "YAML として読めない: {}".format(detail),
+                f"YAML として読めない: {detail}",
             )
         ]
     if not isinstance(data, dict):
@@ -296,7 +308,7 @@ def check_frontmatter(skill_md, text):
                 skill_md,
                 1,
                 CHECK_FRONTMATTER,
-                "frontmatter が mapping ではない（{}）".format(type(data).__name__),
+                f"frontmatter が mapping ではない（{type(data).__name__}）",
             )
         ]
     return []
@@ -305,7 +317,7 @@ def check_frontmatter(skill_md, text):
 # --- 検査 2: 行数 ---
 
 
-def count_lines(text):
+def count_lines(text: str) -> int:
     """エディタや `wc -l` と同じ数え方で行数を返す。
 
     `str.splitlines()` を使わないのは、改行のほかに `\\v` `\\f` `\\x1c` `\\x1d` `\\x1e`
@@ -323,7 +335,7 @@ def count_lines(text):
     return count
 
 
-def check_line_limit(skill_md, text):
+def check_line_limit(skill_md: Path, text: str) -> list[Failure]:
     """SKILL.md が 500 行以下であることを確かめる。"""
     count = count_lines(text)
     if count > MAX_SKILL_MD_LINES:
@@ -332,7 +344,7 @@ def check_line_limit(skill_md, text):
                 skill_md,
                 MAX_SKILL_MD_LINES + 1,
                 CHECK_LINE_LIMIT,
-                "{} 行（上限 {} 行）".format(count, MAX_SKILL_MD_LINES),
+                f"{count} 行（上限 {MAX_SKILL_MD_LINES} 行）",
             )
         ]
     return []
@@ -341,7 +353,7 @@ def check_line_limit(skill_md, text):
 # --- 検査 3: 相対リンク ---
 
 
-def iter_md_lines(text):
+def iter_md_lines(text: str) -> Iterator[tuple[int, str, bool]]:
     """md の各行を (行番号, 行, コードブロックの内側か) で返す。
 
     コードブロックはフェンス（``` または ~~~ を 3 つ以上並べた行）で囲まれた範囲である。
@@ -368,7 +380,7 @@ def iter_md_lines(text):
         yield lineno, line, False
 
 
-def iter_link_targets(line, in_fence=False):
+def iter_link_targets(line: str, in_fence: bool = False) -> Iterator[str]:
     """1 行に書かれたリンク先を順に返す。
 
     3 通りの書き方を拾う。`[x](a.md)`（山括弧つきの `[x](<a.md>)` を含む）、
@@ -398,7 +410,7 @@ def iter_link_targets(line, in_fence=False):
                 break
 
 
-def link_skip_reason(target):
+def link_skip_reason(target: str) -> str | None:
     """リンクの実在を確かめないなら理由を、確かめるなら None を返す。
 
     確かめないのは次の 4 つ。いずれもスキル内のファイルを指していない。
@@ -423,7 +435,7 @@ def link_skip_reason(target):
     return None
 
 
-def check_md_links(md_path, text, counts):
+def check_md_links(md_path: Path, text: str, counts: Counts) -> list[Failure]:
     """md から張られた相対リンクの参照先が実在することを確かめる。"""
     failures = []
     for lineno, line, in_fence in iter_md_lines(text):
@@ -441,7 +453,7 @@ def check_md_links(md_path, text, counts):
                         md_path,
                         lineno,
                         CHECK_READ,
-                        "リンク先を確かめられない: {}".format(error),
+                        f"リンク先を確かめられない: {error}",
                     )
                 )
             elif result is None:
@@ -450,7 +462,7 @@ def check_md_links(md_path, text, counts):
                         md_path,
                         lineno,
                         CHECK_MD_LINK,
-                        "リンク先が無い: {}".format(rel),
+                        f"リンク先が無い: {rel}",
                     )
                 )
     return failures
@@ -459,7 +471,7 @@ def check_md_links(md_path, text, counts):
 # --- 検査 4: scripts/ 配下への参照 ---
 
 
-def iter_script_refs(text):
+def iter_script_refs(text: str) -> Iterator[tuple[int, str | None, str, str, bool]]:
     """`scripts/` 配下への参照を (行番号, スキル名 or None, 相対パス, 起点, 名前検証の要否) で返す。
 
     「起点」は解決の基準にするディレクトリの種類で、次の 3 つ。値は check_script_refs() が
@@ -508,7 +520,38 @@ def iter_script_refs(text):
             yield lineno, skill, rel, base, verify_name
 
 
-def check_script_refs(md_path, skill_dir, known_skills, text, counts):
+def resolve_ref_base(
+    ref_base: str, skill: str | None, md_path: Path, skill_dir: Path
+) -> Path | None:
+    """`scripts/` 参照の起点を、実際のディレクトリに変える。
+
+    起点の種類（`REF_BASE_*`）は iter_script_refs() が決める。ここでは種類ごとに
+    どのディレクトリを基準にするかだけを持つ。
+
+    - REF_BASE_SKILL_DIR:   そのファイルが属するスキルのディレクトリ（スキル名は要らない）
+    - REF_BASE_MD_PARENT:   その md の親の親（`../<スキル名>/scripts/x` と書いた形）
+    - REF_BASE_SKILLS_ROOT: skills ルート（`<スキル名>/scripts/x` と書いた形）
+
+    スキル名を要る起点なのにスキル名が無いときは None を返す。iter_script_refs() は
+    両者を必ず組で返すので実際には起きないが、起きたときに解決先を取り違えるより、
+    その参照を検査せずに飛ばす。
+    """
+    if ref_base == REF_BASE_SKILL_DIR:
+        return skill_dir
+    if skill is None:
+        return None
+    if ref_base == REF_BASE_MD_PARENT:
+        return md_path.parent.parent / skill
+    return skill_dir.parent / skill
+
+
+def check_script_refs(
+    md_path: Path,
+    skill_dir: Path,
+    known_skills: AbstractSet[str],
+    text: str,
+    counts: Counts,
+) -> list[Failure]:
     """参照された `scripts/` 配下のファイルが実在し、実行権限があることを確かめる。
 
     実行権限を求めるのは、インタプリタを前に置かずそのまま起動されるファイルである。
@@ -535,12 +578,9 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
             counts.script_refs_unknown_skill += 1
             continue
         counts.script_refs += 1
-        if ref_base == REF_BASE_MD_PARENT:
-            base = md_path.parent.parent / skill
-        elif ref_base == REF_BASE_SKILLS_ROOT:
-            base = skill_dir.parent / skill
-        else:
-            base = skill_dir
+        base = resolve_ref_base(ref_base, skill, md_path, skill_dir)
+        if base is None:
+            continue
         target = base / "scripts" / rel
         result, error = stat_path(target)
         if error is not None:
@@ -549,7 +589,7 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
                     md_path,
                     lineno,
                     CHECK_READ,
-                    "参照先を確かめられない: {}".format(error),
+                    f"参照先を確かめられない: {error}",
                 )
             )
             continue
@@ -559,7 +599,7 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
                     md_path,
                     lineno,
                     CHECK_SCRIPT_REF,
-                    "参照先が無い: {}".format(target),
+                    f"参照先が無い: {target}",
                 )
             )
             continue
@@ -574,7 +614,7 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
                         md_path,
                         lineno,
                         CHECK_READ,
-                        "参照先の 1 行目を読めない: {}".format(read_error),
+                        f"参照先の 1 行目を読めない: {read_error}",
                     )
                 )
                 continue
@@ -589,7 +629,7 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
                     md_path,
                     lineno,
                     CHECK_SCRIPT_REF,
-                    "実行権限が無い（mode {:03o}）: {}".format(mode, target),
+                    f"実行権限が無い（mode {mode:03o}）: {target}",
                 )
             )
     return failures
@@ -598,19 +638,15 @@ def check_script_refs(md_path, skill_dir, known_skills, text, counts):
 # --- 走査 ---
 
 
-def iter_skill_dirs(skills_root):
+def iter_skill_dirs(skills_root: Path) -> list[Path]:
     """skills ルート直下のスキルディレクトリを返す。
 
     `.gitkeep` のようなファイルと、`.` で始まるディレクトリは対象外にする。
     """
-    return sorted(
-        p
-        for p in skills_root.iterdir()
-        if p.is_dir() and not p.name.startswith(".")
-    )
+    return sorted(p for p in skills_root.iterdir() if p.is_dir() and not p.name.startswith("."))
 
 
-def check_skill(skill_dir, known_skills, counts):
+def check_skill(skill_dir: Path, known_skills: AbstractSet[str], counts: Counts) -> list[Failure]:
     """1 スキルを検査して、落ちた件を返す。"""
     failures = []
     skill_md = skill_dir / "SKILL.md"
@@ -624,32 +660,29 @@ def check_skill(skill_dir, known_skills, counts):
                 skill_md,
                 1,
                 CHECK_READ,
-                "SKILL.md を確かめられない: {}".format(stat_error),
+                f"SKILL.md を確かめられない: {stat_error}",
             )
         )
     elif skill_md_stat is None or not stat.S_ISREG(skill_md_stat.st_mode):
         # SKILL.md を消せば検査が静かになる、という抜け道を作らない。
-        failures.append(
-            Failure(skill_md, 1, CHECK_FRONTMATTER, "SKILL.md が無い")
-        )
+        failures.append(Failure(skill_md, 1, CHECK_FRONTMATTER, "SKILL.md が無い"))
 
     for md_path in sorted(skill_dir.rglob("*.md")):
         text, read_failure = read_text(md_path)
         if read_failure is not None:
             failures.append(read_failure)
+        if text is None:
             continue
         counts.files += 1
         if md_path == skill_md:
             failures.extend(check_frontmatter(md_path, text))
             failures.extend(check_line_limit(md_path, text))
         failures.extend(check_md_links(md_path, text, counts))
-        failures.extend(
-            check_script_refs(md_path, skill_dir, known_skills, text, counts)
-        )
+        failures.extend(check_script_refs(md_path, skill_dir, known_skills, text, counts))
     return failures
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="`.claude/skills/` 配下のスキルを検査する。"
         " 問題があれば終了コード 1 と落ちた箇所を返す。",
@@ -658,18 +691,15 @@ def main(argv=None):
         "skills_root",
         nargs="?",
         default=DEFAULT_SKILLS_ROOT,
-        help="検査するディレクトリ。既定は {}（リポジトリのルートからの相対）。"
-        " わざと壊した入力で 1 が返ることを確かめるときだけ指定する。".format(
-            DEFAULT_SKILLS_ROOT
-        ),
+        help=f"検査するディレクトリ。既定は {DEFAULT_SKILLS_ROOT}（リポジトリのルートからの相対）。"
+        " わざと壊した入力で 1 が返ることを確かめるときだけ指定する。",
     )
     args = parser.parse_args(argv)
 
     skills_root = Path(args.skills_root)
     if not skills_root.is_dir():
         sys.stderr.write(
-            "check-skills: 検査対象が無い: {}"
-            "（リポジトリのルートから実行する）\n".format(skills_root)
+            f"check-skills: 検査対象が無い: {skills_root}（リポジトリのルートから実行する）\n"
         )
         return 1
 
@@ -678,8 +708,8 @@ def main(argv=None):
         # 0 件を「問題なし」で通すと、スキルが全部消えても CI が緑になる。
         # `.claude/skills/.gitkeep` があるためディレクトリだけは残る ＝ 実際に起こりうる。
         sys.stderr.write(
-            "check-skills: 検査対象のスキルが 1 つも無い: {}"
-            "（直下に <スキル名>/ のディレクトリが要る）\n".format(skills_root)
+            f"check-skills: 検査対象のスキルが 1 つも無い: {skills_root}"
+            "（直下に <スキル名>/ のディレクトリが要る）\n"
         )
         return 1
     known_skills = frozenset(p.name for p in skill_dirs)
@@ -694,20 +724,12 @@ def main(argv=None):
         print(failure.format())
 
     summary = (
-        "check-skills: {} スキル / {} ファイルを検査した"
-        "（リンク {} 件・scripts 参照 {} 件を確認、リンク {} 件は対象外: {}、"
-        "scripts 参照 {} 件はスキル名が実在せず対象外）。".format(
-            counts.skills,
-            counts.files,
-            counts.links_checked,
-            counts.script_refs,
-            counts.links_skipped_total(),
-            counts.links_skipped_detail(),
-            counts.script_refs_unknown_skill,
-        )
+        f"check-skills: {counts.skills} スキル / {counts.files} ファイルを検査した"
+        f"（リンク {counts.links_checked} 件・scripts 参照 {counts.script_refs} 件を確認、リンク {counts.links_skipped_total()} 件は対象外: {counts.links_skipped_detail()}、"
+        f"scripts 参照 {counts.script_refs_unknown_skill} 件はスキル名が実在せず対象外）。"
     )
     if failures:
-        print(summary + "{} 件が落ちた".format(len(failures)))
+        print(summary + f"{len(failures)} 件が落ちた")
         return 1
     print(summary + "問題なし")
     return 0

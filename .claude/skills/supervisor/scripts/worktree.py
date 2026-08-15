@@ -15,17 +15,20 @@ worktree まで消した事故がある。対象は必ず `git worktree list` �
 始まるものに限る。
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import subprocess
+from typing import Any
 
 from lib.gitpath import listed_worktrees, locked_worktrees, run_worktrees
 from lib.shell import die, emit, out, run
 
-RESCUE_MESSAGE = "wip: 中断時点の保全（検証未実施）"
+RESCUE_MESSAGE: str = "wip: 中断時点の保全（検証未実施）"
 
 
-def targets(args):
+def targets(args: argparse.Namespace) -> list[str]:
     """--run か --path から対象の worktree パスを決める。どちらか一方が必須。"""
     if args.run and args.path:
         die("--run と --path は同時に指定できません")
@@ -36,7 +39,7 @@ def targets(args):
     die("--run か --path のどちらかを指定してください")
 
 
-def inspect(path, locks=None):
+def inspect(path: str, locks: dict[str, str] | None = None) -> dict[str, Any]:
     """1 つの worktree の状態を調べる。`git worktree list` に無ければ gone。
 
     `locked` は「まだ生きているエージェントが掴んでいる」しるしなので、`dirty` とは別の
@@ -53,28 +56,41 @@ def inspect(path, locks=None):
         # 登録は残っているが実体が無い（エージェントが自分のツリーを消した、外から rm された）
         return {"path": path, "state": "stale-registration", **locked}
     dirty = out(["git", "-C", path, "status", "--porcelain"])
-    return {"path": path, "state": "dirty" if dirty else "clean",
-            "changes": len(dirty.splitlines()), **locked}
+    return {
+        "path": path,
+        "state": "dirty" if dirty else "clean",
+        "changes": len(dirty.splitlines()),
+        **locked,
+    }
 
 
-def cmd_list(args):
+def cmd_list(args: argparse.Namespace) -> None:
     found = targets(args)
     locks = locked_worktrees()
     listed = [inspect(p, locks) for p in found]
-    emit({"run": args.run, "count": len(found),
-          "locked": sum(1 for w in listed if w["locked"]),
-          "worktrees": listed}, pretty=True)
+    emit(
+        {
+            "run": args.run,
+            "count": len(found),
+            "locked": sum(1 for w in listed if w["locked"]),
+            "worktrees": listed,
+        },
+        pretty=True,
+    )
 
 
-def cmd_remove(args):
+def cmd_remove(args: argparse.Namespace) -> None:
     # 消してよいのは、統合を終えたタスクと、打ち切ったタスクだけ。スクリプトからは判別
     # できない（台帳とタスクリストにしかない）のでリードが明示する
     if not args.merged and not args.aborted:
-        die("--merged（topic へ取り込み終えた）か --aborted（打ち切った）を明示してください。"
-            "まだ承認を待っている worktree は消しません")
+        die(
+            "--merged（topic へ取り込み終えた）か --aborted（打ち切った）を明示してください。"
+            "まだ承認を待っている worktree は消しません"
+        )
     authorized_by = "--merged" if args.merged else "--aborted"
 
-    results, failed = [], False
+    results: list[dict[str, Any]] = []
+    failed = False
     locks = locked_worktrees()
     for path in targets(args):
         info = inspect(path, locks)
@@ -87,47 +103,69 @@ def cmd_remove(args):
         # ロックが残っているものには触らない。`git worktree prune` もロック済みは飛ばすので、
         # 実体が無くても「消した」と報告できない
         if info["locked"]:
-            results.append({
-                "removed": False, "reason": "locked", "path": path,
-                "detail": info.get("lock_reason", ""),
-                "hint": "この worktree を使っているエージェントがまだ生きています。run の"
-                        "完了通知を待ってから同じコマンドを再実行してください",
-            })
+            results.append(
+                {
+                    "removed": False,
+                    "reason": "locked",
+                    "path": path,
+                    "detail": info.get("lock_reason", ""),
+                    "hint": "この worktree を使っているエージェントがまだ生きています。run の"
+                    "完了通知を待ってから同じコマンドを再実行してください",
+                }
+            )
             failed = True
             continue
 
         if info["state"] == "stale-registration":
             run(["git", "worktree", "prune"])
-            results.append({"removed": True, "reason": "pruned-stale-registration",
-                            "path": path, "authorized_by": authorized_by})
+            results.append(
+                {
+                    "removed": True,
+                    "reason": "pruned-stale-registration",
+                    "path": path,
+                    "authorized_by": authorized_by,
+                }
+            )
             continue
 
         if info["state"] == "dirty":
             # 未コミットの成果ごと消さない。先に rescue で保全させる
-            results.append({"removed": False, "reason": "dirty", "path": path,
-                            "changes": info["changes"],
-                            "hint": f"worktree.py rescue --path {path} "
-                                    "--branch <タスクブランチ> で先に保全してください"})
+            results.append(
+                {
+                    "removed": False,
+                    "reason": "dirty",
+                    "path": path,
+                    "changes": info["changes"],
+                    "hint": f"worktree.py rescue --path {path} "
+                    "--branch <タスクブランチ> で先に保全してください",
+                }
+            )
             failed = True
             continue
 
         # --force を付けない。上の検査を抜けた場合も git 自身に最後の砦を担わせる
-        proc = subprocess.run(["git", "worktree", "remove", path],
-                              capture_output=True, text=True)
+        # check=False は意図的である。git が拒んだ理由（ロック中か、それ以外か）を
+        # stderr から読んで返し分けるので、例外にせず終了コードで受ける
+        proc = subprocess.run(
+            ["git", "worktree", "remove", path], capture_output=True, text=True, check=False
+        )
         if proc.returncode != 0:
             # 生きているエージェントの worktree は git がロックしている。run がまだ終わって
             # いないので、他の失敗と区別して返す（呼び出し側は完了通知を待って再実行する）
             stderr = proc.stderr.strip()
             locked = "locked working tree" in stderr
-            results.append({
-                "removed": False,
-                "reason": "locked" if locked else "remove-failed",
-                "path": path,
-                "detail": stderr,
-                "hint": "この worktree を使っているエージェントがまだ生きています。run の"
-                        "完了通知を待ってから同じコマンドを再実行してください"
-                        if locked else "git worktree remove が失敗しました",
-            })
+            results.append(
+                {
+                    "removed": False,
+                    "reason": "locked" if locked else "remove-failed",
+                    "path": path,
+                    "detail": stderr,
+                    "hint": "この worktree を使っているエージェントがまだ生きています。run の"
+                    "完了通知を待ってから同じコマンドを再実行してください"
+                    if locked
+                    else "git worktree remove が失敗しました",
+                }
+            )
             failed = True
             continue
 
@@ -138,7 +176,7 @@ def cmd_remove(args):
     raise SystemExit(1 if failed else 0)
 
 
-def cmd_rescue(args):
+def cmd_rescue(args: argparse.Namespace) -> None:
     path = os.path.realpath(args.path)
     if path not in listed_worktrees():
         die(f"`git worktree list` に載っていません: {path}")
@@ -154,36 +192,40 @@ def cmd_rescue(args):
     run(["git", "-C", path, "commit", "-m", RESCUE_MESSAGE])
     sha = out(["git", "-C", path, "rev-parse", "HEAD"])
     run(["git", "-C", path, "push", "origin", f"HEAD:refs/heads/{args.branch}"])
-    emit({
-        "rescued": True,
-        "path": path,
-        "branch": args.branch,
-        "commit": sha,
-        "files": len(dirty.splitlines()),
-        "note": f"検証していない保全コミットです。台帳に 1 行残し、立て直すワークフローの "
-                f"resumeFrom.sha に {sha[:12]} を渡すときは「未検証の保全である」と添えてください",
-    }, pretty=True)
+    emit(
+        {
+            "rescued": True,
+            "path": path,
+            "branch": args.branch,
+            "commit": sha,
+            "files": len(dirty.splitlines()),
+            "note": f"検証していない保全コミットです。台帳に 1 行残し、立て直すワークフローの "
+            f"resumeFrom.sha に {sha[:12]} を渡すときは「未検証の保全である」と添えてください",
+        },
+        pretty=True,
+    )
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="worktree.py", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    def add_targets(p):
+    def add_targets(p: argparse.ArgumentParser) -> None:
         p.add_argument("--run", help="ワークフローの runId（例: wf_a1b2c3d4e5f6）")
         p.add_argument("--path", help="worktree の絶対パス（1 件だけ扱うとき）")
 
-    p = sub.add_parser("list",
-                       help="ある run の worktree を挙げ、dirty と locked（走行中）を表示する")
+    p = sub.add_parser(
+        "list", help="ある run の worktree を挙げ、dirty と locked（走行中）を表示する"
+    )
     add_targets(p)
     p.set_defaults(func=cmd_list)
 
     p = sub.add_parser("remove", help="残留 worktree を検査してから消す")
     add_targets(p)
-    p.add_argument("--merged", action="store_true",
-                   help="このタスクを topic へ取り込み終えたことを明示する")
-    p.add_argument("--aborted", action="store_true",
-                   help="このタスクを打ち切ったことを明示する")
+    p.add_argument(
+        "--merged", action="store_true", help="このタスクを topic へ取り込み終えたことを明示する"
+    )
+    p.add_argument("--aborted", action="store_true", help="このタスクを打ち切ったことを明示する")
     p.set_defaults(func=cmd_remove)
 
     p = sub.add_parser("rescue", help="未コミットの変更を保全 commit して push する")

@@ -36,6 +36,11 @@
 !/docs
 !/docs/**
 
+# Python コードの検査設定（ruff / ty）と、その依存の固定。
+# .gitignore は「まず全部無視して ! で戻す」方式なので、明示しないと追跡されない
+!/pyproject.toml
+!/uv.lock
+
 !install.sh
 !/README.md
 !.gitignore

@@ -1,0 +1,80 @@
+# このリポジトリの Python コードを検査するための設定。
+#
+# **配布には要らない。** ここに書いてあるのは開発と CI だけで使う道具（ruff・ty）の設定で、
+# dotfiles を入れた人がこれらを持っている必要はない。supervisor スキルの 4 スクリプトは
+# 標準ライブラリだけで動き、shebang も `#!/usr/bin/env python3` のままである。
+#
+# 使い方:
+#   uv run ruff check .          問題を挙げる
+#   uv run ruff check --fix .    自動で直せるものを直す
+#   uv run ruff format .         整形する
+#   uv run ty check              型を検査する
+#
+# uv は mise/config.toml に入れてあるので、install.sh を通したマシンには入っている。
+
+[project]
+name = "dotfiles"
+version = "0"
+description = "Claude Code のスキルと zsh などの設定。ここでは Python コードの検査設定だけを持つ"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+# `uv run ruff` / `uv run ty` が使う。実行時には要らない。
+# pyyaml が入っているのは ty が check-skills.py の `import yaml` を解決するためで、
+# 実行時の依存はスクリプト自身が PEP 723（`# /// script`）で宣言している
+dev = ["ruff>=0.16", "ty>=0.0.72", "pyyaml>=6"]
+
+# パッケージとして配るものではないので、ビルドバックエンドを持たせない
+[tool.uv]
+package = false
+
+[tool.ruff]
+# supervisor のスクリプトが動く最低ラインに合わせる。ここを上げると、古い python3 しか
+# 入っていないマシンで動かない構文を ruff が許してしまう
+target-version = "py310"
+line-length = 100
+exclude = [
+  # git worktree の実体。エージェントが作った他ブランチのチェックアウトが入っており、
+  # このリポジトリのソースではない（.claude/.gitignore でも追跡から外してある）
+  ".claude/worktrees",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle（エラー）
+  "W",    # pycodestyle（警告）
+  "F",    # Pyflakes（未使用・未定義）
+  "I",    # import の並び
+  "UP",   # 新しい構文への追随（f-string など）
+  "B",    # bugbear（間違えやすい書き方）
+  "SIM",  # 単純化できる分岐・with
+  "PL",   # Pylint 由来
+  "RUF",  # ruff 固有
+]
+ignore = [
+  # 日本語のコメントと文字列を多く含むため、行長は formatter に任せて lint では見ない
+  "E501",
+  # 引数が多い関数を許す。argparse のサブコマンド定義で自然に増える
+  "PLR0913",
+  # マジックナンバーの比較を許す。終了コードの 0 / 1 を定数にしても読みやすくならない
+  "PLR2004",
+  # 全角の読点・括弧・コロンを「半角と紛らわしい文字」として弾くルール。このリポジトリは
+  # コメントもエラーメッセージも日本語で書く方針なので、当てると 272 件すべてが誤検出になる
+  "RUF001", # 文字列の中
+  "RUF002", # docstring の中
+  "RUF003", # コメントの中
+]
+
+[tool.ruff.lint.per-file-ignores]
+# lib/__init__.py は re-export だけを行うので、未使用 import に見える
+"**/lib/__init__.py" = ["F401"]
+
+[tool.ty.environment]
+python-version = "3.10"
+# `from lib.shell import ...` を解決させる。lib/ は scripts/ を起点にした
+# パッケージで、スクリプトは scripts/ 直下から実行される
+extra-paths = [".claude/skills/supervisor/scripts"]
+
+[tool.ty.src]
+exclude = [".claude/worktrees"]

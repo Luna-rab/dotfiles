@@ -22,6 +22,8 @@ PR は全レビューが closed か rejected になってから作る（PR 作�
   リード                              list --require-empty
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 
@@ -29,12 +31,12 @@ from lib import reviewstore as store
 from lib.shell import die, emit, warn
 
 
-def read_source(value):
+def read_source(value: str) -> str:
     """`-` なら標準入力、それ以外はファイルとして読む。"""
     return sys.stdin.read() if value == "-" else open(value).read()
 
 
-def text_arg(inline, source, label):
+def text_arg(inline: str | None, source: str | None, label: str) -> str:
     """`--x TEXT` と `--x-file PATH`（`-` で標準入力）のどちらかを受ける。"""
     if inline is not None and source is not None:
         die(f"{label} は本文とファイルのどちらか一方だけを渡してください")
@@ -43,7 +45,7 @@ def text_arg(inline, source, label):
     return store.check_text(inline, label)
 
 
-def cmd_init(args):
+def cmd_init(args: argparse.Namespace) -> None:
     """review.json を空で作る。既にあれば中身に触らない。
 
     レビューエージェントはラウンドの先頭でこれを呼ぶ。指摘 0 件で終わったラウンドは
@@ -58,7 +60,7 @@ def cmd_init(args):
     emit({"wrote": path, "created": created, "counts": counts}, pretty=True)
 
 
-def cmd_new(args):
+def cmd_new(args: argparse.Namespace) -> None:
     """レビューを立てる。review-id はスクリプトが振る。"""
     store.check_reviewer(args.reviewer)
     store.check_rating(args.rating)
@@ -68,20 +70,27 @@ def cmd_new(args):
     path = store.review_path(args.dir)
     with store.with_lock(path) as data:
         review_id = store.new_review_id(data)
-        data[review_id] = {
+        data[review_id] = store.Review(
+            reviewer=args.reviewer,
+            rating=args.rating,
+            location=location,
+            review=body,
+        )
+        counts = store.tally(data)
+    emit(
+        {
+            "wrote": path,
+            "id": review_id,
             "reviewer": args.reviewer,
             "rating": args.rating,
-            "location": location,
-            "review": body,
             "status": "open",
-            "threads": [],
-        }
-        counts = store.tally(data)
-    emit({"wrote": path, "id": review_id, "reviewer": args.reviewer,
-          "rating": args.rating, "status": "open", "counts": counts}, pretty=True)
+            "counts": counts,
+        },
+        pretty=True,
+    )
 
 
-def cmd_comment(args):
+def cmd_comment(args: argparse.Namespace) -> None:
     """レビューにコメントを足す。status は動かさない。"""
     store.check_commenter(args.commenter)
     body = text_arg(args.comment, args.comment_file, "comment")
@@ -90,14 +99,22 @@ def cmd_comment(args):
     with store.with_lock(path) as data:
         review = store.get_review(data, args.id)
         thread = store.target_thread(review, force_new=args.new_thread)
-        thread["comments"].append({"commenter": args.commenter, "comment": body})
-        thread_id = thread["thread_id"]
-        status = review.get("status")
-    emit({"wrote": path, "id": args.id, "thread": thread_id,
-          "commenter": args.commenter, "status": status}, pretty=True)
+        thread.comments.append(store.Comment(commenter=args.commenter, comment=body))
+        thread_id = thread.thread_id
+        status = review.status
+    emit(
+        {
+            "wrote": path,
+            "id": args.id,
+            "thread": thread_id,
+            "commenter": args.commenter,
+            "status": status,
+        },
+        pretty=True,
+    )
 
 
-def cmd_status(args):
+def cmd_status(args: argparse.Namespace) -> None:
     """status を動かす。裁定だけが呼べ、コメントを必ず伴う。"""
     store.check_judge(args.commenter)
     store.check_status(args.to)
@@ -108,32 +125,50 @@ def cmd_status(args):
     path = store.review_path(args.dir)
     with store.with_lock(path) as data:
         review = store.get_review(data, args.id)
-        current = review.get("status")
+        current = review.status
         store.check_transition(current, args.to)
         thread = store.target_thread(review, force_new=args.new_thread)
-        thread["comments"].append({"commenter": store.JUDGE, "comment": body})
-        thread["transition"] = {"from": current, "to": args.to}
-        review["status"] = args.to
-        thread_id = thread["thread_id"]
+        thread.comments.append(store.Comment(commenter=store.JUDGE, comment=body))
+        thread.transition = store.Transition(from_status=current, to=args.to)
+        review.status = args.to
+        thread_id = thread.thread_id
         counts = store.tally(data)
-    emit({"wrote": path, "id": args.id, "thread": thread_id,
-          "from": current, "to": args.to, "counts": counts}, pretty=True)
+    emit(
+        {
+            "wrote": path,
+            "id": args.id,
+            "thread": thread_id,
+            "from": current,
+            "to": args.to,
+            "counts": counts,
+        },
+        pretty=True,
+    )
 
 
-def cmd_list(args):
+def cmd_list(args: argparse.Namespace) -> None:
     """レビューを一覧する。既定は open のみ。"""
     path = store.review_path(args.dir)
     data = store.read_only(path)
     counts = store.tally(data)
 
     selected = {
-        key: value for key, value in data.items()
-        if (args.all or value.get("status") == "open")
-        and (not args.reviewer or value.get("reviewer") == args.reviewer)
-        and (not args.rating or value.get("rating") == args.rating)
+        key: value
+        for key, value in data.items()
+        if (args.all or value.status == "open")
+        and (not args.reviewer or value.reviewer == args.reviewer)
+        and (not args.rating or value.rating == args.rating)
     }
-    emit({"path": path, "exists": store.exists(path), "counts": counts,
-          "total": len(selected), "reviews": store.listed(selected)}, pretty=True)
+    emit(
+        {
+            "path": path,
+            "exists": store.exists(path),
+            "counts": counts,
+            "total": len(selected),
+            "reviews": store.listed(selected),
+        },
+        pretty=True,
+    )
 
     if not args.require_empty:
         return
@@ -156,32 +191,39 @@ def cmd_list(args):
         raise SystemExit(1)
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="review.py", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    def add_dir(p):
-        p.add_argument("--dir", required=True,
-                       help="review.json の置き場（<ベース>/notes/task<番号>）")
+    def add_dir(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--dir", required=True, help="review.json の置き場（<ベース>/notes/task<番号>）"
+        )
 
-    def add_comment_args(p):
+    def add_comment_args(p: argparse.ArgumentParser) -> None:
         p.add_argument("--comment", help="コメント本文")
         p.add_argument("--comment-file", help="コメント本文のファイル（- で標準入力）")
-        p.add_argument("--new-thread", action="store_true",
-                       help="判定がまだ付いていないスレッドがあっても新しいスレッドを立てる")
+        p.add_argument(
+            "--new-thread",
+            action="store_true",
+            help="判定がまだ付いていないスレッドがあっても新しいスレッドを立てる",
+        )
 
     p = sub.add_parser(
-        "init", help="review.json を空で作る（レビューエージェントがラウンドの先頭で呼ぶ）")
+        "init", help="review.json を空で作る（レビューエージェントがラウンドの先頭で呼ぶ）"
+    )
     add_dir(p)
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("new", help="レビューを立てる（レビューエージェントだけ）")
     add_dir(p)
-    p.add_argument("--reviewer", required=True,
-                   help=" / ".join(store.REVIEWERS))
+    p.add_argument("--reviewer", required=True, help=" / ".join(store.REVIEWERS))
     p.add_argument("--rating", required=True, help=" / ".join(store.RATINGS))
-    p.add_argument("--location", required=True,
-                   help="指摘の場所。`src/core/parser.rs:42` または `src/core/parser.rs`")
+    p.add_argument(
+        "--location",
+        required=True,
+        help="指摘の場所。`src/core/parser.rs:42` または `src/core/parser.rs`",
+    )
     p.add_argument("--review", help="指摘の本文")
     p.add_argument("--review-file", help="指摘の本文のファイル（- で標準入力）")
     p.set_defaults(func=cmd_new)
@@ -196,8 +238,7 @@ def build_parser():
     p = sub.add_parser("status", help="status を動かす（裁定だけ。コメント必須）")
     add_dir(p)
     p.add_argument("--id", required=True, help="review-id（例: r1）")
-    p.add_argument("--commenter", required=True,
-                   help=f"呼び手の役割。{store.JUDGE} 以外は拒む")
+    p.add_argument("--commenter", required=True, help=f"呼び手の役割。{store.JUDGE} 以外は拒む")
     p.add_argument("--to", required=True, choices=store.STATUSES)
     add_comment_args(p)
     p.set_defaults(func=cmd_status)
@@ -207,8 +248,11 @@ def build_parser():
     p.add_argument("--all", action="store_true", help="closed / rejected も含める")
     p.add_argument("--reviewer", help="この役割が立てた分だけに絞る")
     p.add_argument("--rating", help="この rating だけに絞る")
-    p.add_argument("--require-empty", action="store_true",
-                   help="open が 1 件でもあれば終了コード 1 を返す（リードが取り込む前に使う）")
+    p.add_argument(
+        "--require-empty",
+        action="store_true",
+        help="open が 1 件でもあれば終了コード 1 を返す（リードが取り込む前に使う）",
+    )
     p.set_defaults(func=cmd_list)
 
     return parser

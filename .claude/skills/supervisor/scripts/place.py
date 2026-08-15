@@ -11,6 +11,8 @@ stdout に絶対パスを 1 行だけ出す。Read や `mkdir -p` にそのま�
 それを git から隠す `.gitignore` を作る。
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 
@@ -24,7 +26,7 @@ from lib.gitpath import (
 from lib.shell import die
 
 
-def cmd_base_dir(args):
+def cmd_base_dir(args: argparse.Namespace) -> None:
     """ベース資料の置き場を 1 行返す。読み手と書き手が同じ式でパスを求めるための入口。
 
     `--require` は 3 ファイルの実在を確かめる。ベース資料を git の外に出したので、
@@ -34,8 +36,7 @@ def cmd_base_dir(args):
     """
     target = base_dir(args.work)
     if args.require:
-        missing = [n for n in BASE_FILES
-                   if not os.path.isfile(os.path.join(target, n))]
+        missing = [n for n in BASE_FILES if not os.path.isfile(os.path.join(target, n))]
         if missing:
             die(
                 f"{target} に {', '.join(missing)} がありません。"
@@ -58,14 +59,15 @@ def cmd_base_dir(args):
     print(target)
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="place.py", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("base-dir", help="ベース資料と notes/ を置くディレクトリを 1 行返す")
     p.add_argument("--work", required=True, help="作業名（ディレクトリ区切りを含めない）")
-    p.add_argument("--require", action="store_true",
-                   help="3 ファイルの実在を確かめ、欠けていたら終了コード 1")
+    p.add_argument(
+        "--require", action="store_true", help="3 ファイルの実在を確かめ、欠けていたら終了コード 1"
+    )
     p.set_defaults(func=cmd_base_dir)
 
     return parser

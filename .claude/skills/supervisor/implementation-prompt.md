@@ -1,7 +1,7 @@
-# 実装・修正エージェントの契約（スクリプトが封入する）
+# 実装・修正エージェントの契約（あなた自身が読む）
 
 スクリプトが 3 つの場面で起動する。どれも `isolation: 'worktree'` を付け、`schema` は
-`workflow-script.md` の `IMPL` を使う。
+[scripts/task-workflow.js](scripts/task-workflow.js) の `IMPL` を使う。
 
 | 場面 | label | model | 役割タグ | 起点 |
 | --- | --- | --- | --- | --- |
@@ -31,7 +31,7 @@
 
 ## 1. 作業場所と push
 
-共通の前置き（`workflow-script.md` の `preamble`）で、割り当てられた worktree の中で
+共通の前置き（[scripts/task-workflow.js](scripts/task-workflow.js) の `preamble`）で、割り当てられた worktree の中で
 `git checkout --detach <起点>` まで済んでいる。
 
 ```text

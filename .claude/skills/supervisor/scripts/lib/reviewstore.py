@@ -69,6 +69,17 @@ def review_path(directory):
     return os.path.join(directory, REVIEW_FILE)
 
 
+def exists(path):
+    """review.json が既に作られているか。
+
+    「レビューが走ったか」の唯一の外形的な手がかりである。指摘 0 件で終わったラウンドは
+    1 件も書き込まないので、中身では走行の有無を判定できない。そこでレビューエージェントに
+    ラウンドの先頭で `init` を呼ばせ、**ファイルの実在**を走行の証拠として使う
+    （`--require-empty` がこれを見る）。
+    """
+    return os.path.isfile(path)
+
+
 def check_reviewer(reviewer):
     if reviewer not in REVIEWERS:
         die(f"reviewer は {' / '.join(REVIEWERS)} のいずれかにしてください: {reviewer!r}")
@@ -229,12 +240,21 @@ def target_thread(review, force_new=False):
 
 
 def tally(data):
-    """status ごとの件数。"""
+    """status ごとの件数と、open のうち rating が must-fix のものの件数。
+
+    `open_must_fix` を同じ場所で返すのは、裁定エージェントが `schema` の `openMustFix` に
+    入れる値だからである。ワークフローの無進捗判定は「open の総数」と「open の must-fix」の
+    両方が前ラウンド以上かで打ち切りを決める（workflow-script.md の `reviewFixLoop`）ので、
+    裁定に目で数えさせると数え違いがそのまま打ち切り判定の狂いになる。
+    """
     counts = {status: 0 for status in STATUSES}
+    counts["open_must_fix"] = 0
     for review in data.values():
         status = review.get("status")
         if status in counts:
             counts[status] += 1
+        if status == "open" and review.get("rating") == "must-fix":
+            counts["open_must_fix"] += 1
     return counts
 
 

@@ -103,17 +103,20 @@ allowed-tools:
 ## 起動前の確認
 
 1. git リポジトリであること、`gh auth status` が通ることを確認する。
-2. **スクリプトの置き場を確定する。** 以降 `<スクリプト>` はこの絶対パスを指す。
+2. **スキルの置き場を確定する。** 以降 `<スキル>` と `<スクリプト>` はこの絶対パスを指す。
 
    ```
+   <スキル>     = ${CLAUDE_SKILL_DIR}
    <スクリプト> = ${CLAUDE_SKILL_DIR}/scripts
    ```
 
    この行はスキルの読み込み時に絶対パスへ展開されている。**自分で組み立てず、展開された値を
-   そのまま使う。サブエージェントはこの値を知らないので、各プロンプトに封入する**
-   （[workflow-script.md](workflow-script.md) の「プロンプト組み立て関数」）。
+   そのまま使う。** `<スキル>` はワークフロー起動時に `args.skillDir` として渡す——
+   サブエージェントは `${CLAUDE_SKILL_DIR}` を持たず、契約ファイルをこのパスから読む
+   （[workflow-script.md](workflow-script.md)「契約はどうエージェントに届くか」）。
 3. `scripts/review.py`・`scripts/place.py`・`scripts/verify.py`・`scripts/worktree.py` の 4 本に
-   実行ビットがあることを確かめ（`ls -l <スクリプト>`）、欠けていれば `chmod +x` する。
+   実行ビットがあることを確かめ（`ls -l <スクリプト>`）、欠けていれば `chmod +x` する
+   （`scripts/task-workflow.js` は `Workflow` ツールが読むので実行ビットは要らない）。
 4. **自分がどのモデルで動いているかをユーザーに申告する。** `opus` でなければ、タスク設計に
    入る前に `/model` での切り替えを提案する（役割ごとのモデルは
    [workflow-script.md](workflow-script.md) の表が `opus` を前提にコストを見積もっている）。
@@ -125,10 +128,13 @@ allowed-tools:
    git branch -r | grep -E 'origin/(release/|master$|main$)'
    ```
 
-6. **作業名を決め、チケット番号の有無をユーザーに尋ねる**（チケットは推測しない）。チケットが
-   あれば `<作業名>--<チケット>` を作業名として扱い、topic PR のタイトル末尾にも添える。
-   **統合ツリーのパスにはチケットを付けない**（`.claude/worktrees/supervisor-<作業名>`。
-   チケット抜きの作業名で作る）。
+6. **作業名を決め、チケット番号の有無をユーザーに尋ねる**（チケットは推測しない）。
+   **チケットは作業名に含めない**——topic PR のタイトル末尾にだけ添える
+   （[topic-pr.md](topic-pr.md)「作る」）。以降 `<作業名>` は 1 つの値を指し、topic ブランチ
+   （`topic/<作業名>`）・統合ツリー（`.claude/worktrees/supervisor-<作業名>`）・
+   `place.py --work` のすべてに同じ値を渡す。ここを 2 通りに分けると、`place.py base-dir` が
+   組み立てる統合ツリーのパスと実際に作ったパスが食い違って `git worktree list` に無いと
+   言われ、§2 で止まる。
 7. **その作業名がまだ使われていないことを確かめる。** topic ブランチと統合ツリーのパスが
    作業名から決まるので、既にあるものと重なると取り違える。
 
@@ -153,10 +159,14 @@ allowed-tools:
 7. **ループ**: 空き枠にワークフローを起動し、完了通知を受けたら取り込んで topic PR を更新する → 「7. 回す」
 8. **全タスク完了後にフル検証して topic PR を仕上げる** → 「8. 仕上げる」
 
-各エージェントが読む契約は次のファイルにある。**プロンプトを組み立てる直前・スクリプトを書く
-直前に対応するファイルを Read する**（コンパクションで本文が失われても取り直せる）。
+補助ファイルは次のとおり。**その段に入る直前に対応するファイルを Read する**（コンパクションで
+本文が失われても取り直せる）。
 
-- スクリプトの骨組み: [workflow-script.md](workflow-script.md)
+**契約 5 本（実装・レビュー・裁定・再計画・PR 本文）はリードが読まなくてよい。** 各エージェントが
+`args.skillDir` から自分で読む（[workflow-script.md](workflow-script.md)「契約はどうエージェントに
+届くか」）。リードが読むのは、ワークフローの返り値を解釈するときと、契約を直すときだけである。
+
+- ワークフローの呼び方と `args`: [workflow-script.md](workflow-script.md)
 - 実装・修正エージェントの契約: [implementation-prompt.md](implementation-prompt.md)
 - レビューエージェントの契約: [review-prompt.md](review-prompt.md)
 - 裁定エージェントの契約: [judge-prompt.md](judge-prompt.md)
@@ -304,17 +314,24 @@ Bash(<スクリプト>/worktree.py *)
 
 ### 起動する
 
-[workflow-script.md](workflow-script.md) の骨組みからスクリプトを組み立て、`args` を
-**実オブジェクトで**渡す（JSON 文字列で渡すとスクリプト側で全フィールドが `undefined` になる）。
+**スクリプトを組み立てない。** オーケストレーションはスキル同梱の
+`<スキル>/scripts/task-workflow.js` に固定してある。`args` を**実オブジェクトで**渡して呼ぶだけ
+である（JSON 文字列で渡すとスクリプト側で全フィールドが `undefined` になり、`failed` で即返る）。
 
 ```
-Workflow({ script: <組み立てたスクリプト>, args: {
+Workflow({ scriptPath: "<スキル>/scripts/task-workflow.js", args: {
   task: { id: "task4", subject: "...", tier: "standard",
           branch: "topic/<作業名>--task-4", dod: "...", acceptance: "...",
           scope: "...", entrypoints: "...", contracts: "..." },
-  topic: "topic/<作業名>", base: "<ベース>", work: "<作業名>", topicPr: 100
+  topic: "topic/<作業名>", base: "<ベース>", work: "<作業名>", topicPr: 100,
+  skillDir: "<スキル>"
 }})
 ```
+
+各フィールドの意味と、欠けたときに何が起きるかは
+[workflow-script.md](workflow-script.md)「`args` に入れるもの」にある。
+**各エージェントの契約（`implementation-prompt.md` など）は封入しない**——スクリプトが
+`skillDir` から読ませる。
 
 返り値の `runId` を台帳に控える（[ledger.md](ledger.md)）。ワークフローはバックグラウンドで走り、
 完了は通知で届く。**走行中に部分結果は届かない。**
@@ -325,7 +342,7 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 
 | 返り値 | どうするか |
 | --- | --- |
-| `approved: true` | `verify.py` と `review.py list --require-empty` を通してから PR にして topic へ取り込む（[integration.md](integration.md)） |
+| `approved: true` | `verify.py`・`review.py list --require-empty`・レビュアーの体数（`reviewers` と `expectedReviewers`）の 3 つを通してから PR にして topic へ取り込む（[integration.md](integration.md) §1） |
 | `blocked: true` | `questions` をユーザーに上げ、答えを受けてタスクを組み直し、起動し直す |
 | `failed: true` | `reason` と review.json を見て、立て直すか、ユーザーに上げる（下記） |
 
@@ -357,15 +374,16 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 ### 完了の根拠
 
 **タスクリストの `completed` を完了の根拠にしない。** subagent が終了すると harness が spawn 元の
-タスクを自動で `completed` にすることがある。完了の根拠は次の 3 つだけである。
+タスクを自動で `completed` にすることがある。完了の根拠は次の 4 つだけである。
 
 1. ワークフローの返り値が `approved: true` であること
 2. `verify.py`（ブランチとコミットの実在）
-3. `review.py list --require-empty`（open が 0 件）
+3. `review.py list --require-empty`（review.json が存在し、open が 0 件）
+4. 返り値の `reviewers` が `expectedReviewers` 以上であること（走るはずのレビュアーが揃った）
 
-**3 は「指摘が全件決着したこと」までしか確かめない。** レビュアーが 2 体とも走ったことは
-review.json からは分からない（0 件で終わったのか起動しなかったのかが同じに見える）ので、
-返り値の `reviewers` が `tier` と合っているかを目で見る（[integration.md](integration.md) §1）。
+**3 と 4 は別のことを確かめている。** 3 は「指摘が全件決着したこと」で、レビュアーが何体
+走ったかは review.json からは分からない（指摘 0 件で終わったのか起動しなかったのかが同じに
+見える）。4 の 2 つの数だけがその食い違いを表せる（[integration.md](integration.md) §1 手順 4）。
 
 ## 8. 仕上げる
 

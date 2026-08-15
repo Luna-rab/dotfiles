@@ -7,14 +7,20 @@
 stdout に絶対パスを 1 行だけ出す。Read や `mkdir -p` にそのまま渡せるようにするためである。
 
 **worktree は作らない。** ワークフローの `agent()` は `isolation: 'worktree'` で自分の worktree を
-割り当てられ、その中に固定される。作用があるのは `--require` 無しのときにディレクトリを作ること
-だけである。
+割り当てられ、その中に固定される。作用があるのは `--require` 無しのときで、ディレクトリと、
+それを git から隠す `.gitignore` を作る。
 """
 
 import argparse
 import os
 
-from lib.gitpath import BASE_FILES, base_dir
+from lib.gitpath import (
+    BASE_FILES,
+    GITIGNORE,
+    base_dir,
+    integration_tree,
+    listed_worktrees,
+)
 from lib.shell import die
 
 
@@ -37,7 +43,18 @@ def cmd_base_dir(args):
                 "実装・検証に入らず、blocked で返して止まってください。"
             )
     else:
+        tree = integration_tree(args.work)
+        if os.path.realpath(tree) not in listed_worktrees():
+            die(
+                f"{tree} が `git worktree list` にありません。ベース資料は統合ツリーの中に置くので、"
+                "先に統合ツリーを作ってください（SKILL.md 「1. topic と統合ツリーを作る」）。"
+                "先にこのディレクトリを作ると、あとの `git worktree add` が既存ディレクトリで失敗します。"
+            )
         os.makedirs(target, exist_ok=True)
+        ignore = os.path.join(target, ".gitignore")
+        if not os.path.exists(ignore):
+            with open(ignore, "w", encoding="utf-8") as fh:
+                fh.write(GITIGNORE)
     print(target)
 
 

@@ -139,11 +139,34 @@ VS Code のユーザ設定に以下を追加すると、コンテナ作成時に
 
 | コマンド | 何を検査するか |
 | --- | --- |
-| `python3 .claude/scripts/check-skills.py` | `.claude/skills/` 配下の全 skill について、frontmatter が YAML として読めるか、`SKILL.md` が 500 行以下か、本文中の相対リンクと `scripts/` 配下への参照先が実在するか、実行されるスクリプトに実行権限が付いているかを調べる |
+| `uv run ruff check .` | Python の lint（未使用の import、古い書き方など）。`--fix` を付けると直せるものを直す |
+| `uv run ruff format .` | Python の整形。CI は `--check` を付けて差分が無いことだけを見る |
+| `uv run ty check` | Python の型 |
+| `./.claude/scripts/check-skills.py` | `.claude/skills/` 配下の全 skill について、frontmatter が YAML として読めるか、`SKILL.md` が 500 行以下か、本文中の相対リンクと `scripts/` 配下への参照先が実在するか、実行されるスクリプトに実行権限が付いているかを調べる |
 
-リポジトリのルートから引数なしで実行し、検査に通れば終了コード 0、落ちれば 0 以外を返す。
-手元で同じ確認をするときは次を実行する。
+どれもリポジトリのルートから実行し、通れば終了コード 0、落ちれば 0 以外を返す。
+`.github/workflows/skill-checks.yml` が push と pull request のたびに 4 つとも走らせる。
 
 ```shell
-python3 .claude/scripts/check-skills.py
+uv run ruff check . && uv run ruff format --check . && uv run ty check && ./.claude/scripts/check-skills.py
 ```
+
+#### 依存の置き場
+
+**dotfiles を入れた人が、上のツールを持っている必要はない。** `.claude/skills/supervisor/scripts/`
+の 4 本（`review.py` / `place.py` / `verify.py` / `worktree.py`）は**標準ライブラリだけで動き**、
+shebang も `#!/usr/bin/env python3` のままである。`python3` があるマシンなら、uv が無くても
+supervisor スキルは動く。
+
+依存は 2 か所に分けてある。
+
+| どこ | 何のため | 誰が要るか |
+| --- | --- | --- |
+| `pyproject.toml` の `[dependency-groups] dev` | ruff・ty（と、ty が `import yaml` を解決するための pyyaml） | このリポジトリの Python を触る人と CI |
+| `.claude/scripts/check-skills.py` 先頭の `# /// script`（PEP 723） | 実行時の PyYAML | このスクリプトを走らせる人 |
+
+`check-skills.py` の shebang は `#!/usr/bin/env -S uv run --script` なので、直接起動すれば
+uv が PyYAML を用意する。PyYAML が既に入っている環境なら
+`python3 .claude/scripts/check-skills.py` でも動く。
+
+uv 自体は `mise/config.toml` に入れてあるので、`install.sh` を通したマシンには入っている。

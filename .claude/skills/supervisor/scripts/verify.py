@@ -16,23 +16,24 @@
 `review.py list --dir <ベース>/notes/task<番号> --require-empty` が判定する。
 """
 
+from __future__ import annotations
+
 import argparse
+from typing import Any
 
 from lib.shell import die, emit, out, run, warn
 
 
-def main(args):
+def main(args: argparse.Namespace) -> None:
     run(["git", "fetch", "origin"])
-    checks = []
+    checks: list[dict[str, Any]] = []
 
     code, _ = run(
-        ["git", "ls-remote", "--exit-code", "--heads", "origin",
-         f"refs/heads/{args.branch}"],
+        ["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{args.branch}"],
         allow_fail=True,
     )
     branch_exists = code == 0
-    checks.append({"check": "branch-exists", "ok": branch_exists,
-                   "detail": args.branch})
+    checks.append({"check": "branch-exists", "ok": branch_exists, "detail": args.branch})
 
     base_code, _ = run(
         ["git", "rev-parse", "--verify", "--quiet", f"origin/{args.base}"],
@@ -43,25 +44,36 @@ def main(args):
 
     commits = None
     if branch_exists:
-        commits = int(out(["git", "rev-list", "--count",
-                           f"origin/{args.base}..origin/{args.branch}"]))
-        checks.append({"check": "commits-on-branch", "ok": commits > 0,
-                       "detail": commits})
+        commits = int(
+            out(["git", "rev-list", "--count", f"origin/{args.base}..origin/{args.branch}"])
+        )
+        checks.append({"check": "commits-on-branch", "ok": commits > 0, "detail": commits})
 
     clean = all(c["ok"] for c in checks)
-    emit({"clean": clean, "branch": args.branch, "base": args.base,
-          "commits": commits, "checks": checks}, pretty=True)
+    emit(
+        {
+            "clean": clean,
+            "branch": args.branch,
+            "base": args.base,
+            "commits": commits,
+            "checks": checks,
+        },
+        pretty=True,
+    )
     if not clean:
-        warn("実物と返り値が合いません。積まずに、resumeFrom を付けてワークフローを"
-             "起動し直してください")
+        warn(
+            "実物と返り値が合いません。積まずに、resumeFrom を付けてワークフローを"
+            "起動し直してください"
+        )
     raise SystemExit(0 if clean else 1)
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="verify.py", description=__doc__)
     parser.add_argument("--branch", required=True, help="タスクブランチ名")
-    parser.add_argument("--base", required=True,
-                        help="起点にした base ブランチ名（topic/<作業名>）")
+    parser.add_argument(
+        "--base", required=True, help="起点にした base ブランチ名（topic/<作業名>）"
+    )
     return parser
 
 

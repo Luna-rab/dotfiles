@@ -11,3 +11,9 @@ ghq = "latest"
 jq = "latest"
 # zsh のプラグインマネージャ。設定は sheldon/plugins.toml
 sheldon = "latest"
+# Python のパッケージ・仮想環境マネージャ。2 つの役目がある。
+#   1. `uv run ruff` / `uv run ty` で、このリポジトリの Python コードを検査する（開発用）
+#   2. `.claude/scripts/check-skills.py` の shebang が `uv run --script` なので、
+#      その実行に要る（PyYAML を uv が用意する）
+# supervisor スキルの 4 スクリプトは標準ライブラリだけで動くので、uv を必要としない
+uv = "latest"

@@ -5,46 +5,52 @@
 取ることで、どれが止めたのかが出力だけで分かり、書き写し漏れも起きない。
 """
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
+from typing import Any, NoReturn
 
 
-def prog():
+def prog() -> str:
     """エラー行の頭に付ける名前。"""
     return os.path.basename(sys.argv[0]) or "supervisor"
 
 
-def die(message):
+def die(message: str) -> NoReturn:
     """理由を stderr に書いて終了コード 1 で止める。"""
     print(f"{prog()}: {message}", file=sys.stderr)
     sys.exit(1)
 
 
-def warn(message):
+def warn(message: str) -> None:
     """止めずに理由だけを stderr に書く。呼び出し元が終了コードを決める場合に使う。"""
     print(f"{prog()}: {message}", file=sys.stderr)
 
 
-def run(cmd, allow_fail=False):
+def run(cmd: Sequence[str], allow_fail: bool = False) -> tuple[int, str]:
     """外部コマンドを実行し、(終了コード, 標準出力) を返す。
 
     `allow_fail=True` は「失敗も答えのうち」の呼び出し（`git ls-remote --exit-code` で
     ブランチの有無を調べるなど）に使う。既定では失敗した時点で止める。
     """
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # check=False は意図的である。失敗を例外にせず終了コードとして返し、`allow_fail` で
+    # 呼び出し元に分岐させる（`git ls-remote --exit-code` のように失敗が答えの呼び出しがある）
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0 and not allow_fail:
         die(f"{' '.join(cmd)} が失敗しました\n{proc.stderr.strip()}")
     return proc.returncode, proc.stdout.strip()
 
 
-def out(cmd):
+def out(cmd: Sequence[str]) -> str:
     """成功を前提に標準出力だけを返す。"""
     return run(cmd)[1]
 
 
-def emit(payload, pretty=False):
+def emit(payload: Any, pretty: bool = False) -> None:
     """結果を JSON 1 件として stdout に出す。"""
     print(json.dumps(payload, ensure_ascii=False, indent=2 if pretty else None))
     # このあと stderr に理由を書く呼び出し元がある。先に流さないと端末上で順序が入れ替わり、

@@ -3,11 +3,14 @@ name: supervisor
 description: >-
   dynamic workflow で開発作業を並列に進める監督者ワークフロー。リードは大きな作業をタスクに割り、
   タスクごとに dynamic workflow を 1 本ずつ起動する。ワークフローは worktree 付きのサブエージェントで
-  実装・レビュー・裁定・修正を回し、レビュー承認まで面倒を見る。
-  1 タスク = 1 ワークフロー = 1 ブランチ = 1 PR。承認済みブランチの topic への取り込みはリード本体が
-  1 本ずつ行い、最後に topic → デフォルトブランチの PR を作る（最終マージはユーザー）。
-  進捗は `.git` 配下の台帳ファイルに残すので、git の履歴を汚さずに、セッションが落ちても
-  続きから再開できる。
+  実装・レビュー・裁定・修正を回し、指摘が全件決着するまで面倒を見る。
+  レビューは GitHub ではなく追跡しないファイル（review.json）に記録し、決着してから PR を作る。
+  1 タスク = 1 ワークフロー = 1 ブランチ = 1 PR。起動直後に base ブランチから topic ブランチを
+  切って draft の PR を作り、全体の計画と進行状況をその本文に書く。
+  決着したブランチの topic への取り込みはリード本体が 1 本ずつ行い、取り込むたびに本文を
+  更新する（最終マージはユーザー）。
+  進捗は統合ツリーの中の追跡しない台帳ファイルに残すので、git の履歴を汚さずに、
+  セッションが落ちても続きから再開できる。
 when_to_use: >-
   ユーザーが `/supervisor` と明示的に打ったときだけ起動する。多数のエージェントを
   起動する高コストなワークフローのため、自動では発動しない
@@ -33,15 +36,19 @@ allowed-tools:
   - Bash(git worktree *)
   - Bash(git branch *)
   - Bash(gh pr create *)
+  - Bash(gh pr edit *)
+  - Bash(gh pr ready *)
   - Bash(gh pr view *)
   - Bash(gh pr list *)
   - Bash(gh pr close *)
   - Bash(gh pr comment *)
   - Bash(gh repo view *)
-  - Bash(~/.claude/skills/supervisor/scripts/gh-review.py *)
-  - Bash(~/.claude/skills/supervisor/scripts/place.py *)
-  - Bash(~/.claude/skills/supervisor/scripts/verify.py *)
-  - Bash(~/.claude/skills/supervisor/scripts/worktree.py *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/review.py *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/place.py *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/verify.py *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/worktree.py *)
+  - EnterWorktree
+  - ExitWorktree
 ---
 
 # supervisor（dynamic workflow による並列開発の統括）
@@ -51,83 +58,100 @@ allowed-tools:
 あなたは**リード**である。次の 6 つに専念する。
 
 - 大きな作業をタスクに割り、DoD（完了条件＝達成すべき状態）を確定する
+- topic PR を作り、計画と進行状況を本文に書き続ける
 - タスクごとに dynamic workflow を 1 本起動する（同時 3 本まで）
-- 承認済みブランチを topic へ 1 本ずつ取り込む
+- 決着したブランチを 1 本ずつ PR にして topic へ取り込む
 - 台帳を更新する
 - ユーザーと話す
-- 最終 PR を作る
 
-実装・レビュー・裁定・修正はワークフローの中のサブエージェントが行う。**リードは findings の
-本文を読まない。** ワークフローが返すのは件数と検証の要約だけで、指摘の本文は PR のレビュー
-スレッドにある。findings の本文がリードの画面に流れてきたら、この境界が壊れている。
+実装・レビュー・裁定・修正はワークフローの中のサブエージェントが行う。**リードは指摘の
+本文を読まない。** ワークフローが返すのは件数と検証の要約だけで、指摘の本文は review.json に
+ある。指摘の本文がリードの画面に流れてきたら、この境界が壊れている。
+
+**レビューが走っている間、GitHub には何も出ない。** 指摘は `<ベース>/notes/task<番号>/review.json`
+に記録し（[review-store.md](review-store.md)）、全件が closed か rejected になってから PR を作る。
+**PR を作るのはリードだけである。**
 
 ## 用語
 
 - **タスク**: 1 本のワークフローが完結させる作業単位。合否が一意に判定できる大きさに割り、
   リスク階層 `tier`（`light` / `standard`）を付ける。
   **1 タスク = 1 ワークフロー = 1 ブランチ = 1 PR。**
-- **ベースディレクトリ**: ベース 3 ファイルと引き継ぎノートの置き場。`.git` 配下なので
-  **git の追跡対象に入らず、PR の差分にも出ない**。全 worktree から同じ絶対パスに解決でき、
-  リポジトリのクローンが残る限りセッションをまたいで残る。パスは自分で組み立てず、次で 1 行受け取る。
-
-  ```bash
-  ~/.claude/skills/supervisor/scripts/place.py base-dir --work <作業名>
-  ```
-
+- **ベースディレクトリ**: ベース 3 ファイルと引き継ぎノートの置き場。統合ツリーの中の
+  `.claude/supervisor/` で、自分を無視する `.gitignore` が入るので **git の追跡対象に入らず、
+  PR の差分にも出ない**。**パスは自分で組み立てず `place.py base-dir` から 1 行受け取る**（§2）。
+  以降 `<ベース>` はその絶対パス。
 - **ベース 3 ファイル**: 全サブエージェントが毎回読む前提資料。ベースディレクトリに
   `brief.md`（検証コマンド・不可侵パス・ブランチ規約）、`map.md`（コードベースの入口）、
   `ledger.md`（台帳）の 3 つを置く。
 - **引き継ぎノート**: `<ベース>/notes/task<番号>/<役割>-r<ラウンド>.md`。各サブエージェントが
   読んだ箇所・実行した検証と結果・構造の要点を残し、次のラウンドの同じ役割が先に読む。
-- **台帳**: ベースディレクトリの `ledger.md`。タスク分解・承認状態・自律判断を残す。
+- **台帳**: ベースディレクトリの `ledger.md`。タスク分解・進行状態・自律判断を残す。
   セッションが落ちたときはここから再開する（[ledger.md](ledger.md)）。**commit しない**ので、
-  ユーザーに見せる記録は最終 PR 本文に書く（§9）。
+  ユーザーに見せる記録は topic PR 本文に書く（§9）。
+- **review.json**: タスクごとのレビュー記録。`<ベース>/notes/task<番号>/review.json` に置き、
+  `review.py` で読み書きする（[review-store.md](review-store.md)）。**GitHub には出ない。**
+- **topic PR**: base ブランチへ向けた `topic/<作業名>` の PR。§4 で draft として作り、全体の計画と
+  タスクの進行状況を本文に持つ。取り込むたびに本文を更新し、§8 で最終版にする
+  （[topic-pr.md](topic-pr.md)）。**ユーザーが GitHub 上で読める記録はこの本文である。**
+  **計画をファイルにしてコミットしない**——topic に載るのは §1 の空コミットと各タスクの
+  マージコミットだけである。
+- **統合ツリー**: `topic/<作業名>` を載せたリード専用の worktree。`.claude/worktrees/supervisor-<作業名>`
+  に作る（§1）。以降 `<統合ツリー>` はこの絶対パス。**統合レーンの git 操作はすべてここで行い、
+  ユーザーの作業ツリーに触らない**（[integration.md](integration.md)）。
 
 ## 起動前の確認
 
 1. git リポジトリであること、`gh auth status` が通ることを確認する。
-2. 付属スクリプト 4 本が実行できることを確かめる。エージェントはパスを直に叩くので、実行ビットが
-   無いと `permission denied` になる。
+2. **スクリプトの置き場を確定する。** 以降 `<スクリプト>` はこの絶対パスを指す。
 
-   ```bash
-   cd ~/.claude/skills/supervisor/scripts && ls -l gh-review.py place.py verify.py worktree.py
+   ```
+   <スクリプト> = ${CLAUDE_SKILL_DIR}/scripts
    ```
 
-   `x` が欠けているものに `chmod +x` する。
-3. **自分がどのモデルで動いているかをユーザーに申告する。** `opus` でなければ、タスク設計に
-   入る前に `/model` での切り替えを提案する（下の表は `opus` を前提にコストを見積もっている）。
+   この行はスキルの読み込み時に絶対パスへ展開されている。**自分で組み立てず、展開された値を
+   そのまま使う。サブエージェントはこの値を知らないので、各プロンプトに封入する**
+   （[workflow-script.md](workflow-script.md) の「プロンプト組み立て関数」）。
+3. `scripts/review.py`・`scripts/place.py`・`scripts/verify.py`・`scripts/worktree.py` の 4 本に
+   実行ビットがあることを確かめ（`ls -l <スクリプト>`）、欠けていれば `chmod +x` する。
+4. **自分がどのモデルで動いているかをユーザーに申告する。** `opus` でなければ、タスク設計に
+   入る前に `/model` での切り替えを提案する（役割ごとのモデルは
+   [workflow-script.md](workflow-script.md) の表が `opus` を前提にコストを見積もっている）。
+5. **分岐元（＝topic PR の base）を確定する。** 候補を列挙し、`release/*` が
+   1 つ以上あればどこから切るかをユーザーに尋ねる。無ければデフォルトブランチで確定して尋ねない。
+   以降 `<base>` はこのブランチ名を指す。
 
-## 役割ごとのモデルと effort
+   ```bash
+   git branch -r | grep -E 'origin/(release/|master$|main$)'
+   ```
 
-ワークフローの `agent()` には**必ず `model` を明示する**（セッション既定の継承に頼らない）。
-機械的な段階には `effort` を効かせる。
+6. **作業名を決め、チケット番号の有無をユーザーに尋ねる**（チケットは推測しない）。チケットが
+   あれば `<作業名>--<チケット>` を作業名として扱い、topic PR のタイトル末尾にも添える。
+   **統合ツリーのパスにはチケットを付けない**（`.claude/worktrees/supervisor-<作業名>`。
+   チケット抜きの作業名で作る）。
+7. **その作業名がまだ使われていないことを確かめる。** topic ブランチと統合ツリーのパスが
+   作業名から決まるので、既にあるものと重なると取り違える。
 
-| 役割 | model | effort |
-| --- | --- | --- |
-| リード（このセッション） | `opus` | — |
-| 実装・修正（standard） | `opus` | 既定 |
-| 実装・修正（light） | `sonnet` | `medium` |
-| 実装の差し替え（impl-b） | `opus` | 既定 |
-| 通常レビュー（standard） | `opus` | `medium` |
-| 通常レビュー（light） | `sonnet` | `medium` |
-| 敵対的レビュー（standard のみ） | `opus` | `medium` |
-| doc だけの修正の再レビュー | `sonnet` | `low` |
-| 裁定 | `opus` | `medium` |
-| 再計画（エスカレーション） | `opus` | 既定 |
-| Explore 調査（リードの意思決定用） | `opus` | 既定 |
+   ```bash
+   git ls-remote --exit-code --heads origin topic/<作業名>   # 0 なら既にある
+   git worktree list                                        # supervisor-<作業名> があるか
+   ```
 
-指定したモデルが使えなければ 1 つ下げる（`opus` → `sonnet`）。`sonnet` も使えなければ `model` を省く。
+   どちらかが当たったら、**そのまま進めずユーザーに確認する**（別の作業の途中かもしれない）。
+
+**ユーザーの作業ツリーの状態は問わない**（カレントブランチも未コミットの変更も）。リードは
+§1 で作る統合ツリーの中だけで動く。
 
 ## 全体フロー
 
-1. **前提を集めて `brief.md` を書く** → 「1. 前提を集める」
-2. **Explore に調査させて `map.md` を書く** → 「2. 調査する」
-3. **タスクを設計して `ledger.md` v0 を書く** → 「3. タスクを設計する」
-4. **topic ブランチを作って push** → 「4. topic を作る」
+1. **topic ブランチと統合ツリーを作り、その中へ移る** → 「1. topic と統合ツリーを作る」
+2. **前提を集めて `brief.md` を書く** → 「2. 前提を集める」
+3. **Explore に調査させて `map.md` を書く** → 「3. 調査する」
+4. **タスクを設計して `ledger.md` v0 を書き、topic PR を作る** → 「4. タスクを設計する」
 5. **権限を先に通す** → 「5. 権限を先に通す」
 6. **タスクを `TaskCreate` で登録する** → 「6. タスクを登録する」
-7. **ループ**: 空き枠にワークフローを起動し、完了通知を受けたら統合する → 「7. 回す」
-8. **全タスク完了後にフル検証して最終 PR を作る** → 「8. 仕上げる」
+7. **ループ**: 空き枠にワークフローを起動し、完了通知を受けたら取り込んで topic PR を更新する → 「7. 回す」
+8. **全タスク完了後にフル検証して topic PR を仕上げる** → 「8. 仕上げる」
 
 各エージェントが読む契約は次のファイルにある。**プロンプトを組み立てる直前・スクリプトを書く
 直前に対応するファイルを Read する**（コンパクションで本文が失われても取り直せる）。
@@ -137,45 +161,75 @@ allowed-tools:
 - レビューエージェントの契約: [review-prompt.md](review-prompt.md)
 - 裁定エージェントの契約: [judge-prompt.md](judge-prompt.md)
 - 再計画エージェントの契約: [escalation-prompt.md](escalation-prompt.md)
-- GitHub レビューコメントの手順: [github-comments.md](github-comments.md)
+- PR 本文エージェントの契約: [pr-body-prompt.md](pr-body-prompt.md)
+- レビュー記録（review.json）の手順: [review-store.md](review-store.md)
+- topic PR の作り方・本文の書式・更新: [topic-pr.md](topic-pr.md)
 - リードの統合レーン: [integration.md](integration.md)
 - 台帳の書式と復旧手順: [ledger.md](ledger.md)
 - 設計の理由と失敗の実績: [design-notes.md](design-notes.md)
 
 ## エージェントの構成
 
-```
-リード（このセッション・ワークフローの外）
-└─ タスクごとの dynamic workflow（同時 3 本まで）
-   ├─ 実装 / 修正 agent（worktree あり）
-   ├─ レビュー agent（worktree あり・standard は通常＋敵対的の 2 体を並列）
-   ├─ 裁定 agent（worktree あり）
-   └─ 再計画 agent（worktree あり・読み取りのみ）
-      └─ Explore や /code-review の子
-```
+1 タスク = 1 ワークフローで、中は直列（実装 → レビュー → 裁定 → 修正 → … → PR 本文）。同時に
+走るのはレビューだけである（standard なら通常レビューと敵対的レビューの 2 体）。
+**同時 3 本を増やさない**（全体図と理由は [design-notes.md](design-notes.md) の
+「全体の流れ」と「なぜ同時 3 本までか」）。
 
-1 タスクの中は直列（実装 → レビュー → 裁定 → 修正 → …）で、同時に走るのは通常レビューと
-敵対的レビューの 2 体だけである。**同時 3 本を増やさない**（理由は
-[design-notes.md](design-notes.md)）。
+## 1. topic と統合ツリーを作る
 
-## 1. 前提を集める
-
-置き場を 1 行受け取る（無ければ作られる）。以降 `<ベース>` はこの絶対パスを指す。
+「起動前の確認」で決めた base ブランチから `topic/<作業名>` を作り、**空コミット 1 つを載せて
+すぐ push** する（タスク PR の base になる。空コミットが要る理由は
+[design-notes.md](design-notes.md)「なぜ最初に draft の topic PR を作るか」）。続けて**統合ツリーを
+作り、セッションをその中へ移す**。以降 `<統合ツリー>` はこの絶対パスを指す。
 
 ```bash
-~/.claude/skills/supervisor/scripts/place.py base-dir --work <作業名>
+git fetch origin
+git branch --no-track topic/<作業名> origin/<base>
+git worktree add .claude/worktrees/supervisor-<作業名> topic/<作業名>
+git -C .claude/worktrees/supervisor-<作業名> commit --allow-empty \
+  -m "chore: supervisor の統合レーンを開始する"
+git -C .claude/worktrees/supervisor-<作業名> push -u origin topic/<作業名>
+```
+
+コミットメッセージの書式は `git log` から読める既存の書式に倣う。
+
+```
+EnterWorktree({ path: ".claude/worktrees/supervisor-<作業名>" })
+```
+
+**`git checkout` / `git switch` を使わない**（上のコマンドはユーザーのカレントブランチを動かさない。
+空コミットも統合ツリーの中で作るので、ユーザーの作業ツリーに触らない。
+理由は [design-notes.md](design-notes.md)「なぜリードに専用の worktree を与えるか」）。
+
+**`EnterWorktree` が失敗したら、タスクを登録せずそこで止める。** 統合レーンは `git merge` と
+`git reset --hard` を繰り返すので、統合ツリーに入らずに進めるとユーザーの作業ツリーを巻き込む
+（[design-notes.md](design-notes.md)「なぜ `EnterWorktree` を必須にし、それでも `-C` を書くか」）。
+
+統合ツリーのディレクトリが `git status` に未追跡で出るリポジトリでは、**`.gitignore` に
+`/.claude/worktrees/` を足すことをユーザーに提案する**（勝手にコミットしない）。
+
+## 2. 前提を集める
+
+`<ベース>` を 1 行受け取る（無ければ作られる）。
+
+```bash
+<スクリプト>/place.py base-dir --work <作業名>
 ```
 
 次を特定して `<ベース>/brief.md` に書く。全サブエージェントがこれを読む。
 
 - **検証コマンド一式**: `.github/workflows/` などの CI 定義・CLAUDE.md・docs から、
   「マージしてよい」と言える全チェック（テスト・lint・フォーマット・ビルド）を列挙する。
+  **ビルドだけを流すコマンドも分けて書く**——取り込みの直後はビルドだけを流す
+  （[integration.md](integration.md) §2）。
 - **外形動作を確かめる手順**: アプリや CLI を実際に起動して動きを見る手順（`/run` や `/verify`
   スキル、起動コマンド）。レビューとリードは実装の報告を信じず自分で動かす。
 - **不可侵パス**: 触ってはならないパス、専用の手順が要るパス。
 - **ブランチとコミットの規約**: デフォルトブランチ名、ブランチ命名、コミット署名、PR テンプレート。
+  **PR タイトルを検査する job があるかどうかも書く**（`^(feat|fix|docs|…): ` の形で先頭を見るもの。
+  あるときの書き方は [topic-pr.md](topic-pr.md)「タイトルの接頭辞」）。
 
-## 2. 調査する
+## 3. 調査する
 
 - コードベースの現状は **Explore エージェント**（`model: "opus"`、"very thorough"）に調べさせる。
   行数を数える程度は自分でやってよい。
@@ -183,7 +237,7 @@ allowed-tools:
   主要なクラス・関数の名前を数個。変更するファイルの一覧や行番号つきの内部構造は書かない
   （理由は [implementation-prompt.md](implementation-prompt.md) の §0）。
 
-## 3. タスクを設計する
+## 4. タスクを設計する
 
 - **依存はタスクの `blockedBy` で表す。** 前のタスクの成果を前提にする作業は依存を張る。
   依存が無い作業は並列に走らせる。
@@ -205,11 +259,13 @@ allowed-tools:
 - **同じファイルを触る 2 タスクを並列にするなら、触ってよい領域を明示する。** worktree は
   ファイルの編集衝突しか防がない。意味の衝突が深いならタスクを直列にする。
 - 設計し終えたら `<ベース>/ledger.md` に v0 を書く。
-
-## 4. topic を作る
-
-デフォルトブランチから `topic/<作業名>` を作り、**すぐ push** する（タスク PR の base になる）。
-ベース 3 ファイルは commit しない（`.git` 配下にあり、全 worktree から読める）。
+- **続けて topic PR を draft で作る**（本文の書式とコマンドは [topic-pr.md](topic-pr.md)。
+  作る直前にそこを Read する）。
+  **作成が非 0 で終わったら 1 回だけ再試行し、それでも失敗したらコマンドとエラー出力を
+  ユーザーに示して止まる**（§5・§6 に進まない。台帳 v0 と topic ブランチは残るので、原因が
+  解消したらここから続けられる）。
+  **返ってきた PR 番号を台帳に控える**——タスク PR のタイトルに入り（`args.topicPr`）、
+  以降の更新先になる。
 
 ## 5. 権限を先に通す
 
@@ -220,11 +276,15 @@ allowed-tools:
 - スキル付属の 4 スクリプト（このスキルの `allowed-tools` はリードにしか効かない。ワークフロー内の
   エージェントも同じものを呼ぶ）
 
+**`<スクリプト>` は「起動前の確認」で確定した絶対パスに置き換えて登録する**（`${CLAUDE_SKILL_DIR}`
+という文字列のまま登録しない。サブエージェントはこの変数を持たず絶対パスでコマンドを打つので、
+変数のままの規則とは一致しない）。
+
 ```
-Bash(~/.claude/skills/supervisor/scripts/gh-review.py *)
-Bash(~/.claude/skills/supervisor/scripts/place.py *)
-Bash(~/.claude/skills/supervisor/scripts/verify.py *)
-Bash(~/.claude/skills/supervisor/scripts/worktree.py *)
+Bash(<スクリプト>/review.py *)
+Bash(<スクリプト>/place.py *)
+Bash(<スクリプト>/verify.py *)
+Bash(<スクリプト>/worktree.py *)
 ```
 
 ## 6. タスクを登録する
@@ -252,7 +312,7 @@ Workflow({ script: <組み立てたスクリプト>, args: {
   task: { id: "task4", subject: "...", tier: "standard",
           branch: "topic/<作業名>--task-4", dod: "...", acceptance: "...",
           scope: "...", entrypoints: "...", contracts: "..." },
-  topic: "topic/<作業名>", base: "<ベース>", work: "<作業名>"
+  topic: "topic/<作業名>", base: "<ベース>", work: "<作業名>", topicPr: 100
 }})
 ```
 
@@ -265,39 +325,25 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 
 | 返り値 | どうするか |
 | --- | --- |
-| `approved: true` | `verify.py` と `gh-review.py gate` を通してから topic へ取り込む（[integration.md](integration.md)） |
+| `approved: true` | `verify.py` と `review.py list --require-empty` を通してから PR にして topic へ取り込む（[integration.md](integration.md)） |
 | `blocked: true` | `questions` をユーザーに上げ、答えを受けてタスクを組み直し、起動し直す |
-| `failed: true` | `reason` と PR のスレッドを見て、立て直すか、ユーザーに上げる（下記） |
+| `failed: true` | `reason` と review.json を見て、立て直すか、ユーザーに上げる（下記） |
 
-取り込んだら台帳を更新し、空いた枠に次のタスクを起動する。
+`topicPr` は §4 で控えた topic PR の番号で、タスク PR のタイトルに入る
+（[topic-pr.md](topic-pr.md)「タイトルの接頭辞」）。
+
+取り込んだら台帳と **topic PR の本文**を更新し（[topic-pr.md](topic-pr.md)）、空いた枠に次のタスクを
+起動する。
 
 ### 失敗したワークフローを立て直す
 
-**やり直しではなく続きから始める。** push 済みのコミット・PR・レビュースレッド・引き継ぎノートは
-残っているので、それを起点にする。
+**やり直しではなく続きから始める。** push 済みのコミット・review.json・引き継ぎノートが
+残っているので、それを起点にする（**PR はまだ作られていない**）。手順（`resumeFromRunId` と
+`resumeFrom` の使い分け・打ち切りの条件）は [ledger.md](ledger.md)「落ちたワークフローの扱い」に
+ある。**立て直す直前にそこを Read する。**
 
-1. 同じセッションの中なら、まず `resumeFromRunId` で再実行できる。完了済みの `agent()` は
-   `journal.jsonl` のキャッシュから返るので安い。**先に走行中の run を `TaskStop` で止める。**
-
-   ```
-   Workflow({ scriptPath: "<返り値に入っていたパス>", resumeFromRunId: "<runId>" })
-   ```
-
-   スクリプトを 1 行でも変えると、変えた箇所より後ろは全部再実行される。
-
-2. セッションが落ちた・スクリプトを組み直したときは、`resumeFrom` を付けて新しく起動する。
-
-   ```
-   Workflow({ script: <スクリプト>, args: { task, topic, base, work,
-     resumeFrom: { branch: "<タスクブランチ>", sha: "<前コミット>",
-                   pr: <PR 番号>, transcriptDir: "<完了通知に入っていたパス>" } }})
-   ```
-
-   `sha` は `git log origin/<タスクブランチ> -1 --format=%H` で取る。PR が既にあるなら
-   その番号を渡す（作り直させない）。
-
-3. 立て直しても承認に至らないタスクは、台帳で `blocked` にして事実をユーザーに上げる。
-   **他のタスクは止めずに進める。**
+**タスクを `blocked` / `failed` で打ち切ったら、台帳と topic PR の本文を更新する**——タスク一覧の
+状態を書き換え、打ち切った理由を「残課題」に 1 行残す（[topic-pr.md](topic-pr.md)）。
 
 ### 質問・blocked を受けたら
 
@@ -305,7 +351,7 @@ Workflow({ script: <組み立てたスクリプト>, args: {
   他タスクとの整合）。
 - **ユーザーに上げるのは次の 4 つだけ**: 作業範囲の解釈が割れる / 規模が当初想定から大きく
   増減する / 後戻りしにくい設計上の取引が要る / ユーザーの指示が既存の DoD や設計文書と矛盾する。
-- **確認を待つ間も走行中のワークフローは完走させ、承認と統合は進める。** 答え次第で無駄に
+- **確認を待つ間も走行中のワークフローは完走させ、取り込みは進める。** 答え次第で無駄に
   なりそうなタスクだけ、新しく起動するのを止める。
 
 ### 完了の根拠
@@ -314,28 +360,49 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 タスクを自動で `completed` にすることがある。完了の根拠は次の 3 つだけである。
 
 1. ワークフローの返り値が `approved: true` であること
-2. `verify.py`（ブランチ・コミット・PR の実在）
-3. `gh-review.py gate`（未解決 0 件・PENDING 0 件・要求した役割のレビュー提出）
+2. `verify.py`（ブランチとコミットの実在）
+3. `review.py list --require-empty`（open が 0 件）
+
+**3 は「指摘が全件決着したこと」までしか確かめない。** レビュアーが 2 体とも走ったことは
+review.json からは分からない（0 件で終わったのか起動しなかったのかが同じに見える）ので、
+返り値の `reviewers` が `tier` と合っているかを目で見る（[integration.md](integration.md) §1）。
 
 ## 8. 仕上げる
 
 1. **台帳の全タスクが `merged` か `blocked` になっていることを確かめ、git と突き合わせる。**
-   `git log --oneline origin/topic/<作業名>` に、`merged` のタスクごとに `--no-ff` の
-   マージコミットが 1 つあることを見る。数が合わなければ取り込み漏れである。
-2. topic を最新化し、`<ベース>/brief.md` の検証コマンド一式と外形動作をフルで 1 回流す。
+   `git -C <統合ツリー> log --oneline origin/topic/<作業名>` に、`merged` のタスクごとに
+   `--no-ff` のマージコミットが 1 つあることを見る。数が合わなければ取り込み漏れである。
+2. topic を最新化し、**`<統合ツリー>` の中で**`<ベース>/brief.md` の検証コマンド一式と外形動作を
+   フルで 1 回流す。
 3. 台帳を最終版に更新する（commit しない）。
-4. topic → デフォルトブランチの PR を作る。本文には構成 PR の一覧・検証結果・
-   「自律判断の記録」を書く（§9）。**マージはしない**（ユーザーが行う）。
+4. **topic PR の本文を最終版に差し替える**（[topic-pr.md](topic-pr.md)「最終版の本文」。
+   差し替える直前にそこを Read する）。進行中の 4 節を最新にし、「変更による挙動の変化」
+   「確認項目」「検証結果」「自律判断の記録」（§9）を足す。
    **台帳は commit されないので、ユーザーが残る形で読める記録はこの本文だけになる。**
-   タスク一覧（件名・ブランチ・PR 番号・findings 件数）も本文に写す。
-5. 何がマージされたか・失敗で残ったタスク・自分の判断で変えた目標・先送りにした作業・
-   残課題をユーザーにまとめる。
-6. 台帳と引き継ぎノートを消してよいか**ユーザーに確認してから**消す。PR がマージされる前に
-   消すと、ユーザーが追加を頼んだときに再開の足場が無い。
+   タスク一覧（件名・PR 番号・却下した残件の件数）も本文に写す。
+5. **`merged` が 1 件以上なら `gh pr ready <topicPR番号>` でレビュー可能にする。**
+   **マージはしない**（ユーザーが行う）。1 件も無ければ `ready` を叩かず draft のまま残す
+   （topic ブランチも消さない。あとで続きを頼まれたときの足場になる）。
+6. 何がマージされたか・失敗で残ったタスク・自分の判断で変えた目標・先送りにした作業・
+   残課題をユーザーにまとめる。**topic PR の URL を必ず添える。**
+7. 統合ツリーを外す。**台帳と引き継ぎノートはこの中にあるので一緒に消える。** 消してよいか
+   **ユーザーに確認してから**行う。PR がマージされる前に消すと、ユーザーが追加を頼んだときに
+   再開の足場が無い。**残すと言われたら統合ツリーも残す。**
+
+   ```
+   ExitWorktree({ action: "keep" })
+   ```
 
    ```bash
-   rm -rf "$(git rev-parse --path-format=absolute --git-common-dir)/supervisor"
+   git -C <統合ツリー> status --porcelain     # 空でなければ中身をユーザーに示す
+   git worktree remove .claude/worktrees/supervisor-<作業名>
    ```
+
+   `action: "keep"` にするのは、`path` で入った worktree を `ExitWorktree` が消さない仕様だから
+   である（消すのは次の `git worktree remove`）。未コミットの変更があると `git worktree remove` は
+   拒む。**`--force` を先に付けず、何が残っているかを示す**（コンフリクト解消の途中で終わって
+   いた可能性がある）。**`status` が空でも台帳は消える**——無視されたファイルは `status` に出ず、
+   `git worktree remove` にも拒まれない。
 
 ## 9. 自律判断を記録する
 
@@ -348,7 +415,8 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 書き先:
 
 - 個別タスクの中で閉じる判断 → そのタスクの PR 本文
-- 作業全体に関わる判断 → 台帳の `## 自律判断の記録` と、最終 PR 本文の同名セクション
+- 作業全体に関わる判断 → まず台帳の `## 自律判断の記録` に書き、§8 で topic PR 本文の同名
+  セクションへ転記する
   - `### 変更した最終目標・DoD・スコープ`
   - `### 先送り・対象外にした作業`
   - **台帳は commit しないので、PR 本文への転記を省かない。**

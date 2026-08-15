@@ -3,6 +3,11 @@
 スクリプトが 1 ラウンドにつき 1〜2 体を並列で起動する。`schema` は `workflow-script.md` の
 `REVIEW` を使う。
 
+**あなたは指摘を `review.py new` で review.json に立てる。GitHub には何も投稿しない**
+（PR はレビューが全件決着してからリードが作る）。**status は動かせない**——直ったかどうかを
+判定して畳むのは裁定エージェントである。あなたが返すのは**見つけた事実と、実施した検証の記録**
+だけである。
+
 ```javascript
 agent(reviewPrompt('review:normal', round), {
   label: `review:${task.id}#${round}`, phase: 'Review',
@@ -12,16 +17,19 @@ agent(reviewPrompt('review:normal', round), {
 
 | 種類 | いつ | model | effort |
 | --- | --- | --- | --- |
-| 通常レビュー | 常に | standard `opus` / light `sonnet` | `medium` |
-| 敵対的レビュー | standard のときだけ | `opus` | `medium` |
+| 通常レビュー | 毎ラウンド | standard `opus` / light `sonnet` | `medium` |
+| 敵対的レビュー | standard のときだけ。毎ラウンド | `opus` | `medium` |
 | doc だけの修正の再レビュー | 直前の修正が `changeKind: "docs"` を返したとき。通常 1 本のみ | `sonnet` | `low` |
-| コンフリクト解消レビュー | リードが統合レーンで解消したときだけ（起動するのもリード） | `opus` | — |
 
 **`isolation: 'worktree'` を必ず付ける。** 付けないと 2 体が同じツリーで検証コマンドを走らせて
 互いの結果を汚し、レビュー中に足元が書き換わる。
 
 **毎ラウンド新しいレビュアーが立つ**（ワークフローのエージェントは再開できない）。再探索のコストは
 引き継ぎノートで削る（§1）。
+
+**リードが単発で起動する解消レビューは別物である。** リードが topic へのマージでコンフリクトを
+解消したときに 1 体だけ走らせる経路で、review.json を使わず**返り値だけ**を返す
+（[integration.md](integration.md) §2）。§6 と §7 はワークフローの中のレビューに向けて書いてある。
 
 ## 1. 対象に載る
 
@@ -47,7 +55,7 @@ agent(reviewPrompt('review:normal', round), {
 
 通常・敵対的の**両方**に封入する。
 
-- **コードが正しい・安全だと仮定しない。** 実装の報告・PR タイトル・PR 説明・コミットメッセージは
+- **コードが正しい・安全だと仮定しない。** 実装の報告・コミットメッセージ・引き継ぎノートは
   「主張」であって事実ではない。安心材料を鵜呑みにせず、**差分そのものを根拠に判断する**。
 - **確信は推論ではなく実測で裏づける。** 「ここにバグがある」と結論する前に、できるなら実際に
   再現させる（テストを足して落ちることを見る、検証コマンドを流す）。推論だけで確信した指摘は、
@@ -57,8 +65,8 @@ agent(reviewPrompt('review:normal', round), {
 
 ## 3. 見る内容
 
-- **`/code-review` スキルを走らせる**（effort `high`。docs だけの変更なら `medium`）。
-  対象は base ブランチとの差分。
+- **`/code-review` を走らせる**（対象は起点との差分。推論の重さはスクリプトが `agent()` の
+  `effort` で決めてあるので、ここでは指定しない）。
 - **タスクに合わせた観点**をリードが指定する。例:
   - 挙動を変えないリファクタリング: 移した関数の中身を旧版と機械的に突き合わせる
     （`git show` で旧版を取り、行の diff とハッシュで比べる）。テストの本数とアサーションが
@@ -92,9 +100,10 @@ agent(reviewPrompt('review:normal', round), {
 反証できたものだけを指摘する。疑っただけで実測できないものは should-fix に落とす。
 ```
 
-## 5. 重大度の規律
+## 5. rating の規律
 
-重大度は**定義と具体例**で一貫させる（曖昧な定義だと割り当てがぶれる）。
+`rating` は**定義と具体例**で一貫させる（曖昧な定義だと割り当てがぶれる）。**一度立てた rating は
+誰も変えられない**（裁定も変えられない）ので、付ける時点で決める。
 
 - **`must-fix`**: DoD 未達・正しさのバグ・既存の挙動を壊す変更・テストやアサーションの弱体化。
   例: 「境界値 0 で配列外参照して panic する」「golden テストが 3 件割れている」。
@@ -105,74 +114,73 @@ agent(reviewPrompt('review:normal', round), {
 
 規律:
 
-- **全 finding に severity を必ず付ける。**
 - **must-fix には具体的な根拠を添え、できるなら実測で裏づける**: どのファイル・どの行が、どんな
-  入力・状態で、どう失敗するか（再現手順、落ちる検証）を書く。確かめた方法（テストを実行した /
-  検証コマンドを流した / 差分を読んだだけ）も `evidence` に書く。**実測で裏が取れない推論だけの
-  指摘は must-fix にせず** `should-fix` に落とす。
+  入力・状態で、どう失敗するか（再現手順、落ちる検証）を本文に書く。確かめた方法（テストを
+  実行した / 検証コマンドを流した / 差分を読んだだけ）も書く。**実測で裏が取れない推論だけの
+  指摘は must-fix にせず** `should-fix` にする。
 - **無視してよいものは指摘しない**: 主たる防御が妥当なのに多重の防御を求める、タスクの範囲外の
   スタイル、といった当て推量の指摘は出さない。
 - **同じ箇所への同じ趣旨の指摘は 1 件にまとめる。**
 
-## 6. 指摘の投稿
+## 6. 指摘を立てる
 
-**GraphQL を直接書かない。** `gh-review.py` を引数付きで呼ぶ（詳細と全フィールドは
-[github-comments.md](github-comments.md)）。
+**GitHub に投稿しない。JSON も直接書かない。** `<スクリプト>/review.py` を引数付きで呼ぶ
+（詳細と全フィールドは [review-store.md](review-store.md)）。
 
 ```text
-1. findings を JSON 配列で書く。1 件ごとに severity / category / body / path を入れ、
-   行を特定できるなら line（複数行なら startLine も）を足す。
-   行を特定できないがファイルが diff にあるなら line を書かない（ファイル単位になる）。
-   対象が diff 外・複数ファイルにまたがるなら、diff 内で最も関係の深いファイルを path にし、
-   本来の対象を target に書く。
-2. 検証結果を書いたサマリ用のファイルを用意する（件数はスクリプトが自動で載せるので書かない）。
-3. 次を実行する。
+1 件につき 1 回、次を実行する。review-id はスクリプトが振る。
 
-   ~/.claude/skills/supervisor/scripts/gh-review.py post \
-     --pr <PR 番号> --role review:normal --verdict changes-requested \
-     --findings /tmp/findings.json --summary-file /tmp/summary.md
+  <スクリプト>/review.py new \
+    --dir <ベース>/notes/task<番号> \
+    --reviewer review:normal \
+    --rating must-fix \
+    --location src/core/parser.rs:42 \
+    --review-file /tmp/finding.md
 
-   （敵対的レビューは --role review:adversarial、コンフリクト解消は review:conflict）
+（敵対的レビューは --reviewer review:adversarial）
 
-書式を先に確かめたいときは --dry-run を付ける（GitHub を呼ばずに組み立て結果だけ出る）。
-残っている自分の PENDING レビューは post が自動で消す。
+- 本文は --review-file（`-` で標準入力）で渡す。バックティックや `$` を含む本文を
+  --review に直接書くと、シェルが展開して中身が壊れる。
+- location は `src/core/parser.rs:42`（行）/ `src/core/parser.rs:42-47`（範囲）/
+  `src/core/parser.rs`（ファイル）のいずれか。差分の外を指すときは、最も関係の深い
+  ファイルを書き、本来の対象を本文に書く。
 ```
 
-**すべての指摘をスレッドとして投稿する。サマリ本文に落とさない。** サマリに書くのは検証結果だけ。
+**指摘が 0 件なら何も呼ばない。** 「走ったが指摘なし」は返り値の `opened: 0` で表明する
+（スクリプトが「起動した全員が結果を返したか」を数えている）。
 
-**指摘が 0 件でも `post` を実行する**（`--verdict approved`、`--findings` は空配列）。承認の門は
-「要求した役割のレビューが提出されていること」を数えるので、投稿しないと門が通らない。
+**重複を自分で気にしなくてよい。** もう一方のレビュアーと同じ箇所を指摘しても、統合するのは
+裁定である。相手の指摘を読みに行かない（アンカリングを避けるため）。
 
 ## 7. 再レビューでやること
 
-2 ラウンド目以降は、前のラウンドの指摘が直っているかを確かめる場面である。
+2 ラウンド目以降は、**まだ open な指摘が直ったか**を確かめる場面である。
 
 ```text
-1. 自分の役割のスレッドを列挙する。--role を渡すと、スクリプトが本文の隠しメタデータを読んで
-   絞り込む（isOutdated が true のものも対象に含まれる）。
+1. open のレビューを取る。closed / rejected は見ない。
 
-   ~/.claude/skills/supervisor/scripts/gh-review.py threads \
-     --pr <PR 番号> --role review:normal
+   <スクリプト>/review.py list --dir <ベース>/notes/task<番号>
 
-   **確かめるのは自分の役割のスレッドだけ。** もう一方のレビュアーのスレッドは --role なしで
-   列挙すれば読めるが、返信も resolve もしない。
+2. 各件について、実際の差分を見て直っているかを確かめる。
+   行番号は修正でずれているので、本文に書かれた内容で該当箇所を探す。
+   判定に実測が要るもの（テストが通るか、特定の入力で落ちるか）は実際に流す。
 
-2. 各スレッドについて、実際の差分を見て直っているかを確かめる。
-   - 直っている:
-     gh-review.py reply --thread <ID> --role review:normal --status resolved \
-       --message "<何を確かめたか>" --resolve
-   - 直っていない:
-     gh-review.py reply --thread <ID> --role review:normal --status still-open \
-       --message "<何が残っているか>"
-     （--resolve を付けない）
+3. 所見をコメントとして残す。**status は動かさない**（動かすのは裁定）。
 
-3. 修正で新しく生じた問題があれば、§6 の post で新しいレビューとして投稿する。
+   <スクリプト>/review.py comment \
+     --dir <ベース>/notes/task<番号> --id r3 \
+     --commenter review:normal \
+     --comment "parser.rs:44 に早期 return を確認。cargo test parser:: 通過"
 
-4. 実装が wont-fix / disputed / deferred で返信したスレッドは**畳まない**（裁定役が裁く）。
+   直っていないなら、どこがどう残っているかを書く。
+
+4. 修正で新しく生じた問題があれば、§6 の new で今ラウンドの指摘として立てる。
 ```
 
-**前のラウンドの自分ではない。** 引き継ぎノートで文脈は受け取っているが、直っているかどうかは
-自分の目で差分を見て判断する。ノートの記述を根拠に畳まない。
+- **自分が立てた指摘でなくてもコメントしてよい。** open なものは全部あなたの目で確かめる。
+- **実装の返信を根拠に「直った」と書かない。** 「直した」と書いてあっても自分の目で差分を見る。
+- **判定できなければ、判定できないと書く。** 憶測で「直った」と書くと裁定がそれを根拠に畳む。
+- **`closed` / `rejected` を掘り起こさない。** 一覧に出てこないものは、このラウンドの対象外である。
 
 ## 8. 引き継ぎノート
 
@@ -189,8 +197,11 @@ agent(reviewPrompt('review:normal', round), {
 - <コマンド>: <結果>
 - 外形動作: <何をどう動かして、何を見たか>
 
-## 出した指摘
-- <severity>: <一行要約>（スレッドは PR にある）
+## 立てた指摘
+- <review-id> <rating>: <一行要約>
+
+## open の確認結果
+- <review-id>: 直っている / 残っている — <何を見て判断したか>
 
 ## 問題なしと判断した観点
 - <何を見て、なぜ問題ないと判断したか>
@@ -202,21 +213,24 @@ agent(reviewPrompt('review:normal', round), {
 ## 9. 禁止事項
 
 - **実装ファイルを直さない。** 反証のための再現テストを手元で足して走らせるのはよいが、push しない。
-- **`gh pr review --approve` / `--request-changes` を使わない。** 自分が作った PR なので
-  GitHub が拒否する。投稿は `event: COMMENT` に限る（スクリプトが担保している）。
-- **自分が出した指摘を、投稿した回で自分で resolve しない**（再レビューのときだけ、直っていると
-  確かめたものを畳む）。
+- **status を動かさない**（`review.py status` を呼ばない。スクリプトの検査でも拒まれる）。
+- **GitHub に何も投稿しない。** `gh pr create` / `gh pr comment` / `gh pr review` を使わない。
+  **PR を作らない**（作るのはリードで、全レビューが決着した後である）。
+- **`closed` / `rejected` を読まない**（`list --all` を使わない）。他のレビュアーの指摘・実装の
+  返信を掘り起こさない（アンカリングを避けるため）。
+- **review-id を自分で決めない**（`new` が振る）。
 - **マージしない。** `gh pr merge` を使わない。
 - メイン作業ツリー・他のディレクトリのチェックアウトに触れない。新しい worktree を作らない。
 
 ## 10. 報告の形（`schema` で返す）
 
-**findings の本文は返さない**（PR のスレッドにある）。
+**指摘の本文は返さない**（review.json にある）。畳むかどうかを決めるのは裁定エージェントなので、
+`verdict` に承認は無い。
 
 | フィールド | 中身 |
 | --- | --- |
-| `verdict` | `approved`（must-fix が 0 件）/ `changes-requested` / `blocked`（起点に載れなかった） |
-| `mustFix` / `shouldFix` / `nit` | このレビューで出した件数 |
-| `resolved` / `stillOpen` | 再レビューのとき。畳んだ数 / 畳まなかった数 |
-| `reviewUrl` | `post` が返した URL |
-| `notes` | **実施した検証と、問題なしと判断した観点の要約。空にしない**（空の応答は実作業ゼロの no-op と見なされ、スクリプトが再実行する） |
+| `verdict` | `reported`（指摘を立てた。0 件でもこれ）/ `blocked`（起点に載れなかった） |
+| `opened` | このラウンドで `new` した件数（0 件ならそう返す） |
+| `mustFix` / `shouldFix` / `nit` | その内訳 |
+| `commented` | 既存の open に付けたコメントの件数 |
+| `notes` | **実施した検証と、問題なしと判断した観点の要約。空にしない**（空の応答は実作業ゼロの no-op と見なされ、スクリプトが再実行する）。コマンドと結果を具体的に書く |

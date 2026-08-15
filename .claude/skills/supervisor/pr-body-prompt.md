@@ -1,4 +1,4 @@
-# PR 本文エージェントの契約（スクリプトが封入する）
+# PR 本文エージェントの契約（あなた自身が読む）
 
 全レビューが closed か rejected になった後、ワークフローの最後に 1 回だけ走る。**PR の本文を
 書いてファイルに置くだけ**で、PR は作らない（作るのはリード。[integration.md](integration.md)）。
@@ -14,7 +14,7 @@ agent(prBodyPrompt(), {
 
 ## 1. 対象に載る
 
-共通の前置き（`workflow-script.md` の `preamble`）で、worktree の中で
+共通の前置き（[scripts/task-workflow.js](scripts/task-workflow.js) の `preamble`）で、worktree の中で
 `git checkout --detach origin/<タスクブランチ>` まで済んでいる。
 
 ```bash

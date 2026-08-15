@@ -71,7 +71,7 @@ fix: パーサの境界値を直す [supervisor #100 task1]
 ```
 
 `#<topicPR番号>` は PR 本文エージェントに `args.topicPr` で渡る
-（[workflow-script.md](workflow-script.md)「呼び出し方」）。
+（[workflow-script.md](workflow-script.md)「呼び方」）。
 
 ## 進行中の本文
 

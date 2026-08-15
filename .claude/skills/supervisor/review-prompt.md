@@ -1,6 +1,6 @@
-# レビューエージェントの契約（スクリプトが封入する）
+# レビューエージェントの契約（あなた自身が読む）
 
-スクリプトが 1 ラウンドにつき 1〜2 体を並列で起動する。`schema` は `workflow-script.md` の
+スクリプトが 1 ラウンドにつき 1〜2 体を並列で起動する。`schema` は [scripts/task-workflow.js](scripts/task-workflow.js) の
 `REVIEW` を使う。
 
 **あなたは指摘を `review.py new` で review.json に立てる。GitHub には何も投稿しない**
@@ -33,7 +33,7 @@ agent(reviewPrompt('review:normal', round), {
 
 ## 1. 対象に載る
 
-共通の前置き（`workflow-script.md` の `preamble`）で、割り当てられた worktree の中で
+共通の前置き（[scripts/task-workflow.js](scripts/task-workflow.js) の `preamble`）で、割り当てられた worktree の中で
 `git checkout --detach origin/<タスクブランチ>` まで済んでいる。
 
 ```text

@@ -103,17 +103,20 @@ allowed-tools:
 ## 起動前の確認
 
 1. git リポジトリであること、`gh auth status` が通ることを確認する。
-2. **スクリプトの置き場を確定する。** 以降 `<スクリプト>` はこの絶対パスを指す。
+2. **スキルの置き場を確定する。** 以降 `<スキル>` と `<スクリプト>` はこの絶対パスを指す。
 
    ```
+   <スキル>     = ${CLAUDE_SKILL_DIR}
    <スクリプト> = ${CLAUDE_SKILL_DIR}/scripts
    ```
 
    この行はスキルの読み込み時に絶対パスへ展開されている。**自分で組み立てず、展開された値を
-   そのまま使う。サブエージェントはこの値を知らないので、各プロンプトに封入する**
-   （[workflow-script.md](workflow-script.md) の「プロンプト組み立て関数」）。
+   そのまま使う。** `<スキル>` はワークフロー起動時に `args.skillDir` として渡す——
+   サブエージェントは `${CLAUDE_SKILL_DIR}` を持たず、契約ファイルをこのパスから読む
+   （[workflow-script.md](workflow-script.md)「契約はどうエージェントに届くか」）。
 3. `scripts/review.py`・`scripts/place.py`・`scripts/verify.py`・`scripts/worktree.py` の 4 本に
-   実行ビットがあることを確かめ（`ls -l <スクリプト>`）、欠けていれば `chmod +x` する。
+   実行ビットがあることを確かめ（`ls -l <スクリプト>`）、欠けていれば `chmod +x` する
+   （`scripts/task-workflow.js` は `Workflow` ツールが読むので実行ビットは要らない）。
 4. **自分がどのモデルで動いているかをユーザーに申告する。** `opus` でなければ、タスク設計に
    入る前に `/model` での切り替えを提案する（役割ごとのモデルは
    [workflow-script.md](workflow-script.md) の表が `opus` を前提にコストを見積もっている）。
@@ -156,10 +159,14 @@ allowed-tools:
 7. **ループ**: 空き枠にワークフローを起動し、完了通知を受けたら取り込んで topic PR を更新する → 「7. 回す」
 8. **全タスク完了後にフル検証して topic PR を仕上げる** → 「8. 仕上げる」
 
-各エージェントが読む契約は次のファイルにある。**プロンプトを組み立てる直前・スクリプトを書く
-直前に対応するファイルを Read する**（コンパクションで本文が失われても取り直せる）。
+補助ファイルは次のとおり。**その段に入る直前に対応するファイルを Read する**（コンパクションで
+本文が失われても取り直せる）。
 
-- スクリプトの骨組み: [workflow-script.md](workflow-script.md)
+**契約 5 本（実装・レビュー・裁定・再計画・PR 本文）はリードが読まなくてよい。** 各エージェントが
+`args.skillDir` から自分で読む（[workflow-script.md](workflow-script.md)「契約はどうエージェントに
+届くか」）。リードが読むのは、ワークフローの返り値を解釈するときと、契約を直すときだけである。
+
+- ワークフローの呼び方と `args`: [workflow-script.md](workflow-script.md)
 - 実装・修正エージェントの契約: [implementation-prompt.md](implementation-prompt.md)
 - レビューエージェントの契約: [review-prompt.md](review-prompt.md)
 - 裁定エージェントの契約: [judge-prompt.md](judge-prompt.md)
@@ -307,17 +314,24 @@ Bash(<スクリプト>/worktree.py *)
 
 ### 起動する
 
-[workflow-script.md](workflow-script.md) の骨組みからスクリプトを組み立て、`args` を
-**実オブジェクトで**渡す（JSON 文字列で渡すとスクリプト側で全フィールドが `undefined` になる）。
+**スクリプトを組み立てない。** オーケストレーションはスキル同梱の
+`<スキル>/scripts/task-workflow.js` に固定してある。`args` を**実オブジェクトで**渡して呼ぶだけ
+である（JSON 文字列で渡すとスクリプト側で全フィールドが `undefined` になり、`failed` で即返る）。
 
 ```
-Workflow({ script: <組み立てたスクリプト>, args: {
+Workflow({ scriptPath: "<スキル>/scripts/task-workflow.js", args: {
   task: { id: "task4", subject: "...", tier: "standard",
           branch: "topic/<作業名>--task-4", dod: "...", acceptance: "...",
           scope: "...", entrypoints: "...", contracts: "..." },
-  topic: "topic/<作業名>", base: "<ベース>", work: "<作業名>", topicPr: 100
+  topic: "topic/<作業名>", base: "<ベース>", work: "<作業名>", topicPr: 100,
+  skillDir: "<スキル>"
 }})
 ```
+
+各フィールドの意味と、欠けたときに何が起きるかは
+[workflow-script.md](workflow-script.md)「`args` に入れるもの」にある。
+**各エージェントの契約（`implementation-prompt.md` など）は封入しない**——スクリプトが
+`skillDir` から読ませる。
 
 返り値の `runId` を台帳に控える（[ledger.md](ledger.md)）。ワークフローはバックグラウンドで走り、
 完了は通知で届く。**走行中に部分結果は届かない。**

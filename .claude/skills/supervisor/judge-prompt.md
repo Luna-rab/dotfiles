@@ -1,4 +1,4 @@
-# 裁定エージェントの契約（スクリプトが封入する）
+# 裁定エージェントの契約（あなた自身が読む）
 
 レビュアーが立てた指摘を差分と突き合わせ、**決着させる**役。直ったものを `closed` にし、誤りや
 重複や残件を `rejected` にする。**status を動かせるのはあなただけである。** コードは書かない。
@@ -26,7 +26,7 @@ agent(judgePrompt(round), {
 
 ## 1. 対象に載る
 
-共通の前置き（`workflow-script.md` の `preamble`）で、worktree の中で
+共通の前置き（[scripts/task-workflow.js](scripts/task-workflow.js) の `preamble`）で、worktree の中で
 `git checkout --detach origin/<タスクブランチ>` まで済んでいる。差分は次で見る。
 
 ```bash
@@ -145,7 +145,7 @@ git diff origin/topic/<作業名>...HEAD
 
   `openMustFix` を目で数えない理由は、**この 2 つがワークフローの打ち切り判定に直結する**
   からである。open の総数と open の `must-fix` の両方が前ラウンド以上だとそのラウンドで
-  打ち切られる（[workflow-script.md](workflow-script.md) の `reviewFixLoop`）ので、数え違いは
+  打ち切られる（[scripts/task-workflow.js](scripts/task-workflow.js) の `reviewFixLoop`）ので、数え違いは
   直せる指摘を残したままの打ち切りか、終わらないループのどちらかになる。
 - **「直さないから open のままにしておく」は選ばない。** 直させないなら `rejected` にする。
   open のまま残すのは「次の修正ラウンドで直させるもの」だけである。

@@ -131,7 +131,22 @@ git diff origin/topic/<作業名>...HEAD
 スクリプトがあなたの返り値の `openTotal` を見て、次のラウンドを回すか PR 本文に進むかを決める。
 
 - **数えるのはあなたではなくスクリプトである。** 返り値には裁定を通した**後**の件数を入れる。
-- 件数は `review.py list` の出力の `counts` から取る（自分で数え直さない）。
+- **`openTotal` と `openMustFix` は、裁定を全件終えた後にもう一度 `list` を叩いて `counts` から
+  そのまま写す**（自分で数え直さない）。
+
+  ```bash
+  <スクリプト>/review.py list --dir <ベース>/notes/task<番号> --all
+  ```
+
+  | 返り値 | `counts` のどのキーを写すか |
+  | --- | --- |
+  | `openTotal` | `counts.open` |
+  | `openMustFix` | `counts.open_must_fix` |
+
+  `openMustFix` を目で数えない理由は、**この 2 つがワークフローの打ち切り判定に直結する**
+  からである。open の総数と open の `must-fix` の両方が前ラウンド以上だとそのラウンドで
+  打ち切られる（[workflow-script.md](workflow-script.md) の `reviewFixLoop`）ので、数え違いは
+  直せる指摘を残したままの打ち切りか、終わらないループのどちらかになる。
 - **「直さないから open のままにしておく」は選ばない。** 直させないなら `rejected` にする。
   open のまま残すのは「次の修正ラウンドで直させるもの」だけである。
 
@@ -177,8 +192,8 @@ git diff origin/topic/<作業名>...HEAD
 
 | フィールド | 中身 |
 | --- | --- |
-| `openTotal` | **裁定を通した後**に open で残っている件数。0 ならこのタスクは決着 |
-| `openMustFix` | そのうち rating が `must-fix` のもの |
+| `openTotal` | **裁定を通した後**に open で残っている件数（`counts.open` を写す）。0 ならこのタスクは決着 |
+| `openMustFix` | そのうち rating が `must-fix` のもの（`counts.open_must_fix` を写す） |
 | `closed` | このラウンドで `closed` にした件数 |
 | `rejected` | このラウンドで `rejected` にした件数（重複の統合を含む） |
 | `reopened` | `open` に戻した件数 |

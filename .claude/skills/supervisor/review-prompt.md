@@ -128,6 +128,10 @@ agent(reviewPrompt('review:normal', round), {
 （詳細と全フィールドは [review-store.md](review-store.md)）。
 
 ```text
+まず 1 回だけ、記録を作る。指摘が 0 件で終わる場合でも省かない。
+
+  <スクリプト>/review.py init --dir <ベース>/notes/task<番号>
+
 1 件につき 1 回、次を実行する。review-id はスクリプトが振る。
 
   <スクリプト>/review.py new \
@@ -146,8 +150,10 @@ agent(reviewPrompt('review:normal', round), {
   ファイルを書き、本来の対象を本文に書く。
 ```
 
-**指摘が 0 件なら何も呼ばない。** 「走ったが指摘なし」は返り値の `opened: 0` で表明する
-（スクリプトが「起動した全員が結果を返したか」を数えている）。
+**指摘が 0 件でも `init` だけは呼ぶ。** `new` は 1 度も呼ばず、「走ったが指摘なし」は返り値の
+`opened: 0` で表明する。`init` を省くと review.json が作られず、**リードが取り込む前に叩く
+`review.py list --require-empty` が「レビューが 1 度も走っていない」と読んで止まる**
+（[review-store.md](review-store.md)「ラウンドの先頭で記録を作る」）。
 
 **重複を自分で気にしなくてよい。** もう一方のレビュアーと同じ箇所を指摘しても、統合するのは
 裁定である。相手の指摘を読みに行かない（アンカリングを避けるため）。
@@ -157,6 +163,10 @@ agent(reviewPrompt('review:normal', round), {
 2 ラウンド目以降は、**まだ open な指摘が直ったか**を確かめる場面である。
 
 ```text
+0. 記録を作る（既にあるので中身は変わらないが、呼び忘れないよう毎ラウンド行う）。
+
+   <スクリプト>/review.py init --dir <ベース>/notes/task<番号>
+
 1. open のレビューを取る。closed / rejected は見ない。
 
    <スクリプト>/review.py list --dir <ベース>/notes/task<番号>

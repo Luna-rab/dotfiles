@@ -125,10 +125,13 @@ allowed-tools:
    git branch -r | grep -E 'origin/(release/|master$|main$)'
    ```
 
-6. **作業名を決め、チケット番号の有無をユーザーに尋ねる**（チケットは推測しない）。チケットが
-   あれば `<作業名>--<チケット>` を作業名として扱い、topic PR のタイトル末尾にも添える。
-   **統合ツリーのパスにはチケットを付けない**（`.claude/worktrees/supervisor-<作業名>`。
-   チケット抜きの作業名で作る）。
+6. **作業名を決め、チケット番号の有無をユーザーに尋ねる**（チケットは推測しない）。
+   **チケットは作業名に含めない**——topic PR のタイトル末尾にだけ添える
+   （[topic-pr.md](topic-pr.md)「作る」）。以降 `<作業名>` は 1 つの値を指し、topic ブランチ
+   （`topic/<作業名>`）・統合ツリー（`.claude/worktrees/supervisor-<作業名>`）・
+   `place.py --work` のすべてに同じ値を渡す。ここを 2 通りに分けると、`place.py base-dir` が
+   組み立てる統合ツリーのパスと実際に作ったパスが食い違って `git worktree list` に無いと
+   言われ、§2 で止まる。
 7. **その作業名がまだ使われていないことを確かめる。** topic ブランチと統合ツリーのパスが
    作業名から決まるので、既にあるものと重なると取り違える。
 
@@ -325,7 +328,7 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 
 | 返り値 | どうするか |
 | --- | --- |
-| `approved: true` | `verify.py` と `review.py list --require-empty` を通してから PR にして topic へ取り込む（[integration.md](integration.md)） |
+| `approved: true` | `verify.py`・`review.py list --require-empty`・レビュアーの体数（`reviewers` と `expectedReviewers`）の 3 つを通してから PR にして topic へ取り込む（[integration.md](integration.md) §1） |
 | `blocked: true` | `questions` をユーザーに上げ、答えを受けてタスクを組み直し、起動し直す |
 | `failed: true` | `reason` と review.json を見て、立て直すか、ユーザーに上げる（下記） |
 
@@ -357,15 +360,16 @@ Workflow({ script: <組み立てたスクリプト>, args: {
 ### 完了の根拠
 
 **タスクリストの `completed` を完了の根拠にしない。** subagent が終了すると harness が spawn 元の
-タスクを自動で `completed` にすることがある。完了の根拠は次の 3 つだけである。
+タスクを自動で `completed` にすることがある。完了の根拠は次の 4 つだけである。
 
 1. ワークフローの返り値が `approved: true` であること
 2. `verify.py`（ブランチとコミットの実在）
-3. `review.py list --require-empty`（open が 0 件）
+3. `review.py list --require-empty`（review.json が存在し、open が 0 件）
+4. 返り値の `reviewers` が `expectedReviewers` 以上であること（走るはずのレビュアーが揃った）
 
-**3 は「指摘が全件決着したこと」までしか確かめない。** レビュアーが 2 体とも走ったことは
-review.json からは分からない（0 件で終わったのか起動しなかったのかが同じに見える）ので、
-返り値の `reviewers` が `tier` と合っているかを目で見る（[integration.md](integration.md) §1）。
+**3 と 4 は別のことを確かめている。** 3 は「指摘が全件決着したこと」で、レビュアーが何体
+走ったかは review.json からは分からない（指摘 0 件で終わったのか起動しなかったのかが同じに
+見える）。4 の 2 つの数だけがその食い違いを表せる（[integration.md](integration.md) §1 手順 4）。
 
 ## 8. 仕上げる
 

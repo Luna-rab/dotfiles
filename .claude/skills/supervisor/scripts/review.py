@@ -9,15 +9,17 @@
 PR は全レビューが closed か rejected になってから作る（PR 作成はリードが行う）。
 
 サブコマンド:
+  init     review.json を空で作る（レビューエージェントがラウンドの先頭で呼ぶ）
   new      レビューを立てる（レビューエージェントだけ）
   comment  レビューにコメントを足す（実装・レビュー・裁定）
   status   status を動かす（裁定だけ。コメント必須）
   list     レビューを一覧する（既定は open のみ。--all で全件）
 
 役割ごとの使い分け:
-  review:normal / review:adversarial  new / comment / list（open のみ）
+  review:normal / review:adversarial  init / new / comment / list（open のみ）
   impl:a / impl:b                     comment / list（open のみ）
   judge                               comment / status / list --all
+  リード                              list --require-empty
 """
 
 import argparse
@@ -39,6 +41,21 @@ def text_arg(inline, source, label):
     if source is not None:
         return store.check_text(read_source(source), label)
     return store.check_text(inline, label)
+
+
+def cmd_init(args):
+    """review.json を空で作る。既にあれば中身に触らない。
+
+    レビューエージェントはラウンドの先頭でこれを呼ぶ。指摘 0 件で終わったラウンドは
+    1 件も書き込まないので、ファイルの中身では「走ったが指摘なし」と「起動しなかった」
+    「--dir を打ち間違えた」を区別できない。**ファイルの実在**を走行の証拠にすることで、
+    リードの `list --require-empty` がその 3 つを見分けられるようになる。
+    """
+    path = store.review_path(args.dir)
+    created = not store.exists(path)
+    with store.with_lock(path) as data:
+        counts = store.tally(data)
+    emit({"wrote": path, "created": created, "counts": counts}, pretty=True)
 
 
 def cmd_new(args):
@@ -115,10 +132,23 @@ def cmd_list(args):
         and (not args.reviewer or value.get("reviewer") == args.reviewer)
         and (not args.rating or value.get("rating") == args.rating)
     }
-    emit({"path": path, "counts": counts, "total": len(selected),
-          "reviews": store.listed(selected)}, pretty=True)
+    emit({"path": path, "exists": store.exists(path), "counts": counts,
+          "total": len(selected), "reviews": store.listed(selected)}, pretty=True)
 
-    if args.require_empty and counts["open"]:
+    if not args.require_empty:
+        return
+
+    # ファイルが無いことを「open 0 件」と読むと、`--dir` の打ち間違いも、レビューが 1 体も
+    # 走らなかったラウンドも、決着として通ってしまう。この検査は取り込み前の唯一の門なので、
+    # 「レビューが走った証拠が無い」と「走って全件決着した」を分けて落とす
+    if not store.exists(path):
+        warn(
+            f"{path} がありません。レビューが 1 度も走っていないか、--dir が違います"
+            "（レビューエージェントはラウンドの先頭で `review.py init` を呼ぶ決まりです）。"
+            "取り込まずに、ワークフローを立て直してください"
+        )
+        raise SystemExit(1)
+    if counts["open"]:
         warn(
             f"open のレビューが {counts['open']} 件あります。"
             "全件が closed か rejected になるまで PR を作らないでください"
@@ -139,6 +169,11 @@ def build_parser():
         p.add_argument("--comment-file", help="コメント本文のファイル（- で標準入力）")
         p.add_argument("--new-thread", action="store_true",
                        help="判定がまだ付いていないスレッドがあっても新しいスレッドを立てる")
+
+    p = sub.add_parser(
+        "init", help="review.json を空で作る（レビューエージェントがラウンドの先頭で呼ぶ）")
+    add_dir(p)
+    p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("new", help="レビューを立てる（レビューエージェントだけ）")
     add_dir(p)

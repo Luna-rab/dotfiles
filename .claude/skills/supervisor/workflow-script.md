@@ -206,7 +206,10 @@ async function runReview({ round, adversarial = !LIGHT, effort = 'medium' }) {
     // 起動できなかったレビュー。review.json を見ても「走ったが指摘 0 件」と区別が付かないので、
     // 「2 体が走った」ことを担保するのはこの検査だけである。0 でなければ裁定に進ませない
     missing: reviews.length - ok.length,
+    // 実際に結果を返した体数。tier から導いた期待値ではなく実測値なので、リードが
+    // 「standard なのに 1 体しか走っていない」を検出できる（SKILL.md §7「完了の根拠」）
     reviewers: ok.length,
+    expected: reviews.length,
   }
 }
 
@@ -227,7 +230,10 @@ const fail = reason => ({ task: task.id, branch, failed: true,
 // 打ち切りは 2 つ: ラウンド上限に達した / 無進捗。
 // 無進捗は「open の総数」と「open の must-fix」の**両方が前ラウンド以上**で判定する。
 // must-fix だけで見ると、must-fix が 0 で should-fix が残っている局面（どちらも前ラウンドと
-// 同じ 0 件）が無進捗に見えて、直せるはずの should-fix を残したまま打ち切る
+// 同じ 0 件）が無進捗に見えて、直せるはずの should-fix を残したまま打ち切る。
+//
+// 戻り値の `infra: true` は「エージェントが起動しなかった」＝実装の欠陥ではない打ち切りである。
+// 呼び出し元はこれを再計画レーンに流さない（「3.」の直前で分岐している）
 async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
   let prevTotal = Infinity, prevMustFix = Infinity
   for (let i = 1; ; i++) {
@@ -239,18 +245,21 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
       return { done: false, blocked: true, round,
                reason: 'タスクブランチかベース資料が見つからない' }
     if (review.missing > 0)
-      return { done: false, round,
+      return { done: false, infra: true, round,
                reason: `レビューが ${review.missing} 本起動しなかった（2 回試行）` }
 
     const judge = await agentRetry(judgePrompt(round),
       { label: `judge:${task.id}#${round}`, phase: 'Judge',
         model: 'opus', effort: 'medium', isolation: 'worktree', schema: JUDGE })
     if (!judge)
-      return { done: false, round, reason: '裁定エージェントが起動しなかった（2 回）' }
+      return { done: false, infra: true, round,
+               reason: '裁定エージェントが起動しなかった（2 回）' }
     collect(judge)
 
+    // 決着したこのラウンドの実測値を返す。リードがこれと expected を突き合わせる
     if (judge.openTotal === 0)
-      return { done: true, round, closed: judge.closed, rejected: judge.rejected }
+      return { done: true, round, closed: judge.closed, rejected: judge.rejected,
+               reviewers: review.reviewers, expected: review.expected }
     if (i >= maxRounds)
       return { done: false, round,
                reason: `ラウンド上限（open ${judge.openTotal} 件 / must-fix ${judge.openMustFix} 件）` }
@@ -263,7 +272,8 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
       { label: `fix:${task.id}#${tag}${i + 1}`, phase: 'Fix',
         ...implOpts, isolation: 'worktree', schema: IMPL })
     if (!fix)
-      return { done: false, round, reason: '修正エージェントが起動しなかった（2 回）' }
+      return { done: false, infra: true, round,
+               reason: '修正エージェントが起動しなかった（2 回）' }
     collect(fix)
     branch = fix.branch || branch
     changeKind = fix.changeKind || 'logic'
@@ -288,6 +298,12 @@ let r = await reviewFixLoop({ tag: '', maxRounds: 3 })
 // レビューが起点に載れなかった（ブランチが push されていない・ベース資料が無い）。
 // エスカレーションしても同じ壁に当たるので、ここで返す
 if (r.blocked) return fail(`レビューが起点に載れなかった: ${r.reason}`)
+
+// エージェントが起動しなかった打ち切り。**実装の欠陥ではないので再計画レーンに流さない。**
+// 流すと、まだ 1 度も裁定を受けていない実装を impl-b が方針から作り直すことになる
+// （replanPrompt / implPrompt('impl-b') は「前の実装を捨てて作り直す」契約である）。
+// リードが resumeFrom を組み立てて同じ実装の続きから立て直すのが正しい
+if (r.infra) return fail(`エージェントが起動しなかった: ${r.reason}`)
 
 // --- 3. 直しきれなければ 再計画 → impl-b → 新規レビューでやり直す ---
 if (!r.done) {
@@ -318,7 +334,11 @@ const prBody = await agentRetry(prBodyPrompt(),
 return {
   task: task.id, tier: task.tier, branch,
   approved: true,
-  reviewers: REVIEWERS,          // 走らせたレビュアーの役割（記録用）
+  // 決着したラウンドで**実際に結果を返した**レビュアーの体数と、tier から決まる期待体数。
+  // 2 つを別々に返すのは、片方だけでは食い違いを検出できないためである（tier から導いた
+  // 値だけを返すと、何が起きても tier と一致してリードの突き合わせが空振りする）
+  reviewers: r.reviewers, expectedReviewers: r.expected,
+  reviewerRoles: REVIEWERS,      // 走らせるはずだった役割（記録用）
   reviewFile: `${NOTES}/review.json`,   // リードが --require-empty で確かめる
   closed: r.closed, rejected: r.rejected,
   prTitle: prBody?.title,        // 無ければリードが最小限の本文で PR を作る
@@ -369,13 +389,18 @@ return {
 
 ## リード側の受け取り
 
-返り値（`approved` / `blocked` / `failed` / `branch` / `reviewFile` / `prTitle` / `prBodyFile` /
-`decisions` / `deferrals`）を受け取ったら、**内容を鵜呑みにせず実地検証してから**
-（[integration.md](integration.md) §1 の `verify.py` と `review.py list --require-empty`）取り込む。
+返り値（`approved` / `blocked` / `failed` / `branch` / `reviewFile` / `reviewers` /
+`expectedReviewers` / `prTitle` / `prBodyFile` / `decisions` / `deferrals`）を受け取ったら、
+**内容を鵜呑みにせず実地検証してから**（[integration.md](integration.md) §1 の `verify.py`・
+`review.py list --require-empty`・レビュアーの体数）取り込む。
 
 - `blocked` — `questions` をユーザーに上げ、答えを受けてタスクを組み直して起動し直す
 - `failed` — `reason` と review.json を見て、ユーザーに上げるか、`resumeFrom` を組み立てて
-  起動し直す。**PR は作られていない**ので、GitHub 上には何も残らない
+  起動し直す。**PR は作られていない**ので、GitHub 上には何も残らない。`reason` が
+  「エージェントが起動しなかった」で始まるものは実装の欠陥ではないので、**タスクを組み直さず
+  `resumeFrom` で同じ実装の続きから立て直す**
+- `reviewers` < `expectedReviewers` — 走るはずのレビュアーが欠けたまま決着している。
+  **取り込まない**（[integration.md](integration.md) §1 手順 4）
 - `prBodyFile` が空 — PR 本文エージェントが 2 回とも起動しなかった場合である。**PR は作る**
   （成果を GitHub に出す）が、本文は最小限にしてユーザーに知らせる（[integration.md](integration.md) §2）
 - `notesDir` — 立て直しのとき、新しいワークフローの引き継ぎノートの置き場として同じパスを使う

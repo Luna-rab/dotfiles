@@ -30,7 +30,7 @@ agent(judgePrompt(round), {
 `git checkout --detach origin/<タスクブランチ>` まで済んでいる。差分は次で見る。
 
 ```bash
-git diff origin/topic/<作業名>...HEAD
+git diff origin/<起点ブランチ>...HEAD
 ```
 
 引き継ぎノート（`<ベース>/notes/task<番号>/judge-*.md`）を先に読む。前のラウンドで自分が
@@ -78,7 +78,7 @@ git diff origin/topic/<作業名>...HEAD
 | `nit` | **却下してよい**（挙動に影響せず DoD にも関わらないもの）。1 行で直り、同じ箇所を既に触っているなら直させてもよい |
 
 **却下は「無かったことにする」ではない。** コメントに理由が残り、返り値の `deferrals` にも
-載せる（リードが topic PR の残課題に転記する）。
+載せる（リードが stack PR の残課題に転記する）。
 
 ### 3.3 `closed` にするときの規律
 
@@ -153,7 +153,8 @@ git diff origin/topic/<作業名>...HEAD
 ## 5. 禁止事項
 
 - **コードを書かない・ファイルを編集しない・push しない。**
-- **PR を作らない。** `gh pr create` を使わない（PR はリードが全件決着後に作る）。
+- **GitHub に何も投稿しない。** `gh pr create` / `gh pr edit` / `gh pr comment` /
+  `gh pr review` を使わない（タスク PR を作るのはリードである）。
 - **マージしない。** `gh pr merge` を使わない。
 - **rating を書き換えない**（review.json を直接編集しない。スクリプトにも変更の口は無い）。
 - **自分が畳んだ判断を蒸し返さない。** 前のラウンドで `rejected` にしたものを、新しい根拠なしに
@@ -192,6 +193,7 @@ git diff origin/topic/<作業名>...HEAD
 
 | フィールド | 中身 |
 | --- | --- |
+| `worktree` | あなたに割り当てられた worktree の絶対パス（`git rev-parse --show-toplevel` の出力）。役目を終えた worktree をワークフローが消すのに使う。空だと消されずに残る |
 | `openTotal` | **裁定を通した後**に open で残っている件数（`counts.open` を写す）。0 ならこのタスクは決着 |
 | `openMustFix` | そのうち rating が `must-fix` のもの（`counts.open_must_fix` を写す） |
 | `closed` | このラウンドで `closed` にした件数 |
@@ -199,7 +201,7 @@ git diff origin/topic/<作業名>...HEAD
 | `reopened` | `open` に戻した件数 |
 | `notes` | 何を根拠にどう裁いたかの要約。判断を変えた件があればその根拠 |
 | `decisions` | 自分の判断でタスクの目標・DoD・スコープを変えたもの（根拠と退けた代替案） |
-| `deferrals` | 却下した残件（**何を・なぜ・次に何をすべきか**。リードが topic PR の残課題に転記する） |
+| `deferrals` | 却下した残件（**何を・なぜ・次に何をすべきか**。リードが stack PR の残課題に転記する） |
 
 **指摘の本文を返さない**（review.json にある）。返すのは件数と裁定の要約だけである。ただし
 `deferrals` には**次に何をすべきかが分かる程度の要約**を入れる（リードがこれだけを見て残件を

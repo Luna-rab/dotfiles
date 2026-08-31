@@ -1,7 +1,10 @@
 # PR 本文エージェントの契約（あなた自身が読む）
 
 全レビューが closed か rejected になった後、ワークフローの最後に 1 回だけ走る。**PR の本文を
-書いてファイルに置くだけ**で、PR は作らない（作るのはリード。[integration.md](integration.md)）。
+書いてファイルに置くだけ**で、PR には触らない（載せるのはリード。[integration.md](integration.md)）。
+
+**PR はまだ無い。** 全レビューが決着した後、あなたが書いた本文とタイトルで**リードが PR を作る**
+（[integration.md](integration.md) §2 の手順 1）。つまりこれが、人間が読む唯一の本文である。
 
 ```javascript
 agent(prBodyPrompt(), {
@@ -18,8 +21,8 @@ agent(prBodyPrompt(), {
 `git checkout --detach origin/<タスクブランチ>` まで済んでいる。
 
 ```bash
-git diff origin/topic/<作業名>...HEAD      # この PR に入る差分
-git log origin/topic/<作業名>..HEAD --oneline
+git diff origin/<起点ブランチ>...HEAD      # この PR に入る差分
+git log origin/<起点ブランチ>..HEAD --oneline
 ```
 
 読むものは 4 つ。
@@ -35,6 +38,10 @@ git log origin/topic/<作業名>..HEAD --oneline
 
 `<ベース>/notes/task<番号>/pr-body.md` に本文を書く（パスはプロンプトに封入されている）。
 **このファイル 1 つだけを書く。** リポジトリのファイルを編集しない。
+
+**stacked PR の説明を書かない。** 「これは stacked PR の 1 本で、下から順にレビュー・マージする」
+という案内は、リードが載せるときに `state.py task-body` が本文の先頭へ差す
+（[integration.md](integration.md) §2 の手順 1）。ここで書くと二重になる。
 
 リポジトリに PR テンプレート（`.github/PULL_REQUEST_TEMPLATE.md` など）があれば、**その見出しを
 残したまま**中身を埋める。無ければ次の構成にする。
@@ -78,17 +85,18 @@ git log origin/topic/<作業名>..HEAD --oneline
 
 ## 4. タイトル
 
-`title` として返す。リードがそのまま `gh pr create --title` に渡す。
+`title` として返す。リードがそのまま PR 作成時のタイトルに渡す
+（[integration.md](integration.md) §2 の手順 1）。
 
 ```
-[supervisor #<topicPR番号> task<番号>] <種別>: <件名>
+[supervisor #<stackPR番号> task<番号>] <種別>: <件名>
 ```
 
 - `<種別>` は `feat` / `fix` / `docs` など、そのリポジトリの既存 PR タイトルに倣う
   （`git log` と `gh pr list` で確かめる）。
 - **`brief.md` に「PR タイトルを検査する job がある」と書いてあるときは接頭辞を末尾に回す**
   （`fix: パーサの境界値を直す [supervisor #100 task1]`）。先頭に置くと検査が落ちる。
-- `<topicPR番号>` はプロンプトに封入されている topic PR の番号である。
+- `<stackPR番号>` はプロンプトに封入されている stack PR（stacked PR の土台 task-0 の PR）の番号である。
 
 ## 5. 禁止事項
 
@@ -103,7 +111,8 @@ git log origin/topic/<作業名>..HEAD --oneline
 
 | フィールド | 中身 |
 | --- | --- |
+| `worktree` | あなたに割り当てられた worktree の絶対パス（`git rev-parse --show-toplevel` の出力）。役目を終えた worktree をワークフローが消すのに使う。空だと消されずに残る |
 | `title` | PR のタイトル（§4 の形。リードがそのまま使う） |
 | `bodyFile` | 書いた本文の絶対パス |
-| `behaviorChange` | `true` / `false`。挙動が変わるか（リードが topic PR の本文をまとめるときの材料） |
+| `behaviorChange` | `true` / `false`。挙動が変わるか（リードが stack PR の本文をまとめるときの材料） |
 | `notes` | 何を根拠に挙動の変化を書いたか。確かめられなかった点があればそれも |

@@ -1,9 +1,9 @@
 export const meta = {
   name: 'supervisor-task',
-  description: '1 タスクを実装→レビュー→裁定→修正で決着させ、ブランチと PR 本文を返す（PR 作成はリード）',
+  description: '1 タスクを実装→レビュー→裁定→修正で決着させ、PR 本文を返す',
   phases: [
     { title: 'Implement' }, { title: 'Review' }, { title: 'Judge' },
-    { title: 'Fix' }, { title: 'Escalation' }, { title: 'PR' },
+    { title: 'Fix' }, { title: 'Escalation' }, { title: 'PR' }, { title: 'Cleanup' },
   ],
 }
 
@@ -27,26 +27,32 @@ export const meta = {
 // --- args の防御パース（JSON 文字列で渡された場合に備える） ---
 const input = typeof args === 'string' ? JSON.parse(args) : args
 const task = input?.task
-const TOPIC = input?.topic          // 例: topic/<作業名>
+const PARENT = input?.parent        // 起点にしたブランチ。起動時の stacked PR の先頭
+                                    // （例: stack/<作業名>--task-0）
 const BASE = input?.base            // place.py base-dir が返した絶対パス
 const WORK = input?.work            // 作業名
-const TOPIC_PR = input?.topicPr     // topic PR の番号。タスク PR のタイトルに入る
+const STACK_PR = input?.stackPr     // stacked PR の土台（task-0）の PR 番号。タスク PR のタイトルに入る
 const SKILL_DIR = input?.skillDir   // このスキルのディレクトリ（絶対パス）
 const RESUME = input?.resumeFrom    // { branch, sha, transcriptDir } | undefined
 
-if (!task?.id || !task?.branch || !TOPIC || !BASE || !WORK || !TOPIC_PR || !SKILL_DIR)
+if (!task?.id || !task?.branch || !PARENT || !BASE || !WORK || !STACK_PR || !SKILL_DIR)
   return { failed: true, reason:
-    'args.task.id / args.task.branch / args.topic / args.base / args.work / args.topicPr / ' +
+    'args.task.id / args.task.branch / args.parent / args.base / args.work / args.stackPr / ' +
     'args.skillDir のいずれかが欠けている（実オブジェクトで渡すこと）' }
 
 const SCRIPTS = `${SKILL_DIR}/scripts`
 const LIGHT = task.tier === 'light'
 const NOTES = `${BASE}/notes/${task.id}`         // 引き継ぎノートと review.json の置き場
+// 各ループの 1 巡目で走らせるレビュアーの役割。2 巡目以降は通常レビューだけになる（下の runReview）
 const REVIEWER_ROLES = LIGHT ? ['review:normal'] : ['review:normal', 'review:adversarial']
 const implOpts = LIGHT ? { model: 'sonnet', effort: 'medium' } : { model: 'opus' }
 
 // --- schema（返すのは判断に要る値だけ。指摘の本文は review.json にある） ---
+// どの役割にも `worktree` がある。**割り当てられた worktree の絶対パスを自己申告させる値**で、
+// 役目を終えた worktree を走行中に消すために使う（下の「後始末レーン」）。ワークフローの
+// スクリプトからは自分の runId が読めないので、パスを知る道はこの申告だけである
 const IMPL = { type: 'object', properties: {
+  worktree: { type: 'string' },
   branch: { type: 'string' },
   commits: { type: 'array', items: { type: 'string' } },
   changeKind: { enum: ['docs', 'logic'] },     // 再レビューの軽重を決める
@@ -62,6 +68,7 @@ const IMPL = { type: 'object', properties: {
 
 // レビュアーは review.json に書くだけ。status を動かさないので verdict に承認は無い
 const REVIEW = { type: 'object', properties: {
+  worktree: { type: 'string' },
   verdict: { enum: ['reported', 'blocked'] },
   opened: { type: 'number' },               // このラウンドで立てた review の件数
   mustFix: { type: 'number' }, shouldFix: { type: 'number' }, nit: { type: 'number' },
@@ -71,6 +78,7 @@ const REVIEW = { type: 'object', properties: {
 }, required: ['verdict', 'opened', 'notes', 'contractRead'] }
 
 const JUDGE = { type: 'object', properties: {
+  worktree: { type: 'string' },
   openTotal: { type: 'number' },        // 裁定を通した後に open で残っている件数（counts.open）
   openMustFix: { type: 'number' },      // そのうち rating が must-fix のもの（counts.open_must_fix）
   closed: { type: 'number' },           // このラウンドで closed にした件数
@@ -83,26 +91,38 @@ const JUDGE = { type: 'object', properties: {
 }, required: ['openTotal', 'openMustFix', 'notes', 'contractRead'] }
 
 const PLAN = { type: 'object', properties: {
+  worktree: { type: 'string' },
   plan: { type: 'string' }, unsolvable: { type: 'boolean' }, reason: { type: 'string' },
   contractRead: { type: 'boolean' },
 }, required: ['plan', 'contractRead'] }
 
 const PRBODY = { type: 'object', properties: {
+  worktree: { type: 'string' },
   title: { type: 'string' },             // リードが gh pr create --title にそのまま渡す
-  bodyFile: { type: 'string' },          // 書いた本文の絶対パス
+  bodyFile: { type: 'string' },          // 書いた本文の絶対パス（state.py task-body に渡す）
   behaviorChange: { type: 'boolean' },   // 挙動が変わるか
   contractRead: { type: 'boolean' },
   notes: { type: 'string' },
 }, required: ['title', 'bodyFile', 'contractRead'] }
 
+// 後始末レーン。渡したパスのうち、消えたものと残ったものを写して返すだけ
+const SWEEP = { type: 'object', properties: {
+  removed: { type: 'array', items: { type: 'string' } },   // 出力が `"removed": true` だったパス
+  kept: { type: 'array', items: { type: 'string' } },      // 消えなかったパス
+  notes: { type: 'string' },                               // 残った理由（reason）を 1 行で
+}, required: ['removed', 'kept'] }
+
 // --- 共通の前置き（worktree の規律・前提資料・引き継ぎノート） ---
-// startPoint はこのエージェントが detached で載る先。実装の初回だけ topic、以降はタスクブランチ。
+// startPoint はこのエージェントが detached で載る先。実装の初回だけ起点のブランチ、以降はタスクブランチ。
 // **リポジトリの絶対パスを書かない**——書くと、worktree 付きのエージェントでもメインツリー側で
 // `git checkout --detach` を実行して HEAD を外す事故が起きた（design-notes.md「worktree の注意」）
 // canPush は「このエージェントがタスクブランチを前進させる役か」。実装・修正・impl-b だけが true。
 // 役割で分けるのは、読み取り専用の役（レビュー・裁定・再計画・PR 本文）に push の仕方を教えると、
 // 同じプロンプトの中で不変条件「push しない」と食い違うためである。矛盾した指示は、どちらが
 // 効くかがモデル任せになる
+// 前提資料に `${BASE}/ledger.md` を入れない。他タスクとの関係は下の taskBlock の
+// 「隣接タスクとの契約」（args.task.contracts）で既に渡してあり、台帳はタスクが増えるほど太って
+// 全エージェントの入力に毎回乗る（タスク 6 本の後半で 10KB を超える）。台帳はリードだけが読む
 // 引き継ぎノートのファイル名に使う役割名。`review:normal` のコロンを落とす。
 // review.py に渡す役割タグ（`--reviewer review:normal`）とファイル名を分けるのは、コロンが
 // Windows のファイル名に使えず、シェルのグロブでも扱いにくいためである
@@ -118,7 +138,6 @@ const preamble = (role, round, startPoint, canPush) => `
 3. 前提資料を読む（git の追跡対象外なので checkout では作業ツリーに現れない）:
    ${BASE}/brief.md（検証コマンド・外形動作の手順・不可侵パス・規約）
    ${BASE}/map.md（コードベースの入口）
-   ${BASE}/ledger.md（他タスクとの関係）
 4. **コードを読む前に引き継ぎノートを読む**: ${NOTES}/${noteName(role)}-*.md（あるものすべて）。
    前のラウンドの同じ役割が、読んだ箇所・実行した検証と結果・構造の要点を残している。
 5. 終える前に \`mkdir -p ${NOTES}\` して ${NOTES}/${noteName(role)}-r${round}.md を書く。
@@ -128,17 +147,46 @@ const preamble = (role, round, startPoint, canPush) => `
   ? `push は \`git push origin HEAD:refs/heads/${task.branch}\` で行う（リモートにだけ作る）。`
   : `**push しない。** あなたはこのブランチを前進させる役ではない。commit も push も行わず、
    見たこと・判断したことだけを返す。`}
+7. **返り値の \`worktree\` に \`git rev-parse --show-toplevel\` の出力を入れる**（あなたに
+   割り当てられた worktree の絶対パス）。役目を終えた worktree はワークフローが消すので、
+   これが空だと消されずに残る。**自分では消さない**（自分が入っているディレクトリである）。
 `
+
+// --- 契約のうち、この場面で当たる節だけを読ませる ---
+// implementation-prompt.md は 16KB・review-prompt.md は 15KB ある。全文を開くと 1 体あたり
+// 4k トークン級が入力に乗るが、場面ごとに当たらない節がある（修正ラウンドに「着手前に計画を
+// 立てる」、通常レビューに「敵対的レビューの前提」）。それを外すと 1 体あたり 3〜6KB 減る。
+//
+// **行番号を焼き込まない。** 契約に 1 行足すだけでずれるので、節の位置はエージェントに grep で
+// 取らせる。grep 1 回（数百バイト）で、読まずに済む節の分が丸ごと浮く。
+const SECTIONS = {
+  impl: '§1〜§6・§9〜§11（§0 はスキルを直す人向け。§7 は修正ラウンド、§8 は impl-b の節）',
+  fix: '§1・§4〜§7・§9〜§11（§2・§3 は初回の実装向け、§8 は impl-b の節）',
+  implB: '§1〜§6・§8〜§11（§0 はスキルを直す人向け。§7 は修正ラウンドの節）',
+  review1: '§1〜§3・§5・§6・§8〜§10（§4 は敵対的レビュー向け、§7 は 2 巡目以降の節）',
+  reviewN: '§1〜§3・§5〜§10（§4 は敵対的レビュー向けの節）',
+  reviewAdv: '§1〜§6・§8〜§10（§7 は 2 巡目以降の節。敵対的レビューは 1 巡目だけ走る）',
+}
+
+const readOnly = (file, sections) => sections ? `
+**契約は全文を開かない。この場面で当たる節だけを読む。** 読むのは ${sections}である。
+
+1. \`grep -n '^## ' ${SKILL_DIR}/${file}\` で各節の開始行を得る
+2. Read の offset と limit を読む節の範囲に合わせて呼ぶ（続きの節はまとめて 1 回で読める）
+
+**外した節はこの場面に当たらないので、読まなくても不足ではない。** 判断に迷ったら、その節だけを
+後から読み足す。
+` : ''
 
 // --- 契約ファイルへの案内（全役割に共通） ---
 // 契約は .md に 1 つだけ置き、各エージェントが自分で読む。読み替え表を添えるのは、契約の中の
 // プレースホルダ（<ベース> など）がこのタスクのどの値を指すのかを、契約を読む前に確定させるため。
-const contractPointer = (file, role, round, startPoint) => `
+const contractPointer = (file, role, round, startPoint, sections) => `
 【あなたの契約】
 
-**コードを読む前に、まず ${SKILL_DIR}/${file} を Read せよ。** これがあなたの契約であり、
+**コードを読む前に、まず ${SKILL_DIR}/${file} を読め。** これがあなたの契約であり、
 何をどう判断するかはそこに書いてある。このプロンプトは契約を要約していない。
-
+${readOnly(file, sections)}
 契約の中のプレースホルダは、このタスクでは次の値を指す。読み替えて実行せよ。
 
 | 契約の表記 | このタスクでの値 |
@@ -148,13 +196,13 @@ const contractPointer = (file, role, round, startPoint) => `
 | \`task<番号>\` | ${task.id} |
 | \`<ベース>/notes/task<番号>\` | ${NOTES} |
 | \`<作業名>\` | ${WORK} |
-| \`topic/<作業名>\` | ${TOPIC} |
+| \`<起点ブランチ>\` | ${PARENT} |
 | \`<タスクブランチ>\` | ${task.branch} |
 | \`<ラウンド>\` | ${round} |
 | \`<起点>\` | ${startPoint} |
 | \`<自分の役割>\` | ${role} |${noteName(role) === role ? '' : `
 | \`<自分の役割>\`（ファイル名に使うとき） | ${noteName(role)}（引き継ぎノートはこの名前で書く。\`review.py --reviewer\` に渡すタグは上の行のまま） |`}
-| \`<topicPR番号>\` | ${TOPIC_PR} |
+| \`<stackPR番号>\` | ${STACK_PR} |
 
 返り値の \`contractRead\` には、この契約ファイルを実際に Read したかを入れる。読めなかった
 （ファイルが無い・権限が無い）場合は false にし、\`notes\` にその旨を書く。偽らない——
@@ -167,8 +215,11 @@ const contractPointer = (file, role, round, startPoint) => `
 const INVARIANTS = {
   impl: `
 【契約を読めなくても必ず守ること】
-- **PR を作らない・マージしない。** \`gh pr create\` / \`gh pr merge\` を使わない（PR は全レビューが
-  決着してからリードが作る）。
+- **PR を作らない。** \`gh pr create\` / \`gh pr edit\` を使わない（PR は全レビューが決着して
+  からリードが作る）。
+- **マージしない。** \`gh pr merge\` も \`gh stack merge\` も使わない（stacked PR へ積むのはリードで、
+  マージするのはユーザーである）。
+- **stacked PR に触れない。** \`gh stack\` を呼ばない（積み替えはリードがスタックツリーで行う）。
 - **review.json の status を動かさない。** \`${SCRIPTS}/review.py status\` を呼ばない
   （動かせるのは裁定だけで、スクリプトも拒む）。直した報告は \`review.py comment\` で残す。
 - **メイン作業ツリー・他のディレクトリのチェックアウトに触れない。**
@@ -187,7 +238,8 @@ const INVARIANTS = {
 【契約を読めなくても必ず守ること】
 - **status を動かせるのはあなただけである。** \`${SCRIPTS}/review.py status --commenter judge\` を
   使い、**コメントを必ず付ける**（コメント無しはスクリプトが拒む）。
-- **コードを書かない・ファイルを編集しない・push しない・PR を作らない。**
+- **GitHub には何も投稿しない。** \`gh pr comment\` / \`gh pr review\` を使わない。
+- **コードを書かない・ファイルを編集しない・push しない・PR を作らない・マージしない。**
 - **\`openTotal\` と \`openMustFix\` は目で数えない。** 裁定を全件終えたあとに
   \`${SCRIPTS}/review.py list --dir ${NOTES} --all\` を叩き、出力の \`counts.open\` と
   \`counts.open_must_fix\` をそのまま写す（この 2 つがワークフローの打ち切り判定に直結する）。
@@ -218,21 +270,23 @@ const taskBlock = `
 - 調査の入口: ${task.entrypoints ?? '（未指定）'}
 - 隣接タスクとの契約: ${task.contracts ?? '（なし）'}
 - タスクブランチ: ${task.branch}
-- 起点の topic ブランチ: ${TOPIC}
+- 起点のブランチ（作る PR の base）: ${PARENT}
 `
 
 // --- プロンプト組み立て（骨組みに固定。リードは組み立てない） ---
-const buildPrompt = ({ file, role, round, startPoint, invariants, canPush = false, extra = '' }) =>
+const buildPrompt = ({ file, role, round, startPoint, invariants, canPush = false, extra = '',
+                       sections = null }) =>
   preamble(role, round, startPoint, canPush) +
-  contractPointer(file, role, round, startPoint) +
+  contractPointer(file, role, round, startPoint, sections) +
   invariants + '\n' + taskBlock + extra
 
 const implPrompt = (role, round, resume, plan) => buildPrompt({
   file: 'implementation-prompt.md',
   role, round,
-  startPoint: resume ? `origin/${task.branch}` : `origin/${TOPIC}`,
+  startPoint: resume ? `origin/${task.branch}` : `origin/${PARENT}`,
   invariants: INVARIANTS.impl,
   canPush: true,
+  sections: plan ? SECTIONS.implB : SECTIONS.impl,
   extra: (resume ? `
 【続きから始める】
 前回の run が途中で落ちている。やり直さず、push 済みの ${resume.sha ?? 'タスクブランチ先端'} を
@@ -251,6 +305,7 @@ const fixPrompt = round => buildPrompt({
   startPoint: `origin/${task.branch}`,
   invariants: INVARIANTS.impl,
   canPush: true,
+  sections: SECTIONS.fix,
   extra: `
 【この起動は修正ラウンドである】
 契約の「修正ラウンド」の節に従う。open のレビューを
@@ -259,11 +314,13 @@ const fixPrompt = round => buildPrompt({
 `,
 })
 
-const reviewPrompt = (role, round) => buildPrompt({
+const reviewPrompt = (role, round, first = true) => buildPrompt({
   file: 'review-prompt.md',
   role, round,
   startPoint: `origin/${task.branch}`,
   invariants: INVARIANTS.review,
+  sections: role === 'review:adversarial' ? SECTIONS.reviewAdv
+    : first ? SECTIONS.review1 : SECTIONS.reviewN,
   extra: `
 【この起動の役割】
 \`review.py new --reviewer\` に渡す役割タグは **${role}** である。
@@ -273,15 +330,17 @@ ${role === 'review:adversarial' ? `
 ` : ''}`,
 })
 
-const judgePrompt = round => buildPrompt({
+const judgePrompt = (round, roles = REVIEWER_ROLES) => buildPrompt({
   file: 'judge-prompt.md',
   role: 'judge', round,
   startPoint: `origin/${task.branch}`,
   invariants: INVARIANTS.judge,
   extra: `
 【このラウンドで走ったレビュアー】
-${REVIEWER_ROLES.join(' / ')}
+${roles.join(' / ')}
 （引き継ぎノートにこれを書く。次のラウンドの自分が、誰の指摘を裁いたかを追えるようにする）
+**敵対的レビューは各ループの 1 巡目だけ走る。** 2 巡目以降にその名前が挙がっていないのは
+正しい状態であり、前の巡で敵対的が立てた指摘が open で残っていれば、あなたがそれを裁く。
 `,
 })
 
@@ -307,10 +366,36 @@ const prBodyPrompt = () => buildPrompt({
 【書き先】
 ${NOTES}/pr-body.md
 
-【タイトルの接頭辞に入れる topic PR の番号】
-${TOPIC_PR}
+【タイトルの接頭辞に入れる stack PR（task-0）の番号】
+${STACK_PR}
 `,
 })
+
+// --- 役目を終えた worktree を消す後始末レーン ---
+// ワークフローのスクリプトはシェルを実行できないので、`worktree.py remove` を叩く体を 1 つ立てる。
+// **worktree を付けない**——消す側が消される側と同じ場所にいると、自分の足元を抜くことになる。
+// 消してよいかの判定はスクリプトが持つ（locked / dirty / unpushed / wf_ で始まらない名前を拒む）。
+// ここで渡すのは「役目が終わった」という事実だけである
+const sweepPrompt = paths => `
+あなたは worktree の後始末レーンである。**次のコマンドを 1 回実行し、その出力を写して返す**
+だけが仕事である。コードを読まない・書かない・checkout しない・commit しない・push しない。
+
+\`\`\`bash
+${SCRIPTS}/worktree.py remove --role-done --branch ${task.branch} \\
+  ${paths.map(p => `--path "${p}"`).join(' \\\n  ')}
+\`\`\`
+
+消えるのは、役目を終えたエージェントの worktree のうち**消しても失われるものが無いもの**だけ
+である。スクリプトが locked（まだ生きている）・dirty（未コミットの変更がある）・unpushed
+（この worktree にしか無いコミットがある）・\`wf_\` で始まらない名前を拒む。
+**終了コードが非 0 でも失敗ではない**——拒まれた分は run が終わってからリードが片づける。
+
+返り値には出力の JSON をそのまま写す。\`removed\` は \`"removed": true\` だったパスの配列、
+\`kept\` はそれ以外のパスの配列、\`notes\` は拒まれたものの \`reason\` を 1 行で（無ければ空）。
+
+**コマンドを書き換えない。** \`--force\` を足さない・\`git worktree\` を直接叩かない・
+上に並んでいないパスを足さない。
+`
 
 // --- args.dryRun: 組み立てたプロンプトを返すだけで、エージェントを 1 体も起動しない ---
 // 契約ファイルを直したときや骨組みを直したときに、**トークンを使わずに**各エージェントが
@@ -324,12 +409,52 @@ if (input?.dryRun)
       impl: implPrompt('impl', 0, null),
       fix: fixPrompt('2'),
       reviewNormal: reviewPrompt('review:normal', '1'),
+      // 2 巡目の通常レビュー。読む節が 1 巡目と違うことを確かめる口である
+      reviewNormalAgain: reviewPrompt('review:normal', '2', false),
       reviewAdversarial: reviewPrompt('review:adversarial', '1'),
-      judge: judgePrompt('1'),
+      judge: judgePrompt('1', REVIEWER_ROLES),
+      // 2 巡目の裁定。走ったレビュアーの一覧が通常 1 体だけになることを確かめる口である
+      judgeAgain: judgePrompt('2', ['review:normal']),
       replan: replanPrompt('（打ち切り理由の例）'),
       prBody: prBodyPrompt(),
+      // 後始末レーン。パスは走ってからしか決まらないので、dryRun では例の値を埋める
+      sweep: sweepPrompt(['/example/wf_a1b2c3-1', '/example/wf_a1b2c3-2']),
     },
   }
+
+// --- 役目を終えた worktree を溜めて、区切りのよいところでまとめて消す ---
+// **消すのは、打ち切らずに次の段へ進んだ経路だけである。** 打ち切って返る経路（blocked / failed）では
+// 1 つも消さない——落ちた run の worktree は、リードが中身を見て立て直すときの材料になる
+// （design-notes.md「なぜ worktree をワークフローの中で消すか」）。
+// 溜めるのは、消すたびにレーンを 1 体立てると体数が段の数だけ増えるためである。区切りは
+// 「実装が push を終えた」「そのラウンドの裁定が終わった」「impl-b が push を終えた」
+// 「PR 本文が書き上がった」の 4 か所（workflow-script.md の表と同じ）。
+const known = []      // このワークフローのエージェントが申告した worktree のパス（重複なし）
+const retired = []    // 役目を終えて消してよいもののうち、まだ後始末レーンに渡していない分
+const gone = []       // 実際に消えたパス
+
+const pathsOf = items => items.map(i => (typeof i === 'string' ? i : i?.worktree)).filter(Boolean)
+// see: 見かけただけ（まだ消してよいとは言っていない）。retire: 役目が終わったので消してよい
+const see = (...items) => {
+  for (const p of pathsOf(items)) if (!known.includes(p)) known.push(p)
+}
+const retire = (...items) => {
+  see(...items)
+  retired.push(...pathsOf(items))
+}
+// 残っている worktree。リードは run が終わってからこれを片づける
+const kept = () => known.filter(p => !gone.includes(p))
+
+async function sweep(round) {
+  if (!retired.length) return
+  const batch = retired.splice(0)          // 取り出して空にする（同じパスを 2 度渡さない）
+  const r = await agent(sweepPrompt(batch),
+    { label: `sweep:${task.id}#${round}`, phase: 'Cleanup',
+      model: 'sonnet', effort: 'low', schema: SWEEP })
+  // **後始末が失敗してもタスクは止めない。** 消し残しは disk を食うだけで、決着には関わらない。
+  // 消えたことにするのは渡したパスに載っているものだけである（レーンの申告をそのまま数えない）
+  for (const p of r?.removed || []) if (batch.includes(p) && !gone.includes(p)) gone.push(p)
+}
 
 // --- agent() の起動失敗（null）と no-op を 1 回だけリトライする ---
 // isNoop: 結果はあるが実作業の痕跡が無い応答（定型文）を検出する述語（省略可）
@@ -340,40 +465,57 @@ async function agentRetry(prompt, opts, isNoop) {
   return r
 }
 
-// --- 1 ラウンドのレビュー。standard は通常＋敵対的を並列、light は通常 1 本 ---
+// --- 1 ラウンドのレビュー。standard の 1 巡目は通常＋敵対的を並列、それ以外は通常 1 本 ---
 // レビュアーは review.json に指摘を立てるだけで、status は動かさない（動かすのは裁定）。
 // ここが返すのは件数と「全員が結果を返したか」だけである。
-async function runReview({ round, adversarial = !LIGHT, effort = 'medium' }) {
+//
+// **敵対的レビューは各ループの 1 巡目だけ走らせる**（呼び出し元が first で渡す）。2 巡目以降の
+// 差分は open の指摘を直したものだけで、implementation-prompt.md が「範囲を広げない」を禁じて
+// いる。同じ差分を粗探しの前提でもう一度読み直す価値は 1 巡目より低い。修正が持ち込んだ新規の
+// 問題は通常レビューが拾う（review-prompt.md §7 の 4）。impl-b の後は差分が全面的に入れ替わる
+// ので、そのループの 1 巡目でもう一度走る。
+async function runReview({ round, adversarial = !LIGHT, effort = 'medium', first = true }) {
   // 検証の記録が無い、または契約を読んでいない応答は no-op を疑って 1 回だけ振り直す
   const noop = r => !r.notes || r.contractRead === false
+  const roles = ['review:normal']
   const reviews = [
-    () => agentRetry(reviewPrompt('review:normal', round),
+    () => agentRetry(reviewPrompt('review:normal', round, first),
       { label: `review:${task.id}#${round}`, phase: 'Review',
         model: LIGHT ? 'sonnet' : 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop),
   ]
-  if (adversarial) reviews.push(
-    () => agentRetry(reviewPrompt('review:adversarial', round),
-      { label: `review-adv:${task.id}#${round}`, phase: 'Review',
-        model: 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop))
+  if (adversarial) {
+    roles.push('review:adversarial')
+    reviews.push(
+      () => agentRetry(reviewPrompt('review:adversarial', round, first),
+        { label: `review-adv:${task.id}#${round}`, phase: 'Review',
+          model: 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop))
+  }
 
-  const ok = (await parallel(reviews)).filter(Boolean)
+  const results = await parallel(reviews)
+  const ok = results.filter(Boolean)
+
   return {
     blocked: ok.some(r => r.verdict === 'blocked'),
     opened: ok.reduce((n, r) => n + (r.opened || 0), 0),
     // 起動できなかったレビュー。review.json を見ても「走ったが指摘 0 件」と区別が付かないので、
-    // 「2 体が走った」ことを担保するのはこの検査だけである。0 でなければ裁定に進ませない
+    // 「2 体が走った」ことを担保するのはこの検査だけである。0 でなければ裁定に進ませない。
     missing: reviews.length - ok.length,
     // 実際に結果を返した体数。tier から導いた期待値ではなく実測値なので、リードが
-    // 「standard なのに 1 体しか走っていない」を検出できる（SKILL.md §7「完了の根拠」）
+    // 「このラウンドで走るはずの体数に届いていない」を検出できる（SKILL.md §7「完了の根拠」）
     reviewers: ok.length,
     expected: reviews.length,
+    // このラウンドで走らせた役割と、実際に結果を返した役割。裁定のプロンプトに入れる
+    roles: roles.filter((_, i) => Boolean(results[i])),
+    expectedRoles: roles,
+    // 結果を返したレビュアーの worktree。役目は終わっているので、裁定が終わったら消せる
+    worktrees: ok.map(r => r.worktree).filter(Boolean),
     // 契約を読めなかったレビュアーの数。0 でなければリードに知らせる（品質が落ちている）
     contractMisses: ok.filter(r => r.contractRead === false).length,
   }
 }
 
 // --- 状態（ループとエスカレーションで共有する） ---
-const carry = { decisions: [], deferrals: [], contractMisses: 0 }
+const carry = { decisions: [], deferrals: [], contractMisses: 0, adversarialRan: false }
 const collect = r => {
   carry.decisions.push(...(r?.decisions || []))
   carry.deferrals.push(...(r?.deferrals || []))
@@ -381,9 +523,11 @@ const collect = r => {
 }
 let branch = task.branch, changeKind = 'logic'
 
-// 途中で止まったときの共通の返し方
-const fail = reason => ({ task: task.id, branch, failed: true,
-                          reason, notesDir: NOTES, reviewFile: `${NOTES}/review.json`, ...carry })
+// 途中で止まったときの共通の返し方。**worktree は 1 つも消さずに残す**（立て直すときの材料）。
+// 残したパスを返すのは、リードが `worktree.py list` を叩く前に何が残っているかを知るためである
+const fail = reason => ({ task: task.id, branch, failed: true, reason,
+                          notesDir: NOTES, reviewFile: `${NOTES}/review.json`,
+                          worktreesKept: kept(), ...carry })
 
 // --- レビュー → 裁定 → 修正のループ（初回とエスカレーション後で共通） ---
 // 決着 = review.json の open が 0 件（全件が closed か rejected）。
@@ -398,10 +542,14 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
   let prevTotal = Infinity, prevMustFix = Infinity
   for (let i = 1; ; i++) {
     const round = `${tag}${i}`
-    const review = await runReview({ round,
-      adversarial: !LIGHT && changeKind !== 'docs',
+    const review = await runReview({ round, first: i === 1,
+      adversarial: !LIGHT && changeKind !== 'docs' && i === 1,
       effort: changeKind === 'docs' ? 'low' : 'medium' })
+    see(...review.worktrees)   // 打ち切って返る経路でも、残した worktree をリードに知らせる
     carry.contractMisses += review.contractMisses
+    // このタスクで敵対的レビューが 1 度でも結果を返したか。ラウンドごとの expected では
+    // 「standard なのに敵対的が 1 度も走っていない」を検出できないので、別に持つ
+    if (review.roles.includes('review:adversarial')) carry.adversarialRan = true
     if (review.blocked)
       return { done: false, blocked: true, round,
                reason: 'タスクブランチかベース資料が見つからない' }
@@ -409,7 +557,7 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
       return { done: false, infra: true, round,
                reason: `レビューが ${review.missing} 本起動しなかった（2 回試行）` }
 
-    const judge = await agentRetry(judgePrompt(round),
+    const judge = await agentRetry(judgePrompt(round, review.roles),
       { label: `judge:${task.id}#${round}`, phase: 'Judge',
         model: 'opus', effort: 'medium', isolation: 'worktree', schema: JUDGE })
     if (!judge)
@@ -417,10 +565,16 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
                reason: '裁定エージェントが起動しなかった（2 回）' }
     collect(judge)
 
+    // このラウンドはレビューも裁定も結果を返した。**ここまで来たラウンドの worktree は役目を
+    // 終えている**ので、溜めていた分（前のラウンドの修正・初回の実装）と一緒に消す。
+    // 上の打ち切り（blocked / missing / 裁定が起動しない）で返る経路には置かない
+    retire(...review.worktrees, judge)
+    await sweep(round)
+
     // 決着したこのラウンドの実測値を返す。リードがこれと expected を突き合わせる
     if (judge.openTotal === 0)
       return { done: true, round, closed: judge.closed, rejected: judge.rejected,
-               reviewers: review.reviewers, expected: review.expected }
+               reviewers: review.reviewers, expected: review.expected, roles: review.roles }
     if (i >= maxRounds)
       return { done: false, round,
                reason: `ラウンド上限（open ${judge.openTotal} 件 / must-fix ${judge.openMustFix} 件）` }
@@ -436,6 +590,7 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
       return { done: false, infra: true, round,
                reason: '修正エージェントが起動しなかった（2 回）' }
     collect(fix)
+    retire(fix)          // push 済みなので消せる。実際に消すのは次のラウンドの裁定のあと
     branch = fix.branch || branch
     changeKind = fix.changeKind || 'logic'
   }
@@ -447,11 +602,18 @@ const impl = await agentRetry(implPrompt('impl', 0, RESUME),
 if (!impl)
   return { task: task.id, failed: true, reason: '実装エージェントが起動しなかった（2 回）' }
 collect(impl)
+see(impl)     // 役目が終わるのは push してからなので、ここではまだ消してよいと言わない
 if (impl.blocked)
-  return { task: task.id, branch: impl.branch, blocked: true,
-           questions: impl.questions, ...carry }
+  // worktree は消さずに残す（タスクを組み直して立て直すときの材料になる）
+  return { task: task.id, branch: impl.branch, blocked: true, questions: impl.questions,
+           worktreesKept: kept(), ...carry }
 branch = impl.branch || branch
 changeKind = impl.changeKind || 'logic'
+// 実装は push を終えた。この worktree にしか無いものはもう無いので消す
+// （レビュアーは自分の worktree で origin/<タスクブランチ> に載り直す）。レビューを始める前に
+// 消すのは、レビュー中の同時在庫を 1 本減らすためである
+retire(impl)
+await sweep('impl')
 
 // --- 2. レビュー → 裁定 → 修正（3 ラウンドまで） ---
 let r = await reviewFixLoop({ tag: '', maxRounds: 3 })
@@ -473,6 +635,7 @@ if (!r.done) {
       model: 'opus', isolation: 'worktree', schema: PLAN })
   if (!plan) return fail(`再計画エージェントが起動しなかった（2 回）。直前: ${r.reason}`)
   collect(plan)
+  see(plan)   // 消してよいのは impl-b が push を終えてからなので、ここでは見かけただけにする
   if (plan.unsolvable) return fail(`解決不能と判断された: ${plan.reason}`)
 
   const implB = await agentRetry(implPrompt('impl-b', 0, null, plan.plan),
@@ -482,33 +645,48 @@ if (!r.done) {
   collect(implB)
   branch = implB.branch || branch
   changeKind = implB.changeKind || 'logic'
+  retire(plan, implB)      // 再計画は読むだけ、impl-b は push 済み。どちらも役目を終えた
+  await sweep('impl-b')
 
   r = await reviewFixLoop({ tag: 'b', maxRounds: 3 })   // レビューは新規に立て直す
   if (r.infra) return fail(`エージェントが起動しなかった: ${r.reason}`)
   if (!r.done) return fail(`impl-b でも決着に至らなかった: ${r.reason}`)
 }
 
-// --- 4. PR 本文を書く（PR を作るのはリード） ---
+// --- 4. PR 本文を書く（PR に載せるのはリード） ---
 const prBody = await agentRetry(prBodyPrompt(),
   { label: `pr-body:${task.id}`, phase: 'PR',
     model: 'opus', isolation: 'worktree', schema: PRBODY })
 collect(prBody)
 
-// --- 5. 返す（PR 作成と取り込みはリードが行う） ---
+// --- 4.5. 最後の後始末（決着したので、残っている worktree は全部役目を終えている） ---
+retire(prBody)
+await sweep('final')
+
+// --- 5. 返す（PR 本文の差し替えと取り込みはリードが行う） ---
 return {
   task: task.id, tier: task.tier, branch,
   approved: true,
-  // 決着したラウンドで**実際に結果を返した**レビュアーの体数と、tier から決まる期待体数。
-  // 2 つを別々に返すのは、片方だけでは食い違いを検出できないためである（tier から導いた
-  // 値だけを返すと、何が起きても tier と一致してリードの突き合わせが空振りする）
+  // 決着したラウンドで**実際に結果を返した**レビュアーの体数と、そのラウンドで走らせるはず
+  // だった体数。2 つを別々に返すのは、片方だけでは食い違いを検出できないためである。
+  // **どちらもラウンド単位である**——敵対的レビューは 1 巡目だけ走るので、2 巡目で決着した
+  // タスクはどちらも 1 になる。「standard なのに敵対的が 1 度も走っていない」の検出は
+  // 下の adversarialRan が担う
   reviewers: r.reviewers, expectedReviewers: r.expected,
-  reviewerRoles: REVIEWER_ROLES,   // 走らせるはずだった役割（記録用）
+  reviewerRoles: r.roles ?? REVIEWER_ROLES,   // 決着したラウンドで結果を返した役割（記録用）
+  // このタスクで敵対的レビューが 1 度でも結果を返したか。**standard で false なら取り込まない**
+  // （tier に見合うレビューを受けていない）。light では常に false である
+  adversarialRan: carry.adversarialRan,
   // 契約ファイルを読めずに走ったエージェントの延べ数。0 でなければ品質が落ちているので、
   // リードは差分を自分で確かめてから取り込む
   contractMisses: carry.contractMisses,
   reviewFile: `${NOTES}/review.json`,   // リードが --require-empty で確かめる
   closed: r.closed, rejected: r.rejected,
-  prTitle: prBody?.title,        // 無ければリードが最小限の本文で PR を作る
+  // 走行中に消した worktree の数と、消さずに残したパス。**残りは run が終わってから
+  // `worktree.py remove --run <runId> --merged` で片づける**（integration.md §4）
+  worktreesRemoved: gone.length,
+  worktreesKept: kept(),
+  prTitle: prBody?.title,
   prBodyFile: prBody?.bodyFile,
   behaviorChange: prBody?.behaviorChange,
   lastRound: r.round,

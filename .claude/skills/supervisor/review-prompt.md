@@ -3,10 +3,9 @@
 スクリプトが 1 ラウンドにつき 1〜2 体を並列で起動する。`schema` は [scripts/task-workflow.js](scripts/task-workflow.js) の
 `REVIEW` を使う。
 
-**あなたは指摘を `review.py new` で review.json に立てる。GitHub には何も投稿しない**
-（PR はレビューが全件決着してからリードが作る）。**status は動かせない**——直ったかどうかを
-判定して畳むのは裁定エージェントである。あなたが返すのは**見つけた事実と、実施した検証の記録**
-だけである。
+**あなたは指摘を `review.py new` で review.json に立てる。GitHub には何も投稿しない。**
+**status は動かせない**——直ったかどうかを判定して畳むのは裁定エージェントである。あなたが
+返すのは**見つけた事実と、実施した検証の記録**だけである。
 
 ```javascript
 agent(reviewPrompt('review:normal', round), {
@@ -18,7 +17,7 @@ agent(reviewPrompt('review:normal', round), {
 | 種類 | いつ | model | effort |
 | --- | --- | --- | --- |
 | 通常レビュー | 毎ラウンド | standard `opus` / light `sonnet` | `medium` |
-| 敵対的レビュー | standard のときだけ。毎ラウンド | `opus` | `medium` |
+| 敵対的レビュー | standard の**1 巡目だけ**（impl-b の後の 1 巡目も含む） | `opus` | `medium` |
 | doc だけの修正の再レビュー | 直前の修正が `changeKind: "docs"` を返したとき。通常 1 本のみ | `sonnet` | `low` |
 
 **`isolation: 'worktree'` を必ず付ける。** 付けないと 2 体が同じツリーで検証コマンドを走らせて
@@ -27,9 +26,13 @@ agent(reviewPrompt('review:normal', round), {
 **毎ラウンド新しいレビュアーが立つ**（ワークフローのエージェントは再開できない）。再探索のコストは
 引き継ぎノートで削る（§1）。
 
-**リードが単発で起動する解消レビューは別物である。** リードが topic へのマージでコンフリクトを
+**リードが単発で起動する解消レビューは別物である。** リードが stacked PR への積み替えでコンフリクトを
 解消したときに 1 体だけ走らせる経路で、review.json を使わず**返り値だけ**を返す
 （[integration.md](integration.md) §2）。§6 と §7 はワークフローの中のレビューに向けて書いてある。
+
+**読む節は場面ごとに違う。** プロンプトに「読むのは §… である」と書かれているので、
+`grep -n '^## '` で節の開始行を取り、その範囲だけを Read する。**全文を開かない**（通常レビューに
+§4「敵対的レビューの前提」は当たらず、1 巡目に §7「再レビューでやること」は当たらない）。
 
 ## 1. 対象に載る
 
@@ -44,7 +47,7 @@ agent(reviewPrompt('review:normal', round), {
 2. 前提資料を読む。
    <ベース>/brief.md   検証コマンド・外形動作の確認手順・不可侵パス・規約
    <ベース>/map.md     コードベースの入口
-3. 差分は `git diff origin/topic/<作業名>...HEAD` で見る。
+3. 差分は `git diff origin/<起点ブランチ>...HEAD` で見る。
 ```
 
 **起点に載れなかったら、検証を 1 つも流さずに `verdict: "blocked"` で返す。** タスクブランチが
@@ -151,7 +154,7 @@ agent(reviewPrompt('review:normal', round), {
 ```
 
 **指摘が 0 件でも `init` だけは呼ぶ。** `new` は 1 度も呼ばず、「走ったが指摘なし」は返り値の
-`opened: 0` で表明する。`init` を省くと review.json が作られず、**リードが取り込む前に叩く
+`opened: 0` で表明する。`init` を省くと review.json が作られず、**リードが積む前に叩く
 `review.py list --require-empty` が「レビューが 1 度も走っていない」と読んで止まる**
 （[review-store.md](review-store.md)「ラウンドの先頭で記録を作る」）。
 
@@ -161,6 +164,8 @@ agent(reviewPrompt('review:normal', round), {
 ## 7. 再レビューでやること
 
 2 ラウンド目以降は、**まだ open な指摘が直ったか**を確かめる場面である。
+**このラウンドはあなた 1 体だけが走る**（敵対的レビューは 1 巡目だけ）。修正が持ち込んだ新しい
+問題を拾うのはあなたである——手順 4 を省かない。
 
 ```text
 0. 記録を作る（既にあるので中身は変わらないが、呼び忘れないよう毎ラウンド行う）。
@@ -225,7 +230,6 @@ agent(reviewPrompt('review:normal', round), {
 - **実装ファイルを直さない。** 反証のための再現テストを手元で足して走らせるのはよいが、push しない。
 - **status を動かさない**（`review.py status` を呼ばない。スクリプトの検査でも拒まれる）。
 - **GitHub に何も投稿しない。** `gh pr create` / `gh pr comment` / `gh pr review` を使わない。
-  **PR を作らない**（作るのはリードで、全レビューが決着した後である）。
 - **`closed` / `rejected` を読まない**（`list --all` を使わない）。他のレビュアーの指摘・実装の
   返信を掘り起こさない（アンカリングを避けるため）。
 - **review-id を自分で決めない**（`new` が振る）。
@@ -239,6 +243,7 @@ agent(reviewPrompt('review:normal', round), {
 
 | フィールド | 中身 |
 | --- | --- |
+| `worktree` | あなたに割り当てられた worktree の絶対パス（`git rev-parse --show-toplevel` の出力）。役目を終えた worktree をワークフローが消すのに使う。空だと消されずに残る |
 | `verdict` | `reported`（指摘を立てた。0 件でもこれ）/ `blocked`（起点に載れなかった） |
 | `opened` | このラウンドで `new` した件数（0 件ならそう返す） |
 | `mustFix` / `shouldFix` / `nit` | その内訳 |

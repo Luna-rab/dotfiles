@@ -6,13 +6,17 @@
 
 サブコマンドは無い。1 つの判定しかしないので、引数だけを渡す。
 
-  verify.py --branch <タスクブランチ> --base <topic/作業名>
+  verify.py --branch <タスクブランチ> --base <起点にしたブランチ>
 
-2 つの検査（ブランチが origin にある / base からのコミットが 1 件以上ある）が
+2 つの検査（ブランチが origin にある / 起点からのコミットが 1 件以上ある）が
 両方通ったときだけ終了コード 0 を返す。
 
-**PR は見ない。** PR はレビューが全件決着してからリードが作るので、この時点では存在しない
-（integration.md）。**レビューの決着も見ない。** そちらは
+`--base` に渡すのは、そのブランチを切った起点である（stacked PR の土台 `stack/<作業名>--task-0` か、
+起動時の stacked PR の先頭。state.json の `parent`）。stacked PR へ積んだ後は起点が動くので、この数え方は
+積む前にだけ意味がある（../integration.md §1）。
+
+**PR は見ない。** PR は全レビューが決着してからリードが作るので、この検査を叩く時点では
+まだ存在しない（../integration.md §2）。**レビューの決着も見ない。** そちらは
 `review.py list --dir <ベース>/notes/task<番号> --require-empty` が判定する。
 """
 
@@ -72,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="verify.py", description=__doc__)
     parser.add_argument("--branch", required=True, help="タスクブランチ名")
     parser.add_argument(
-        "--base", required=True, help="起点にした base ブランチ名（topic/<作業名>）"
+        "--base", required=True, help="起点にしたブランチ名（state.json の parent）"
     )
     return parser
 

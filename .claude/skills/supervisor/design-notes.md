@@ -144,7 +144,7 @@ flowchart TB
     direction TB
     verify["§1 報告を実物で確かめる<br/>（stack.py precheck の 6 検査）"]
     mkpr["§2-1 タスク PR を作る<br/>（state.py task-body → /create-pr）"]
-    clean["§2-2 worktree を外す<br/>（worktree.py remove --run --settled）"]
+    clean["§2-2 worktree を外す<br/>（worktree.py remove --run --branch --settled）"]
     lane["§2-3 stack.py append<br/>（gh stack add → rebase → push → link）"]
     conf["§3 コンフリクトなら解消して --continue"]
     body["§2-4・5 state.py set → render → gh pr edit<br/>（台帳と stack PR の本文を差し替える）"]

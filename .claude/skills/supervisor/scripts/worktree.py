@@ -32,7 +32,7 @@ import subprocess
 from typing import Any
 
 from lib.gitpath import listed_worktrees, locked_worktrees, run_worktrees
-from lib.shell import die, emit, out, run
+from lib.shell import die, emit, git, out, run
 
 RESCUE_MESSAGE: str = "wip: 中断時点の保全（検証未実施）"
 
@@ -52,14 +52,20 @@ def targets(args: argparse.Namespace) -> list[str]:
     die("--run か --path のどちらかを指定してください")
 
 
-def inspect(path: str, locks: dict[str, str] | None = None) -> dict[str, Any]:
+def inspect(
+    path: str, locks: dict[str, str] | None = None, listed: set[str] | None = None
+) -> dict[str, Any]:
     """1 つの worktree の状態を調べる。`git worktree list` に無ければ gone。
 
     `locked` は「まだ生きているエージェントが掴んでいる」しるしなので、`dirty` とは別の
     キーで返す。**リードはこれを run の生死の手がかりに使う**（../integration.md §2 手順 2）。
     生きている run の worktree を消すと、走っているエージェントの足元を抜くことになる。
+
+    `locks` と `listed` は呼び出し元が 1 回だけ取って渡す（worktree ごとに
+    `git worktree list --porcelain` を叩き直さないため）。
     """
-    if path not in listed_worktrees():
+    listed = listed_worktrees() if listed is None else listed
+    if path not in listed:
         return {"path": path, "state": "gone", "locked": False}
     locks = locked_worktrees() if locks is None else locks
     locked = {"locked": path in locks}
@@ -80,13 +86,14 @@ def inspect(path: str, locks: dict[str, str] | None = None) -> dict[str, Any]:
 def cmd_list(args: argparse.Namespace) -> None:
     found = targets(args)
     locks = locked_worktrees()
-    listed = [inspect(p, locks) for p in found]
+    known = listed_worktrees()
+    rows = [inspect(p, locks, known) for p in found]
     emit(
         {
             "run": args.run,
             "count": len(found),
-            "locked": sum(1 for w in listed if w["locked"]),
-            "worktrees": listed,
+            "locked": sum(1 for w in rows if w["locked"]),
+            "worktrees": rows,
         },
         pretty=True,
     )
@@ -120,9 +127,11 @@ def authorization(args: argparse.Namespace) -> str:
             "--settled（precheck が通ってレビューが全件決着した）か --aborted（打ち切った）を"
             " 1 つだけ指定してください。まだ決着を待っている worktree は消しません"
         )
-    if given[0] == "--role-done" and not args.branch:
+    if not args.branch:
+        # --settled / --aborted でも省かせない。省くと unpushed の検査（`blocking()`）が
+        # 働かず、push だけ失敗した clean な worktree の唯一のコミットを黙って消す
         die(
-            "--role-done には --branch <タスクブランチ> が必要です。"
+            "remove には --branch <タスクブランチ> が必要です。"
             "HEAD がそのブランチのリモート側に含まれていること（この worktree にしか無い"
             "コミットが 1 つも無いこと）を確かめてから消します"
         )
@@ -131,7 +140,7 @@ def authorization(args: argparse.Namespace) -> str:
 
 def ancestor(path: str, ref: str) -> bool:
     """path の HEAD が ref に含まれているか。ref が無いときも False を返す。"""
-    code, _ = run(["git", "-C", path, "merge-base", "--is-ancestor", "HEAD", ref], allow_fail=True)
+    code, _ = git(path, ["merge-base", "--is-ancestor", "HEAD", ref], allow_fail=True)
     return code == 0
 
 
@@ -146,7 +155,7 @@ def pushed(path: str, branch: str) -> bool:
     ref = f"refs/remotes/origin/{branch}"
     if ancestor(path, ref):
         return True
-    run(["git", "-C", path, "fetch", "origin", branch], allow_fail=True)
+    git(path, ["fetch", "origin", branch], allow_fail=True)
     return ancestor(path, ref)
 
 
@@ -190,26 +199,34 @@ def blocking(
 
     if info["state"] == "clean" and branch and not pushed(path, branch):
         # この worktree にしか無いコミットがある。push 漏れか、起点が origin/<branch> の系列に
-        # 無いかのどちらかで、どちらも「消すと追えなくなる」側に転ぶ
+        # 無いかのどちらかで、どちらも「消すと追えなくなる」側に転ぶ。--settled / --aborted でも
+        # 消さない——push だけ失敗して clean になった worktree の唯一のコミットを守る
         return refuse(
             "unpushed",
             path,
             f"HEAD が origin/{branch} に含まれていません。"
-            f"worktree.py list --path {path} で中身を見てから、run の後に "
-            "--settled か --aborted で消してください",
+            f"worktree.py list --path {path} で中身を見て、残すコミットなら "
+            f"`git -C {path} push origin HEAD:refs/heads/{branch}` で push してから"
+            "消してください",
             head=out(["git", "-C", path, "rev-parse", "HEAD"])[:12],
         )
 
     return None
 
 
-def remove_one(path: str, locks: dict[str, str], authorized_by: str, branch: str | None) -> dict:
+def remove_one(
+    path: str,
+    locks: dict[str, str],
+    listed: set[str],
+    authorized_by: str,
+    branch: str | None,
+) -> dict:
     """1 つの worktree を、安全条件を検査してから消す。
 
     返り値の `removed` が False なら消していない。**呼び出し元は `--force` で押し切らない**——
     拒んだ理由は `reason` と `hint` に入る。
     """
-    info = inspect(path, locks)
+    info = inspect(path, locks, listed)
 
     if info["state"] == "gone":
         run(["git", "worktree", "prune"])
@@ -252,8 +269,9 @@ def remove_one(path: str, locks: dict[str, str], authorized_by: str, branch: str
 def cmd_remove(args: argparse.Namespace) -> None:
     authorized_by = authorization(args)
     locks = locked_worktrees()
+    listed = listed_worktrees()
     results: list[dict[str, Any]] = [
-        remove_one(path, locks, authorized_by, args.branch) for path in targets(args)
+        remove_one(path, locks, listed, authorized_by, args.branch) for path in targets(args)
     ]
 
     run(["git", "worktree", "prune"])
@@ -325,8 +343,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--aborted", action="store_true", help="このタスクを打ち切ったことを明示する")
     p.add_argument(
         "--branch",
-        help="タスクブランチ名。HEAD がその origin 側に含まれていることを確かめる"
-        "（--role-done では必須）",
+        help="タスクブランチ名。HEAD がその origin 側に含まれていることを確かめる（必須。"
+        "無いと unpushed の検査が働かず、push できていないコミットごと消してしまう）",
     )
     p.set_defaults(func=cmd_remove)
 

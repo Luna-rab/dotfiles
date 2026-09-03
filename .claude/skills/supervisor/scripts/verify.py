@@ -29,7 +29,11 @@ from lib.shell import die, emit, out, run, warn
 
 
 def main(args: argparse.Namespace) -> None:
-    run(["git", "fetch", "origin"])
+    # fetch は要る 2 ref に絞る。全ブランチの fetch にすると、呼び出し元の stack.py precheck が
+    # 直前に fetch したばかりのリポジトリで、無関係ブランチの転送をもう 1 回繰り返すことになる。
+    # タスクブランチはまだ origin に無いことがある（それ自体が branch-exists の検査対象）ので、
+    # 実在を ls-remote で確かめてから fetch する
+    run(["git", "fetch", "origin", args.base])
     checks: list[dict[str, Any]] = []
 
     code, _ = run(
@@ -48,6 +52,7 @@ def main(args: argparse.Namespace) -> None:
 
     commits = None
     if branch_exists:
+        run(["git", "fetch", "origin", args.branch])
         commits = int(
             out(["git", "rev-list", "--count", f"origin/{args.base}..origin/{args.branch}"])
         )

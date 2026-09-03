@@ -12,7 +12,7 @@ link_to_homedir() {
 
   local dotdir=$1
   if [[ "$HOME" != "$dotdir" ]];then
-    for f in $dotdir/.??*; do
+    for f in "$dotdir"/.??*; do
       # .git で始まるファイル/ディレクトリはリンクしない
       local fname=`basename "$f"`
       [[ $fname == .git* ]] && continue
@@ -23,13 +23,13 @@ link_to_homedir() {
       # ルート直下に生まれる。どちらも .gitignore で追跡対象外なので clone した人の手元には
       # 無いが、検査を回した後に install.sh を実行すると $HOME に symlink が張られてしまう。
       [[ $fname == .venv || $fname == .ruff_cache ]] && continue
-      if [[ -L "$HOME/`basename $f`" ]];then
-        command rm -f "$HOME/`basename $f`"
+      if [[ -L "$HOME/$fname" ]];then
+        command rm -f "$HOME/$fname"
       fi
-      if [[ -e "$HOME/`basename $f`" ]];then
-        command mv "$HOME/`basename $f`" "$HOME/.dotbackup"
+      if [[ -e "$HOME/$fname" ]];then
+        command mv "$HOME/$fname" "$HOME/.dotbackup"
       fi
-      command ln -snf $f $HOME
+      command ln -snf "$f" "$HOME"
       command echo "create symboliclink $f"
     done
   else
@@ -46,7 +46,7 @@ set_global_gitignore() {
     command mv "$HOME/.config/git/ignore" "$HOME/.config/git/ignore.backup"
   fi
   local dotdir=$1
-  command cp $dotdir/.gitignore_global $HOME/.config/git/ignore
+  command cp "$dotdir/.gitignore_global" "$HOME/.config/git/ignore"
 }
 
 link_sheldon_config() {
@@ -134,8 +134,15 @@ link_claude_config() {
 # ~/.claude/settings.json への dotfiles 設定のマージ。
 #
 # dotfiles の .claude/settings.json (= マージ素材) を、実体の
-# ~/.claude/settings.json に deep-merge する。既存の設定を土台に
-# dotfiles 側のキーを重ねるため、既存キーを壊さずに合流できる。
+# ~/.claude/settings.json に deep-merge する。重なったキーの扱い:
+#   - オブジェクト同士は再帰的に合流する
+#   - 配列同士は和集合にする（既存の要素と順序を残し、素材にだけある要素を後ろに足す）。
+#     permissions.allow のようにユーザーが手元で積み上げたリストを全置換で消さないため
+#   - それ以外（文字列・数値・真偽値）は dotfiles 側の値で上書きする。
+#     dotfiles に宣言した設定を再実行のたびに効かせるため
+#
+# 既存の settings.json が JSON として読めないときはマージせず、警告を出して
+# ファイルに触らない（jq の失敗を成功と報告しない）。
 #
 # symlink にしないのは、実体が他ツールによって書き換えられる場合に
 # その変更が dotfiles リポジトリへ漏れるのを避けるため。
@@ -152,14 +159,31 @@ merge_claude_settings() {
     return 0
   fi
 
+  # オブジェクトは再帰、配列は和集合（既存の順序を保つ）、それ以外は素材側で上書き。
+  # 引数は $a / $b で値に束縛する。a / b のままだとフィルタとして遅延評価され、
+  # reduce の中で累積値に対して再評価されて "Cannot index object with number" で落ちる
+  local merge_filter='
+    def merge($a; $b):
+      if ($a | type) == "object" and ($b | type) == "object" then
+        reduce (($a | keys) + ($b | keys) | unique[]) as $k ({};
+          .[$k] = (if ($a | has($k)) and ($b | has($k)) then merge($a[$k]; $b[$k])
+                   elif ($b | has($k)) then $b[$k]
+                   else $a[$k] end))
+      elif ($a | type) == "array" and ($b | type) == "array" then $a + ($b - $a)
+      else $b end;
+    merge(.[0]; .[1])'
+
   if [[ -e "$target" ]]; then
     # 既存設定を壊した場合に備えてバックアップ
     command cp "$target" "$HOME/.dotbackup/settings.json.$(date +%s 2>/dev/null || echo bak)" 2>/dev/null || true
-    # 既存設定を土台に、dotfiles のキーを deep-merge で重ねる。
-    # '*' は再帰マージなので permissions などネストしたキーも安全に合流する。
-    command jq -s '.[0] * .[1]' "$target" "$fragment" > "$target.tmp" \
-      && command mv "$target.tmp" "$target"
-    command echo "merge $fragment into $target (deep merge; existing keys preserved)"
+    if command jq -s "$merge_filter" "$target" "$fragment" > "$target.tmp"; then
+      command mv "$target.tmp" "$target"
+      command echo "merge $fragment into $target (objects merged, arrays unioned, scalars overwritten by dotfiles)"
+    else
+      command rm -f "$target.tmp"
+      command echo "WARNING: failed to merge $fragment into $target (existing file is not valid JSON?)."
+      command echo "         $target is left untouched. fix it and run './install.sh' again"
+    fi
   else
     # 実体が無い場合は素材をそのまま配置
     command jq '.' "$fragment" > "$target"
@@ -339,12 +363,12 @@ install_claude_plugins() {
 }
 
 dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-link_to_homedir $dotdir
-set_global_gitignore $dotdir
-link_sheldon_config $dotdir
-link_mise_config $dotdir
+link_to_homedir "$dotdir"
+set_global_gitignore "$dotdir"
+link_sheldon_config "$dotdir"
+link_mise_config "$dotdir"
 install_mise_tools
 install_gh_extensions
-link_claude_config $dotdir
+link_claude_config "$dotdir"
 command echo "Install completed!!!!"
 command echo "run 'exec zsh' to start a shell with the installed tools on PATH"

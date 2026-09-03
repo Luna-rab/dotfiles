@@ -43,7 +43,7 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-from lib.shell import die, emit, warn
+from lib.shell import die, emit, git, warn
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 
@@ -64,14 +64,6 @@ def require_tree(tree: str) -> str:
             "（.claude/worktrees/supervisor-<作業名>）"
         )
     return path
-
-
-def git(tree: str, argv: list[str], allow_fail: bool = False) -> tuple[int, str]:
-    """スタックツリーの中で git を叩く。`-C` を必ず付ける。"""
-    proc = subprocess.run(["git", "-C", tree, *argv], capture_output=True, text=True, check=False)
-    if proc.returncode != 0 and not allow_fail:
-        die(f"git -C {tree} {' '.join(argv)} が失敗しました\n{proc.stderr.strip()}")
-    return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
 def gh_stack(tree: str, argv: list[str]) -> tuple[int, str]:
@@ -318,6 +310,20 @@ def conflicted_files(tree: str) -> list[str]:
     return [f for f in output.splitlines() if f]
 
 
+def rebase_in_progress(tree: str) -> bool:
+    """git の rebase が途中で止まっているかを、状態ディレクトリの実在で見る。
+
+    「コンフリクトファイルが 0 件」は「rebase が終わった」と同じではない——解消の結果が
+    空変更になって `git rebase --skip` 待ちのときも 0 件になる。その区別を
+    `rebase-merge` / `rebase-apply` ディレクトリの有無で付ける。
+    """
+    for name in ("rebase-merge", "rebase-apply"):
+        _, path = git(tree, ["rev-parse", "--git-path", name], allow_fail=True)
+        if path and os.path.isdir(path if os.path.isabs(path) else os.path.join(tree, path)):
+            return True
+    return False
+
+
 def child(name: str, argv: list[str], tree: str) -> tuple[bool, Any, str]:
     """付属スクリプトを 1 本呼び、(通ったか, JSON, 生の出力) を返す。
 
@@ -363,11 +369,26 @@ def child_check(
     return entry(label, ok, pick(payload) if payload else raw)
 
 
+def _is_result_line(line: str) -> bool:
+    """journal.jsonl の 1 行が、トップレベルに `"type": "result"` を持つ JSON か。
+
+    **部分文字列の照合にしない。** assistant 行の本文（ネストした JSON 文字列）に同じ字面が
+    現れるだけで真になり、走行中のエージェントが返り値の例や journal のスキーマを書き写した
+    だけで「終了済み」と誤判定する。行を JSON として読み、トップレベルの type だけを見る。
+    """
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(row, dict) and row.get("type") == "result"
+
+
 def run_finished_check(transcript_dir: str | None) -> dict[str, Any]:
     """run が本当に終わっているかを、完了通知の transcriptDir から確かめる。
 
     実行中の run に完了通知が誤って発火し、PR 番号もマージも含む捏造レポートが届いた実績がある
-    （`integration.md` §1）。journal.jsonl に `"type":"result"` の行があれば終わっている。
+    （`integration.md` §1）。journal.jsonl にトップレベルが `"type": "result"` の行があれば
+    終わっている。
     """
     if not transcript_dir:
         return entry(
@@ -380,7 +401,7 @@ def run_finished_check(transcript_dir: str | None) -> dict[str, Any]:
     if not os.path.isfile(journal):
         return entry("run-finished", False, f"{journal} がありません")
     with open(journal, encoding="utf-8") as fh:
-        finished = any('"type":"result"' in line.replace(" ", "") for line in fh)
+        finished = any(_is_result_line(line) for line in fh)
     return entry("run-finished", finished, journal)
 
 
@@ -599,6 +620,103 @@ def _finish_append(tree: str, trunk: str, branch: str, steps: list[dict[str, Any
         raise SystemExit(1)
 
 
+def _continue_append(tree: str, trunk: str, branch: str) -> None:
+    """コンフリクトを解消した後の再開（`append --continue`）。
+
+    解消済みの変更は `git add` 済みである前提で `gh stack rebase --continue` を叩く。
+    rebase が既に終わっていれば continue は「進行中の rebase が無い」と言って落ちるので、
+    そのときだけ push からやり直す。
+    """
+    steps: list[dict[str, Any]] = []
+    code, output = gh_stack(tree, ["rebase", "--continue"])
+    steps.append({"step": "rebase-continue", "ok": code == 0, "detail": output})
+    if code != 0:
+        files = conflicted_files(tree)
+        if files:
+            emit(
+                {
+                    "ok": False,
+                    "stage": "rebase",
+                    "conflict": True,
+                    "files": files,
+                    "output": output,
+                    "steps": steps,
+                },
+                pretty=True,
+            )
+            warn(
+                "まだコンフリクトが残っています。解消して `git add` してから"
+                " stack.py append --continue を叩いてください"
+            )
+            raise SystemExit(1)
+        if rebase_in_progress(tree):
+            # コンフリクトは解消済みなのに rebase は途中——解消の結果が空変更で
+            # `git rebase --skip` 待ちの形。ここで push へ進むと rebase 半端な
+            # ブランチ位置を force push してしまう
+            emit(
+                {
+                    "ok": False,
+                    "stage": "rebase",
+                    "conflict": False,
+                    "output": output,
+                    "steps": steps,
+                },
+                pretty=True,
+            )
+            warn(
+                "rebase が途中のまま止まっています（コンフリクトファイルは 0 件）。"
+                "解消の結果が空変更になったのなら "
+                f"`git -C {tree} rebase --skip` を通してから stack.py append --continue を"
+                "やり直してください。push はしていません"
+            )
+            raise SystemExit(1)
+        warn(f"進行中の rebase はありませんでした（{output}）。push から続けます")
+    _finish_append(tree, trunk, branch, steps)
+
+
+def _add_or_align(
+    tree: str, state: dict[str, Any], branch: str, steps: list[dict[str, Any]]
+) -> None:
+    """`gh stack add`（未積み）またはローカル ref の揃え直し（積み直し）を行う。"""
+    order = stack_branches(state)
+
+    if branch in order:
+        steps.append({"step": "add", "ok": None, "skipped": "既に stacked PR に入っている"})
+        # **add を飛ばすときもローカル ref を origin と揃える。** 積み直し（integration.md §4
+        # 手順 2: fix エージェントが同じタスクブランチへ push → append の叩き直し）では、
+        # 新しいコミットは origin にしか無い。揃えずに rebase → push すると、古いローカル ref を
+        # 積み直した force push が origin 側の新しいコミットを黙って消す
+        if state.get("currentBranch") == branch:
+            # ensure_local_branch の fast-forward は `git branch -f` で、checkout 中の
+            # ブランチには使えない。別のスタック内ブランチへ退避する（detached にしない
+            # ——`gh stack` は detached HEAD を読めない。stack_state() を見る）
+            other = next((b for b in order if b != branch), None)
+            if other:
+                git(tree, ["switch", other])
+                steps.append({"step": "switch-away", "ok": True, "detail": other})
+        steps.append(ensure_local_branch(tree, branch))
+        return
+
+    # `gh stack add` に渡す前にローカルブランチを origin と揃える（無いと空のブランチを積む）
+    steps.append(ensure_local_branch(tree, branch))
+
+    top = order[-1]
+    if state.get("currentBranch") != top:
+        # `gh stack add` は stacked PR の先頭に載っているときだけ通る
+        git(tree, ["switch", top])
+        steps.append({"step": "switch-to-top", "ok": True, "detail": top})
+
+    code, output = gh_stack(tree, ["add", branch])
+    if code == GH_STACK_CHECKOUT_BUSY:
+        die(
+            f"gh stack add が checkout の衝突で失敗しました\n{output}\n"
+            "そのブランチを握っている worktree を外してからやり直してください"
+        )
+    if code != 0:
+        die(f"gh stack add が終了コード {code} で失敗しました\n{output}")
+    steps.append({"step": "add", "ok": True, "detail": output})
+
+
 def cmd_append(args: argparse.Namespace) -> None:
     """決着したブランチを stacked PR の先頭へ積む。
 
@@ -616,32 +734,7 @@ def cmd_append(args: argparse.Namespace) -> None:
         raise SystemExit(0 if code == 0 else 1)
 
     if args.cont:
-        # コンフリクトを解消した後の再開。解消済みの変更は `git add` 済みである前提で、
-        # rebase が終わっていれば continue は「進行中の rebase が無い」と言って落ちるので、
-        # そのときは push からやり直す
-        code, output = gh_stack(tree, ["rebase", "--continue"])
-        steps.append({"step": "rebase-continue", "ok": code == 0, "detail": output})
-        if code != 0:
-            files = conflicted_files(tree)
-            if files:
-                emit(
-                    {
-                        "ok": False,
-                        "stage": "rebase",
-                        "conflict": True,
-                        "files": files,
-                        "output": output,
-                        "steps": steps,
-                    },
-                    pretty=True,
-                )
-                warn(
-                    "まだコンフリクトが残っています。解消して `git add` してから"
-                    " stack.py append --continue を叩いてください"
-                )
-                raise SystemExit(1)
-            warn(f"進行中の rebase はありませんでした（{output}）。push から続けます")
-        _finish_append(tree, args.trunk, args.branch or "", steps)
+        _continue_append(tree, args.trunk, args.branch or "")
         return
 
     if not args.branch:
@@ -649,38 +742,18 @@ def cmd_append(args: argparse.Namespace) -> None:
 
     state = stack_state(tree)
     assert state is not None
-    order = stack_branches(state)
+    require_clean(tree, "積み")
 
-    if args.branch in order:
-        steps.append({"step": "add", "ok": None, "skipped": "既に stacked PR に入っている"})
-    else:
-        holder = branch_holder(tree, args.branch)
-        if holder:
-            die(
-                f"{args.branch} は {holder} で checkout されています。"
-                "gh stack add はこのブランチへ HEAD を移すので積めません。"
-                "先に worktree.py remove でエージェントの worktree を外してください"
-                "（integration.md §2）"
-            )
-        require_clean(tree, "積み")
-        # `gh stack add` に渡す前にローカルブランチを origin と揃える（無いと空のブランチを積む）
-        steps.append(ensure_local_branch(tree, args.branch))
+    holder = branch_holder(tree, args.branch)
+    if holder:
+        die(
+            f"{args.branch} は {holder} で checkout されています。"
+            "gh stack の add / rebase はこのブランチへ HEAD を移すので積めません。"
+            "先に worktree.py remove でエージェントの worktree を外してください"
+            "（integration.md §2）"
+        )
 
-        top = order[-1]
-        if state.get("currentBranch") != top:
-            # `gh stack add` は stacked PR の先頭に載っているときだけ通る
-            git(tree, ["switch", top])
-            steps.append({"step": "switch-to-top", "ok": True, "detail": top})
-
-        code, output = gh_stack(tree, ["add", args.branch])
-        if code == GH_STACK_CHECKOUT_BUSY:
-            die(
-                f"gh stack add が checkout の衝突で失敗しました\n{output}\n"
-                "そのブランチを握っている worktree を外してからやり直してください"
-            )
-        if code != 0:
-            die(f"gh stack add が終了コード {code} で失敗しました\n{output}")
-        steps.append({"step": "add", "ok": True, "detail": output})
+    _add_or_align(tree, state, args.branch, steps)
 
     code, output = gh_stack(tree, ["rebase", "--no-trunk"])
     if code != 0:

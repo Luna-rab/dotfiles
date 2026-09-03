@@ -54,29 +54,27 @@ STATUSES: tuple[str, ...] = (
 )
 TIERS: tuple[str, ...] = ("standard", "light")
 
-# prose/<名前>.md に置く散文の節。値は (見出し, 最終版だけの節か, 無いときに出す文)
-PROSE: dict[str, tuple[str, bool, str]] = {
-    "prelude": ("", False, ""),
-    "summary": ("## 概要", False, "<この作業で何が変わるか。挙動の変化を 1〜3 行で>"),
+# prose/<名前>.md に置く散文の節。値は (見出し, 無いときに出す文)。
+# どの節を最終版（--final）だけに出すかは render_body() が持つ
+PROSE: dict[str, tuple[str, str]] = {
+    "prelude": ("", ""),
+    "summary": ("## 概要", "<この作業で何が変わるか。挙動の変化を 1〜3 行で>"),
     "plan": (
         "## 全体の計画と DoD",
-        False,
         "<作業全体で達成する状態。タスクへの割り方の方針を数行で>",
     ),
-    "remaining": ("## 残課題", False, "現時点で無し"),
+    "remaining": ("## 残課題", "現時点で無し"),
     "behavior": (
         "## 変更による挙動の変化",
-        True,
         "<操作 X をすると、これまでは A だったが、これからは B になる>",
     ),
-    "checklist": ("## 確認項目", True, "- [ ] <操作手順> を行うと <観測できる結果> になる"),
+    "checklist": ("## 確認項目", "- [ ] <操作手順> を行うと <観測できる結果> になる"),
     "verification": (
         "## 検証結果",
-        True,
         "<brief.md の検証コマンド一式を stacked PR の先頭で流した結果>",
     ),
-    "decisions": ("### 変更した最終目標・DoD・スコープ", True, ""),
-    "deferrals": ("### 先送り・対象外にした作業", True, ""),
+    "decisions": ("### 変更した最終目標・DoD・スコープ", ""),
+    "deferrals": ("### 先送り・対象外にした作業", ""),
 }
 
 
@@ -182,8 +180,6 @@ def cmd_add_task(args: argparse.Namespace) -> None:
             # 起動時にこのブランチを切った起点。実装が作る PR の base でもある
             # （`set --parent` で入れる。積んだあとは gh stack link が PR の base を張り替える）
             "parent": None,
-            # stacked PR へ積んだときの 1 つ下のブランチ（`set --status stacked` が埋める）
-            "stacked_on": None,
             "pr": None,
             "run_id": None,
             "status": "pending",
@@ -214,9 +210,9 @@ def cmd_set(args: argparse.Namespace) -> None:
     `--decision` と `--deferral` は**足す**（上書きしない）。ワークフローが返した判断を
     ラウンドごとに積むためである。
 
-    `--status stacked` を入れたときは、そのタスクを `stack_order` の末尾に足し、
-    1 つ下のブランチを `stacked_on` に書く。**stacked PR の並びを別に渡さなくてよい**
-    ——積む順は決着した順で、リードが `stack.py append` を通した順そのものである。
+    `--status stacked` を入れたときは、そのタスクを `stack_order` の末尾に足す。
+    **stacked PR の並びを別に渡さなくてよい**——積む順は決着した順で、リードが
+    `stack.py append` を通した順そのものである。
     """
     data = read_state(args.base)
     task = find_task(data, args.task)
@@ -235,8 +231,6 @@ def cmd_set(args: argparse.Namespace) -> None:
     if args.status == "stacked":
         order: list[int] = data.setdefault("stack_order", [])
         if task["number"] not in order:
-            below = stack_chain(data)
-            task["stacked_on"] = below[-1]["branch"] if below else data["bottom"]
             order.append(task["number"])
     for key, values in (("decisions", args.decision), ("deferrals", args.deferral)):
         for value in values or []:
@@ -248,7 +242,6 @@ def cmd_set(args: argparse.Namespace) -> None:
             "task": task["number"],
             "status": task["status"],
             "pr": task["pr"],
-            "stacked_on": task["stacked_on"],
             "stack_order": data.get("stack_order", []),
         },
         pretty=True,
@@ -261,7 +254,7 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def section(name: str, base: str) -> str:
     """散文の 1 節。中身が無ければ雛形の文を置く（何を書く節なのかが残る）。"""
-    heading, _, placeholder = PROSE[name]
+    heading, placeholder = PROSE[name]
     body = read_prose(base, name) or placeholder
     if not heading:
         return body
@@ -285,7 +278,7 @@ def details(summary: str, body: str) -> str:
 
 def folded_section(name: str, base: str) -> str:
     """散文の 1 節を、`## 見出し` を `<summary>` のラベルに移して畳む。"""
-    heading, _, placeholder = PROSE[name]
+    heading, placeholder = PROSE[name]
     return details(heading.lstrip("# "), read_prose(base, name) or placeholder)
 
 
@@ -378,7 +371,7 @@ def autonomy_body(base: str, tasks: list[dict[str, Any]]) -> str:
     """
     out = []
     for name, key in (("decisions", "decisions"), ("deferrals", "deferrals")):
-        heading, _, _ = PROSE[name]
+        heading, _ = PROSE[name]
         lines = [read_prose(base, name)] if read_prose(base, name) else []
         lines.extend(f"- {v}" for v in collected(tasks, key))
         out.append(f"{heading}\n\n" + ("\n".join(lines) if lines else "現時点で無し"))

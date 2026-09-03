@@ -173,7 +173,8 @@ Claude Code が自動で消すのは中身が変わっていない worktree だ�
   リードが中身を見て立て直す材料になる（理由は design-notes.md「なぜ worktree をワークフローの
   中で消すか」）。
 - **消し残しは失敗ではない。** 返り値の `worktreesKept` に載って上がるので、リードが run の後に
-  `worktree.py remove --run <runId> --merged` で片づける（[integration.md](integration.md) §4）。
+  `worktree.py remove --run <runId> --branch <タスクブランチ> --settled` で片づける
+  （[integration.md](integration.md) §2 手順 2。打ち切ったタスクは `--aborted`）。
 - パスはエージェントの自己申告（返り値の `worktree`）で集める。ワークフローのスクリプトからは
   自分の `runId` が読めないので、これが唯一の経路である。
 
@@ -206,7 +207,7 @@ worktree が消えずに積み上がる。
 | `contractMisses` | 契約を読めずに走ったエージェントの延べ数。0 でなければ差分を自分で確かめる |
 | `prBodyFile` が空 | PR 本文エージェントが 2 回とも起動しなかった。**リードが自分で本文を書いてタスク PR を作り**、そのことをユーザーに知らせる（[integration.md](integration.md) §2） |
 | `notesDir` | 立て直しのとき、新しいワークフローの引き継ぎノートの置き場として同じパスを使う |
-| `worktreesRemoved` / `worktreesKept` | 走行中に消した worktree の数と、残ったパス。残った分は run の後に片づける（[integration.md](integration.md) §4）。**`failed` / `blocked` では 1 つも消していない** |
+| `worktreesRemoved` / `worktreesKept` | 走行中に消した worktree の数と、残ったパス。残った分は run の後に片づける（[integration.md](integration.md) §2 手順 2）。**`failed` / `blocked` では 1 つも消していない** |
 
 `failed` の `reason` が**「エージェントが起動しなかった」で始まるもの**は実装の欠陥ではない。
 タスクを組み直さず、`resumeFrom` で同じ実装の続きから立て直す。

@@ -24,8 +24,8 @@
 gh pr edit <stackPR番号> --body-file <ベース>/stack-pr-body.md
 ```
 
-**`--status stacked` を入れた順が stacked PR の並びになる**（`stack_order` に足され、`stacked_on` に
-1 つ下のブランチが入る）。実物の並びは `stack.py show --tree <スタックツリー>` が
+**`--status stacked` を入れた順が stacked PR の並びになる**（`stack_order` に足される）。
+実物の並びは `stack.py show --tree <スタックツリー>` が
 `gh stack view --json` から読むので、食い違ったらそちらが正しい。
 
 `prose/<名前>.md` の名前と、それがどの節になるかは `state.py` の `PROSE` にある

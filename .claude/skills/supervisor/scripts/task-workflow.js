@@ -129,19 +129,30 @@ const SWEEP = { type: 'object', properties: {
 // （review-prompt.md §8 が「役割はファイル名に使えるよう review-normal と書く」と定めている）。
 const noteName = role => role.replace(/:/g, '-')
 
+// fetch は起点と PR の base に要る 2 ref に絞る。1 タスクで 8 体以上のエージェントが
+// この前置きを実行するので、全ブランチの fetch にすると無関係ブランチの転送が毎回全員に乗る
+const fetchRefs = startPoint => {
+  const start = startPoint.replace(/^origin\//, '')
+  return start === PARENT ? PARENT : `${PARENT} ${start}`
+}
+
 const preamble = (role, round, startPoint, canPush) => `
 カレントディレクトリ（割り当てられた worktree）で作業する。他のディレクトリのチェックアウトに
 触れない。リポジトリの絶対パスはプロンプトに書かれていない。
 
-1. \`git fetch origin\` を実行する。
+1. \`git fetch origin ${fetchRefs(startPoint)}\` を実行する（要る ref だけを取る。
+   \`git fetch origin\` 全量にしない）。
 2. \`git checkout --detach ${startPoint}\` で起点に載る（ブランチ名を checkout しない）。
 3. 前提資料を読む（git の追跡対象外なので checkout では作業ツリーに現れない）:
    ${BASE}/brief.md（検証コマンド・外形動作の手順・不可侵パス・規約）
    ${BASE}/map.md（コードベースの入口）
-4. **コードを読む前に引き継ぎノートを読む**: ${NOTES}/${noteName(role)}-*.md（あるものすべて）。
-   前のラウンドの同じ役割が、読んだ箇所・実行した検証と結果・構造の要点を残している。
+4. **コードを読む前に引き継ぎノートを読む**: ${NOTES}/${noteName(role)}-*.md のうち
+   ラウンド番号が最大の 1 本。前のラウンドの同じ役割が、読んだ箇所・実行した検証と結果・
+   構造の要点を残している。判断に足りないときだけ古い分を読み足す（全部を毎回読むと、
+   ラウンドが進むほど入力が線形に太る）。
 5. 終える前に \`mkdir -p ${NOTES}\` して ${NOTES}/${noteName(role)}-r${round}.md を書く。
    中身は「読んだファイルとその要点」「実行したコマンドとその結果」「まだ確かめていない箇所」。
+   前のノートの要点で今も有効なものは引き継いで書く（次のエージェントは最新の 1 本だけを読む）。
    会話をそのまま貼らない。次のエージェントがコードを読み直さずに済む要約にする。
 6. ${canPush
   ? `push は \`git push origin HEAD:refs/heads/${task.branch}\` で行う（リモートにだけ作る）。`
@@ -221,7 +232,8 @@ const INVARIANTS = {
   マージするのはユーザーである）。
 - **stacked PR に触れない。** \`gh stack\` を呼ばない（積み替えはリードがスタックツリーで行う）。
 - **review.json の status を動かさない。** \`${SCRIPTS}/review.py status\` を呼ばない
-  （動かせるのは裁定だけで、スクリプトも拒む）。直した報告は \`review.py comment\` で残す。
+  （動かせるのは裁定だけで、judge 以外の名乗りはスクリプトが拒む）。直した報告は
+  \`review.py comment\` で残す。
 - **メイン作業ツリー・他のディレクトリのチェックアウトに触れない。**
 - **push は \`git push origin HEAD:refs/heads/${task.branch}\` だけ。** 他のブランチを動かさない。`,
 
@@ -474,14 +486,17 @@ async function agentRetry(prompt, opts, isNoop) {
 // いる。同じ差分を粗探しの前提でもう一度読み直す価値は 1 巡目より低い。修正が持ち込んだ新規の
 // 問題は通常レビューが拾う（review-prompt.md §7 の 4）。impl-b の後は差分が全面的に入れ替わる
 // ので、そのループの 1 巡目でもう一度走る。
-async function runReview({ round, adversarial = !LIGHT, effort = 'medium', first = true }) {
+async function runReview({ round, adversarial = !LIGHT, effort = 'medium', first = true,
+                            docsOnly = false }) {
   // 検証の記録が無い、または契約を読んでいない応答は no-op を疑って 1 回だけ振り直す
   const noop = r => !r.notes || r.contractRead === false
   const roles = ['review:normal']
   const reviews = [
     () => agentRetry(reviewPrompt('review:normal', round, first),
       { label: `review:${task.id}#${round}`, phase: 'Review',
-        model: LIGHT ? 'sonnet' : 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop),
+        // docsOnly（doc だけの修正の再レビュー）は sonnet に落とす（review-prompt.md の表）
+        model: LIGHT || docsOnly ? 'sonnet' : 'opus', effort, isolation: 'worktree',
+        schema: REVIEW }, noop),
   ]
   if (adversarial) {
     roles.push('review:adversarial')
@@ -542,9 +557,15 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
   let prevTotal = Infinity, prevMustFix = Infinity
   for (let i = 1; ; i++) {
     const round = `${tag}${i}`
+    // doc・コメントだけの変更の軽量化（sonnet / low）は **2 巡目以降の再レビューだけ**に効かせる
+    // （design-notes.md「なぜ再レビューの軽重を changeKind で変えるか」は再レビューの規則である）。
+    // 1 巡目の敵対的レビューまで changeKind で飛ばすと、standard の docs 変更タスクが
+    // adversarialRan: false のまま approved になり、stack.py precheck（standard は
+    // adversarialRan true を要求）を立て直しても永遠に通せなくなる
+    const docsOnly = changeKind === 'docs' && i > 1
     const review = await runReview({ round, first: i === 1,
-      adversarial: !LIGHT && changeKind !== 'docs' && i === 1,
-      effort: changeKind === 'docs' ? 'low' : 'medium' })
+      adversarial: !LIGHT && i === 1,
+      effort: docsOnly ? 'low' : 'medium', docsOnly })
     see(...review.worktrees)   // 打ち切って返る経路でも、残した worktree をリードに知らせる
     carry.contractMisses += review.contractMisses
     // このタスクで敵対的レビューが 1 度でも結果を返したか。ラウンドごとの expected では
@@ -683,7 +704,8 @@ return {
   reviewFile: `${NOTES}/review.json`,   // リードが --require-empty で確かめる
   closed: r.closed, rejected: r.rejected,
   // 走行中に消した worktree の数と、消さずに残したパス。**残りは run が終わってから
-  // `worktree.py remove --run <runId> --merged` で片づける**（integration.md §4）
+  // `worktree.py remove --run <runId> --branch <タスクブランチ> --settled` で片づける**
+  // （integration.md §2 手順 2）
   worktreesRemoved: gone.length,
   worktreesKept: kept(),
   prTitle: prBody?.title,

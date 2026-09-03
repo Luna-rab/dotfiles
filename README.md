@@ -7,19 +7,16 @@
     cd $HOME/dotfiles
     ````
 
-2. install 
+2. install
+
+    `install.sh` が設定ファイルを symlink し、`mise/config.toml` に書いたツール
+    （fzf / ghq / jq / sheldon / uv）を入れる。
+
     ```shell
     ./install.sh
     ```
 
-    `install.sh` は次を行う。
-
-    - [mise](https://mise.jdx.dev/)（言語・CLI ツールのバージョン管理ツール）が
-      未導入なら公式インストーラで入れる
-    - `mise/config.toml` を `~/.config/mise/config.toml` へ symlink し、
-      そこに書かれたツールをインストールする
-
-3. zsh plugin install
+3. zsh を起動する
 
     `exec zsh` すると、`install.sh` が入れた
     [sheldon](https://github.com/rossmacarthur/sheldon)（zsh のプラグインマネージャ）が
@@ -30,13 +27,29 @@
     exec zsh
     ```
 
-## ツール管理 (`mise/config.toml`)
+## ツール管理（`mise/config.toml`）
 
-グローバルに入れる CLI ツールは `mise/config.toml` の `[tools]` で管理する。
-ツールを増やすときはここに 1 行足して `./install.sh` を実行する。
+全環境に入れるツールは
+[mise](https://mise.jdx.dev)（プログラミング言語やコマンドラインツールのバージョンを
+管理するツール）に任せ、一覧を `mise/config.toml` に書く。
+`install.sh` はこのファイルを `~/.config/mise/config.toml` に symlink したあと、
+`mise install` を実行する。
 
-`.zshrc` はインストールを行わず、`mise activate` でツールを PATH に載せることと、
-プロンプトなど見た目の適用だけを担当する。
+- **入れる処理は `install.sh` だけが持つ。** `.zshrc` は `mise activate` で PATH に
+  載せるだけで、インストールを試さない。ツールが足りないときは `./install.sh` を
+  実行し直す。
+- **`install.sh` は何度実行してもよい。** `mise install` は未インストールのツールだけを
+  入れる。全部入っていれば「mise all tools are installed」と出して 0.011 秒で終わる。
+- **mise 本体が無ければ、`https://mise.run` のインストーラで `~/.local/bin/mise` に
+  入れる。** curl が無い環境では警告を出して、symlink の作成だけを続ける。
+- **ツールを増やすときは `mise/config.toml` に 1 行足してコミットする。**
+  `mise use -g <tool>@latest` を実行してもよい。symlink 越しにこのファイルへ
+  書き込まれるので、`git diff` に出る。
+
+devcontainer（VS Code が開発用に作るコンテナ）は毎回まっさらなコンテナから始まるので、
+ホストに入れたツールをコンテナは引き継がない。VS Code はコンテナを作るときに
+dotfiles の `installCommand`（下記の Dev Containers 参照）を実行するため、
+上の仕組みで `mise/config.toml` に書いたツールが新しいコンテナにも入る。
 
 ## Claude Code (`~/.claude/`)
 
@@ -120,6 +133,53 @@ cp .claude/settings.local.json.example ~/.claude/settings.local.json
 
 `~/.claude/settings.local.json` は **gitignore** 済み（コミットされない）。
 
+### タスクリストのツール（`CLAUDE_CODE_ENABLE_TODO_TOOLS`）
+
+`.claude/settings.json` の `env` にこのキーを入れてある。**入れないと、新しいモデルでは
+`TaskCreate` / `TaskUpdate` / `TaskGet` / `TaskList` の 4 ツールが Claude に渡らず、作業中の
+タスクリストに何も載らない**（画面のパネルにも出ない）。
+
+これは公式に文書化された opt-in である。[Tools reference の「Task tool
+availability」](https://code.claude.com/docs/en/tools-reference#task-tool-availability)（Claude
+Code v2.1.233 以降）が、次の 2 点を述べている。
+
+- 対象は **Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 と、それぞれの系列のそれ以降**。
+  この dotfiles が使うモデルはこの範囲に入る。
+- 既定で外している理由は「これらのモデルは書かれたチェックリスト無しでも複数手順の作業を追え、
+  ツールの定義とリマインダーがコンテキストを食う」から。**廃止ではない**（廃止されたのは
+  `TodoWrite` の方で、`TaskCreate` などの 4 ツールに置き換わった）。
+
+opt-in の方法は 4 つ挙げられている。ここでは 1 つ目を使っている。
+
+| 方法 | 効く範囲 |
+| --- | --- |
+| `env` に `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`（ここで採用） | 全セッション・全モデル・全プロバイダ |
+| `claude --allowedTools TaskCreate` | その起動だけ |
+| `claude --tools …`（並べたものだけに絞る） | その起動だけ |
+| Agent SDK の `allowedTools` / `tools` / `env` | その呼び出しだけ |
+
+受け付ける値は `1` / `true` / `yes` / `on`（大文字小文字とも）。プロジェクトの
+`.claude/settings.json` に足したときは、**走っているセッションでもその場で 4 ツールが増えた**
+（Claude Code は設定ファイルの変更を監視している。2.1.234 で実測）。増えなければ再起動する。
+同じモデルでキーの有無だけを変えた実測:
+
+| 実行 | `TaskCreate` があるか |
+| --- | --- |
+| `claude -p "…"` | ない |
+| `CLAUDE_CODE_ENABLE_TODO_TOOLS=1 claude -p "…"` | ある |
+
+**このリポジトリで opt-in する理由は、進捗を人が見るためである。** モデルの側は無くても困らない
+（上の公式の記述）。**払っているのは 4 ツールの定義とリマインダーのぶんのコンテキストである。**
+
+`.claude/skills/supervisor/` はこのキーを前提にしている。タスクの分解と依存（`blockedBy`）を
+`TaskCreate` / `TaskUpdate` でタスクリストに登録して見せる段があり
+（[lead-setup.md](.claude/skills/supervisor/lead-setup.md) §6）、**キーを外すとその段が実行できない**
+——1 回通したときに実際に止まった。進行状態の出所は統合ツリーの `state.json` なので作業自体は
+続けられるが、並列の進み具合は画面から消える。
+
+サブエージェントには、**セッションがツールを持っているときだけ**同じものが渡る（モデルが違っても
+同じ。上の公式ページ）。
+
 ### Dev Containers
 
 VS Code のユーザ設定に以下を追加すると、コンテナ作成時に自動適用される:
@@ -154,8 +214,8 @@ uv run ruff check . && uv run ruff format --check . && uv run ty check && ./.cla
 #### 依存の置き場
 
 **dotfiles を入れた人が、上のツールを持っている必要はない。** `.claude/skills/supervisor/scripts/`
-の 4 本（`review.py` / `place.py` / `verify.py` / `worktree.py`）は**標準ライブラリだけで動き**、
-shebang も `#!/usr/bin/env python3` のままである。`python3` があるマシンなら、uv が無くても
+の 6 本（`review.py` / `place.py` / `verify.py` / `worktree.py` / `stack.py` / `state.py`）は
+**標準ライブラリだけで動き**、shebang も `#!/usr/bin/env python3` のままである。`python3` があるマシンなら、uv が無くても
 supervisor スキルは動く。
 
 依存は 2 か所に分けてある。

@@ -9,37 +9,47 @@
 !/.gitignore_global
 !/.gitconfig_shared
 
-# mise (tool version manager) config
-!/mise
-!/mise/**
-
 # sheldon (zsh plugin manager) config
 !/sheldon
 !/sheldon/**
+
+# mise (tool version manager) config
+!/mise
+!/mise/**
 
 # Claude Code config (portable). 実体のローカル設定はコミットしない
 !/.claude
 !/.claude/**
 
-# .claude/** で復活させた許可を上書きし、Python のバイトコード生成物だけ再び無視する。
-# `python3 -m py_compile <ファイル>` や `.claude/scripts/check-skills.py` の実行で
-# .claude/scripts/__pycache__/ や .claude/skills/team-supervisor/scripts/__pycache__/ に
-# .pyc が生成されるが、ソースの副産物であり追跡する意味が無い。
+# 上の `!/.claude/**` で復活した許可を打ち消し、生成物だけ再び無視する。
+#
+# `python3 -m compileall` や supervisor スキルのスクリプト実行で
+# .claude/skills/supervisor/scripts/{,lib/}__pycache__/ に .pyc が生まれるが、
+# ソースから作り直せるので追跡しない。
 /.claude/**/__pycache__/
 /.claude/**/*.pyc
+# Claude Code が作る作業ツリー（git worktree の実体）。リポジトリの複製なので
+# コミットしない。supervisor スキルが 1 タスクごとにここへ作る。
+/.claude/worktrees/
 
 # GitHub Actions のワークフロー
 !/.github
 !/.github/**
 
-# 監督者ワークフローの台帳とベース資料（docs/supervisor/）
+# supervisor スキルの台帳とベース資料（docs/supervisor/）
 !/docs
 !/docs/**
 
-# Python コードの検査設定（ruff / ty）と、その依存の固定。
-# .gitignore は「まず全部無視して ! で戻す」方式なので、明示しないと追跡されない
+# ruff（lint と書式）と ty（型）の設定と、その依存の固定。この .gitignore は
+# 「まず `/*` で全部無視して `!` で戻す」方式なので、明示しないと追跡されない。
+# 中身は開発と手元の検査だけで使うもので、dotfiles を入れた人には要らない
+# （supervisor スキルのスクリプトは標準ライブラリだけで動く）。
 !/pyproject.toml
 !/uv.lock
+
+# ruff がキャッシュを置く。ソースの副産物なので追跡しない
+/.ruff_cache/
+/.claude/**/.ruff_cache/
 
 !install.sh
 !/README.md

@@ -53,7 +53,7 @@ import json
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import IO, Any, Literal
+from typing import IO, Any
 
 from .shell import die
 
@@ -77,8 +77,6 @@ TRANSITIONS: set[tuple[str, str]] = {
     ("closed", "open"),
     ("rejected", "open"),
 }
-
-Status = Literal["open", "closed", "rejected"]
 
 
 def _require_keys(raw: object, allowed: set[str], required: set[str], what: str) -> dict[str, Any]:

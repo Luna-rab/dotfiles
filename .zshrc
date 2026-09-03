@@ -1,21 +1,29 @@
 # Created by newuser for 5.8.1
 
-# ツールのインストールは install.sh が行う。ここでは既に入っているものを
-# シェルに適用するだけにする（インストール対象は mise/config.toml を参照）。
-
-# mise が管理するツールを PATH に載せる。シェルごとに評価が必要なのでここに置く。
-# 公式インストーラは ~/.local/bin に入れるが、この場所は PATH に無いことがあるため
-# PATH 上に無ければフルパスで呼ぶ。
-if command -v mise >/dev/null 2>&1; then
-  eval "$(mise activate zsh)"
-elif [[ -x "$HOME/.local/bin/mise" ]]; then
-  eval "$("$HOME/.local/bin/mise" activate zsh)"
+# mise（プログラミング言語やコマンドラインツールのバージョンを管理するツール）が
+# 管理するツールを PATH に載せる。
+#
+# ここではツールを入れない。mise 自体と、mise/config.toml に書いたツールは
+# install.sh が入れる。zsh を起動するたびにインストールを試すのをやめ、
+# 入れる処理を install.sh の 1 か所に集めるため。
+# ツールが足りないときは ./install.sh を実行し直す。
+if [[ -x ~/.local/bin/mise ]]; then
+  eval "$(~/.local/bin/mise activate zsh)"
+else
+  echo "WARNING: ~/.local/bin/mise not found. run install.sh in your dotfiles"
 fi
 
-# プロンプト・補完・シンタックスハイライトなどのプラグインを読み込む。
-# zsh-completions は fpath に補完関数を追加するだけなので、
-# sheldon source で fpath を確定させてから compinit を呼ぶ。
-eval "$(sheldon source)"
+# zsh-completions を fpath に載せてから compinit を呼ぶ必要があるため、
+# sheldon source の前に fpath を確定させ、あとで compinit を実行する。
+#
+# sheldon（zsh のプラグインマネージャ）は mise/config.toml に書いてあるので
+# install.sh が入れる。それでも存在を確かめるのは、install.sh を実行する前に
+# zsh を開いたときに「command not found」を並べて出さないため。
+if command -v sheldon >/dev/null 2>&1; then
+  eval "$(sheldon source)"
+else
+  echo "WARNING: sheldon not found. run install.sh in your dotfiles"
+fi
 
 autoload -Uz compinit && compinit
 

@@ -20,8 +20,8 @@ from lib.gitpath import (
     BASE_FILES,
     GITIGNORE,
     base_dir,
-    integration_tree,
     listed_worktrees,
+    stack_tree,
 )
 from lib.shell import die
 
@@ -44,11 +44,12 @@ def cmd_base_dir(args: argparse.Namespace) -> None:
                 "実装・検証に入らず、blocked で返して止まってください。"
             )
     else:
-        tree = integration_tree(args.work)
+        tree = stack_tree(args.work)
         if os.path.realpath(tree) not in listed_worktrees():
             die(
-                f"{tree} が `git worktree list` にありません。ベース資料は統合ツリーの中に置くので、"
-                "先に統合ツリーを作ってください（SKILL.md 「1. topic と統合ツリーを作る」）。"
+                f"{tree} が `git worktree list` にありません。ベース資料はスタックツリーの中に置くので、"
+                "先にスタックツリーを作ってください"
+                "（lead-setup.md 「1. stacked PR の土台とスタックツリーを作る」）。"
                 "先にこのディレクトリを作ると、あとの `git worktree add` が既存ディレクトリで失敗します。"
             )
         os.makedirs(target, exist_ok=True)

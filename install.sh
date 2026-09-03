@@ -12,19 +12,24 @@ link_to_homedir() {
 
   local dotdir=$1
   if [[ "$HOME" != "$dotdir" ]];then
-    for f in $dotdir/.??*; do
+    for f in "$dotdir"/.??*; do
       # .git で始まるファイル/ディレクトリはリンクしない
       local fname=`basename "$f"`
       [[ $fname == .git* ]] && continue
       # .claude は link_claude_config() で個別に扱う（ランタイムデータを巻き込まないため）
       [[ $fname == .claude ]] && continue
-      if [[ -L "$HOME/`basename $f`" ]];then
-        command rm -f "$HOME/`basename $f`"
+      # 開発ツールの生成物はリンクしない。このリポジトリで `uv run ruff` や `uv run ty` を
+      # 実行すると .venv/（uv が作る仮想環境）と .ruff_cache/（ruff のキャッシュ）が
+      # ルート直下に生まれる。どちらも .gitignore で追跡対象外なので clone した人の手元には
+      # 無いが、検査を回した後に install.sh を実行すると $HOME に symlink が張られてしまう。
+      [[ $fname == .venv || $fname == .ruff_cache ]] && continue
+      if [[ -L "$HOME/$fname" ]];then
+        command rm -f "$HOME/$fname"
       fi
-      if [[ -e "$HOME/`basename $f`" ]];then
-        command mv "$HOME/`basename $f`" "$HOME/.dotbackup"
+      if [[ -e "$HOME/$fname" ]];then
+        command mv "$HOME/$fname" "$HOME/.dotbackup"
       fi
-      command ln -snf $f $HOME
+      command ln -snf "$f" "$HOME"
       command echo "create symboliclink $f"
     done
   else
@@ -41,56 +46,7 @@ set_global_gitignore() {
     command mv "$HOME/.config/git/ignore" "$HOME/.config/git/ignore.backup"
   fi
   local dotdir=$1
-  command cp $dotdir/.gitignore_global $HOME/.config/git/ignore
-}
-
-# mise 本体を入れる。既に PATH 上にあるか ~/.local/bin/mise が存在すればそれを使う。
-# 見つからない場合だけ公式インストーラ (https://mise.run) を実行する。
-install_mise() {
-  if command -v mise >/dev/null 2>&1; then
-    MISE="$(command -v mise)"
-    return 0
-  fi
-  if [[ ! -x "$HOME/.local/bin/mise" ]]; then
-    command echo "install mise ..."
-    command curl -fsSL https://mise.run | command sh
-  fi
-  MISE="$HOME/.local/bin/mise"
-}
-
-# mise/config.toml を ~/.config/mise/config.toml へ symlink し、
-# そこに書かれたツールをインストールする。
-#
-# 引数なしの `mise install` を使わないのは、~/.tool-versions のような
-# dotfiles 管理外の設定ファイルにあるツールまで入れに行くため。
-# [tools] セクションのツール名だけを取り出して明示的に渡す。
-install_mise_tools() {
-  local dotdir=$1
-  local src="$dotdir/mise/config.toml"
-  local dst="$HOME/.config/mise/config.toml"
-  [[ -e "$src" ]] || return 0
-
-  command echo "setup ~/.config/mise ..."
-  command mkdir -p "$HOME/.config/mise"
-  if [[ -L "$dst" ]]; then
-    command rm -f "$dst"
-  elif [[ -e "$dst" ]]; then
-    command mv "$dst" "$HOME/.dotbackup"
-  fi
-  command ln -snf "$src" "$dst"
-  command echo "create symboliclink $src"
-
-  local tools
-  tools=$(command awk '/^\[tools\]/{f=1; next} /^\[/{f=0} f && /^[[:alnum:]_-]+[[:space:]]*=/{print $1}' "$src")
-  if [[ -n "$tools" ]]; then
-    command echo "install tools: $(command echo $tools)"
-    # shellcheck disable=SC2086
-    "$MISE" install $tools
-  fi
-
-  # mise が生成する shim（ツール本体へ橋渡しする実行ファイル）を PATH に載せる。
-  # この install.sh の以降の処理が jq を呼べるようにするため。
-  export PATH="$HOME/.local/share/mise/shims:$PATH"
+  command cp "$dotdir/.gitignore_global" "$HOME/.config/git/ignore"
 }
 
 link_sheldon_config() {
@@ -101,6 +57,31 @@ link_sheldon_config() {
 
   command echo "setup ~/.config/sheldon ..."
   command mkdir -p "$HOME/.config/sheldon"
+  if [[ -L "$dst" ]]; then
+    command rm -f "$dst"
+  elif [[ -e "$dst" ]]; then
+    command mv "$dst" "$HOME/.dotbackup"
+  fi
+  command ln -snf "$src" "$dst"
+  command echo "create symboliclink $src"
+}
+
+# mise（プログラミング言語やコマンドラインツールのバージョンを管理するツール）の
+# 設定ファイルを ~/.config/mise/config.toml に symlink する。
+# ここに書いてあるツールは、このあと install_mise_tools() が入れる。
+#
+# symlink にできるのは、`mise use -g <tool>@latest` が symlink を消して新しい
+# ファイルを作るのではなく、symlink 越しに元のファイルへ書き込むため（mise
+# 2026.8.2 で確認）。つまりコマンドで追加したツールも dotfiles リポジトリの
+# git diff に出る。
+link_mise_config() {
+  local dotdir=$1
+  local src="$dotdir/mise/config.toml"
+  local dst="$HOME/.config/mise/config.toml"
+  [[ -e "$src" ]] || return 0
+
+  command echo "setup ~/.config/mise ..."
+  command mkdir -p "$HOME/.config/mise"
   if [[ -L "$dst" ]]; then
     command rm -f "$dst"
   elif [[ -e "$dst" ]]; then
@@ -122,7 +103,7 @@ link_claude_config() {
 
   # ディレクトリは symlink（リポジトリの編集が即反映される）
   local d
-  for d in skills commands agents rules scripts; do
+  for d in skills commands agents rules scripts hooks; do
     [[ -d "$src/$d" ]] || continue
     if [[ -L "$dst/$d" ]]; then
       command rm -f "$dst/$d"
@@ -153,8 +134,15 @@ link_claude_config() {
 # ~/.claude/settings.json への dotfiles 設定のマージ。
 #
 # dotfiles の .claude/settings.json (= マージ素材) を、実体の
-# ~/.claude/settings.json に deep-merge する。既存の設定を土台に
-# dotfiles 側のキーを重ねるため、既存キーを壊さずに合流できる。
+# ~/.claude/settings.json に deep-merge する。重なったキーの扱い:
+#   - オブジェクト同士は再帰的に合流する
+#   - 配列同士は和集合にする（既存の要素と順序を残し、素材にだけある要素を後ろに足す）。
+#     permissions.allow のようにユーザーが手元で積み上げたリストを全置換で消さないため
+#   - それ以外（文字列・数値・真偽値）は dotfiles 側の値で上書きする。
+#     dotfiles に宣言した設定を再実行のたびに効かせるため
+#
+# 既存の settings.json が JSON として読めないときはマージせず、警告を出して
+# ファイルに触らない（jq の失敗を成功と報告しない）。
 #
 # symlink にしないのは、実体が他ツールによって書き換えられる場合に
 # その変更が dotfiles リポジトリへ漏れるのを避けるため。
@@ -171,18 +159,120 @@ merge_claude_settings() {
     return 0
   fi
 
+  # オブジェクトは再帰、配列は和集合（既存の順序を保つ）、それ以外は素材側で上書き。
+  # 引数は $a / $b で値に束縛する。a / b のままだとフィルタとして遅延評価され、
+  # reduce の中で累積値に対して再評価されて "Cannot index object with number" で落ちる
+  local merge_filter='
+    def merge($a; $b):
+      if ($a | type) == "object" and ($b | type) == "object" then
+        reduce (($a | keys) + ($b | keys) | unique[]) as $k ({};
+          .[$k] = (if ($a | has($k)) and ($b | has($k)) then merge($a[$k]; $b[$k])
+                   elif ($b | has($k)) then $b[$k]
+                   else $a[$k] end))
+      elif ($a | type) == "array" and ($b | type) == "array" then $a + ($b - $a)
+      else $b end;
+    merge(.[0]; .[1])'
+
   if [[ -e "$target" ]]; then
     # 既存設定を壊した場合に備えてバックアップ
     command cp "$target" "$HOME/.dotbackup/settings.json.$(date +%s 2>/dev/null || echo bak)" 2>/dev/null || true
-    # 既存設定を土台に、dotfiles のキーを deep-merge で重ねる。
-    # '*' は再帰マージなので permissions などネストしたキーも安全に合流する。
-    command jq -s '.[0] * .[1]' "$target" "$fragment" > "$target.tmp" \
-      && command mv "$target.tmp" "$target"
-    command echo "merge $fragment into $target (deep merge; existing keys preserved)"
+    if command jq -s "$merge_filter" "$target" "$fragment" > "$target.tmp"; then
+      command mv "$target.tmp" "$target"
+      command echo "merge $fragment into $target (objects merged, arrays unioned, scalars overwritten by dotfiles)"
+    else
+      command rm -f "$target.tmp"
+      command echo "WARNING: failed to merge $fragment into $target (existing file is not valid JSON?)."
+      command echo "         $target is left untouched. fix it and run './install.sh' again"
+    fi
   else
     # 実体が無い場合は素材をそのまま配置
     command jq '.' "$fragment" > "$target"
     command echo "generate $target from $fragment (no existing settings yet)"
+  fi
+}
+
+# mise 本体と、mise/config.toml に書いたツールを入れる。link_mise_config() より後に呼ぶ。
+# ~/.config/mise/config.toml の symlink ができていないと、mise は入れる対象を
+# 読み取れない。
+#
+# devcontainer（VS Code が開発用に作るコンテナ）は毎回まっさらなコンテナから
+# 始まるので、ホストに入れたツールをコンテナは引き継がない。VS Code はコンテナを
+# 作るときに dotfiles の installCommand（ここでは install.sh）を実行する。
+# そこでこの関数がツールを入れておくと、新しいコンテナでもすぐ使える。
+install_mise_tools() {
+  local mise_bin="$HOME/.local/bin/mise"
+
+  if [[ ! -x "$mise_bin" ]]; then
+    if ! command -v curl >/dev/null 2>&1; then
+      command echo "WARNING: curl not found. skip installing mise and its tools"
+      return 0
+    fi
+    command echo "mise not found. install mise ..."
+    # mise.run のインストーラは $HOME/.local/bin/mise に置く。
+    # パイプの途中で失敗しても set -e で止めたくないので、成否は次の -x で判定する。
+    command curl -fsSL https://mise.run | sh || true
+    if [[ ! -x "$mise_bin" ]]; then
+      command echo "WARNING: failed to install mise. skip installing its tools"
+      return 0
+    fi
+  fi
+
+  command echo "install tools listed in ~/.config/mise/config.toml ..."
+  # `mise install` は引数なしで呼ぶと、config.toml に書いてあって未インストールの
+  # ツールだけを入れる。すでに全部入っている場合は「mise all tools are installed」と
+  # 出して 0.011 秒で終わる（mise 2026.8.2 で計測）。
+  # だから install.sh を何度実行してもよい。
+  #
+  # 失敗しても install.sh 全体を止めない。ネットワークが使えない環境で
+  # symlink の作成まで巻き添えにしたくないため。
+  if "$mise_bin" install; then
+    command echo "mise tools installed"
+  else
+    command echo "WARNING: failed to install some mise tools. run './install.sh' again"
+  fi
+
+  # mise が生成する shim（ツール本体へ橋渡しする実行ファイル）を PATH に載せる。
+  # この install.sh の以降の処理が jq を呼べるようにするため
+  # （merge_claude_settings() が jq を使う）。zsh は .zshrc の `mise activate` で
+  # 載せるが、この bash スクリプトはそれを通らない。
+  export PATH="$HOME/.local/share/mise/shims:$PATH"
+}
+
+# gh（GitHub 公式のコマンドラインツール）の拡張 gh-stack を入れる。
+#
+# gh-stack は stacked PR（1 つの大きな変更を、互いに積み重なる小さな PR に分けて
+# レビューに出す進め方）を操作する GitHub 公式の拡張で、`gh stack init` /
+# `gh stack add` / `gh stack rebase` / `gh stack push` / `gh stack link` /
+# `gh stack merge` を提供する。`.claude/skills/supervisor` がこの拡張に乗っていて、
+# 入っていないとタスクのブランチを stacked PR へ積めない（起動前の確認で止まる）。
+#
+# gh 本体は mise/config.toml では管理していない（システム側に入っている前提）ので、
+# 無いときは WARNING を出して飛ばす——install.sh 全体を止めると、symlink の作成まで
+# 巻き添えにしてしまう。
+#
+# 既に入っているときは何もしない。`gh extension upgrade` を毎回走らせないのは、
+# gh-stack が v0.1.0 で、非互換な変更が supervisor の手順を壊しうるためである
+# （実測でも README の記述と挙動が 1 つ食い違っている。詳細は
+# .claude/skills/supervisor/design-notes.md の「gh stack v0.1.0 で確かめたこと」）。
+# 上げたいときはユーザーが `gh extension upgrade gh-stack` を叩く。
+install_gh_extensions() {
+  if ! command -v gh >/dev/null 2>&1; then
+    command echo "WARNING: gh not found. skip installing the gh-stack extension"
+    return 0
+  fi
+
+  # `gh extension list` は 1 行 1 拡張で `gh stack<TAB>github/gh-stack<TAB>v0.1.0` の形を出す
+  if command gh extension list 2>/dev/null | command grep -q "github/gh-stack"; then
+    command echo "gh-stack extension already installed"
+    return 0
+  fi
+
+  command echo "install gh extension github/gh-stack ..."
+  if command gh extension install github/gh-stack; then
+    command echo "gh-stack extension installed"
+  else
+    command echo "WARNING: failed to install the gh-stack extension."
+    command echo "         run 'gh extension install github/gh-stack' after fixing the cause"
   fi
 }
 
@@ -273,11 +363,12 @@ install_claude_plugins() {
 }
 
 dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-link_to_homedir $dotdir
-set_global_gitignore $dotdir
-install_mise
-# link_claude_config は jq を使うので、jq を入れる install_mise_tools を先に呼ぶ
-install_mise_tools $dotdir
-link_sheldon_config $dotdir
-link_claude_config $dotdir
+link_to_homedir "$dotdir"
+set_global_gitignore "$dotdir"
+link_sheldon_config "$dotdir"
+link_mise_config "$dotdir"
+install_mise_tools
+install_gh_extensions
+link_claude_config "$dotdir"
 command echo "Install completed!!!!"
+command echo "run 'exec zsh' to start a shell with the installed tools on PATH"

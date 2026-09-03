@@ -9,6 +9,5 @@
 - `gitpath.py` — git のディレクトリ配置（worktree・ベース資料と引き継ぎノートの置き場）
 - `reviewstore.py` — review.json の読み書きと、役割・rating・status 遷移の検査
 
-**GitHub を呼ぶモジュールは無い。** レビューは review.json に閉じており、PR は全レビューが
-決着してからリードが `gh pr create` で作る。
+**指摘の往復は review.json に閉じている。** レビュアーも裁定も GitHub に何も投稿しない。
 """

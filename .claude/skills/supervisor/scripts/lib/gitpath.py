@@ -14,7 +14,7 @@ from .shell import die, out
 BASE_FILES: tuple[str, ...] = ("brief.md", "map.md", "ledger.md")
 
 # ベースディレクトリに置く .gitignore の中身。`*` は自分自身にも当たるので、ディレクトリごと
-# `git status` に出なくなる（実測）。統合ツリーは作業ツリーなので、これが無いと差分に出る
+# `git status` に出なくなる（実測）。スタックツリーは作業ツリーなので、これが無いと差分に出る
 GITIGNORE: str = "# supervisor の作業ファイル。git で追跡しない\n*\n"
 
 
@@ -38,21 +38,25 @@ def check_work(work: str) -> str:
     return work
 
 
-def integration_tree(work: str) -> str:
-    """リード専用の worktree（統合ツリー）の絶対パス。"""
+def stack_tree(work: str) -> str:
+    """リード専用の worktree（スタックツリー）の絶対パス。
+
+    stacked PR の組み立て（`gh stack`）と `gh stack` の追跡情報の置き場でもある。追跡情報は worktree
+    ごとに別なので、ここ以外で `gh stack` を叩くと別の stacked PR として扱われる（../stack.py）。
+    """
     return os.path.join(main_checkout(), ".claude", "worktrees", f"supervisor-{check_work(work)}")
 
 
 def base_dir(work: str) -> str:
     """ベース 3 資料（brief.md / map.md / ledger.md）と引き継ぎノートを置くディレクトリ。
 
-    統合ツリーの中に置く。worktree に隔離されたセッションは `Edit` / `Write` が
+    スタックツリーの中に置く。worktree に隔離されたセッションは `Edit` / `Write` が
     **メインチェックアウト内のパス**を対象にすると遮断され、`.git` 配下もその中に入るためである
     （公式ドキュメント https://code.claude.com/docs/en/worktrees の "How Claude Code enforces
-    isolation"）。統合ツリーはメインチェックアウトではないので、リードも、自分の worktree で走る
+    isolation"）。スタックツリーはメインチェックアウトではないので、リードも、自分の worktree で走る
     サブエージェントも書ける。`GITIGNORE` を置いて git の追跡対象から外す。
     """
-    return os.path.join(integration_tree(work), ".claude", "supervisor")
+    return os.path.join(stack_tree(work), ".claude", "supervisor")
 
 
 def listed_worktrees() -> set[str]:

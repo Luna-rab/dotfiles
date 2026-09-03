@@ -1,6 +1,7 @@
 ---
 name: create-pr
-description: gh コマンドで GitHub の Pull Request を作成する。未コミット変更のコミット、release/* または master 上での新規ブランチ作成（命名規則つき）、過去のコミット履歴を辿ったマージ先の自動判定、リポジトリの PR テンプレート追従、挙動の変化を中心にした PR description 生成を行う。「PRを作って」「プルリクを出して」等の依頼で利用する。
+description: gh コマンドで GitHub の Pull Request を作成する。未コミット変更のコミット、base ブランチ上にいるときの新規ブランチ作成、そのリポジトリの既存の運用に倣ったブランチ名とマージ先の判定、リポジトリの PR テンプレート追従、挙動の変化を中心にした PR description 生成を行う。「PRを作って」「プルリクを出して」等の依頼で利用する。他のスキルから base・タイトル・本文・draft を引数で渡して呼ぶこともできる。
+argument-hint: "[base=<branch>] [head=<branch>] [title=<text>] [body-file=<path>] [draft=true]"
 ---
 
 # Create PR スキル
@@ -14,6 +15,30 @@ description: gh コマンドで GitHub の Pull Request を作成する。未コ
 - `gh` CLI がインストール済みで認証済み (`gh auth status` で確認できる)
 - カレントディレクトリが対象の git リポジトリ
 
+## 引数で渡されたものは決め直さない
+
+渡された引数: $ARGUMENTS
+
+`base` / `head` / `title` / `body-file` / `draft` を `key=value` の形で受け取る。**渡された値はそのまま使い、その値を決めるための手順を飛ばす。** 渡されなかった項目だけを手順どおり自分で決める。
+
+| 引数 | 渡されたとき | 渡されなかったとき |
+|------|-------------|-------------------|
+| `base` | その値を `--base` に渡す。**手順 3（履歴を遡る base の判定）を飛ばす** | 手順 3 で決める |
+| `head` | そのブランチを push して PR の head にする。**手順 2 の新規ブランチ作成を飛ばす** | 現在のブランチを使う。base ブランチの上にいるなら手順 2 でブランチを切る |
+| `title` | そのまま `--title` に渡す | 手順 5 で差分から決める |
+| `body-file` | そのファイルを `--body-file` に渡す。**手順 4・5（テンプレート確認と本文生成）を飛ばす** | 手順 4・5 で本文を書く |
+| `draft` | `true` なら `--draft` を付ける | draft にしない |
+
+呼び出しの例（stacked PR の土台を draft で作る）:
+
+```
+/create-pr base=main head=stack/parser-fix--task-0 draft=true title="[supervisor] fix: パーサの境界値を直す" body-file=/path/to/stack-pr-body.md
+```
+
+**渡された `base` を検証し直さない。** 呼び出し元が起点を決めているとき（stacked PR の土台に積むなど）、履歴から別の base を選ぶと PR が載る先が変わる。渡された `base` がリモートに存在しない場合だけ、作成を試みずに呼び出し元へエラーを返す。
+
+**渡された `body-file` の中身を書き換えない。** スクリプトが生成した本文であることがあり、書き換えても次の生成で消える。
+
 ## 手順
 
 ### 1. 現在の状態を把握する
@@ -26,50 +51,49 @@ git branch --show-current     # 現在のブランチ名
 git log --oneline -20         # 直近の履歴
 ```
 
+**base ブランチの候補を出す。** 手順 2 と手順 3 はここで得た候補だけを見る。ブランチ名の規則を
+決め打ちしない——リポジトリごとに違う。
+
+```bash
+gh repo view --json defaultBranchRef -q .defaultBranchRef.name   # 既定ブランチ
+# 過去の PR が実際にマージ先にしているブランチ（多い順）
+gh pr list --state all --limit 50 --json baseRefName -q '.[].baseRefName' | sort | uniq -c | sort -rn
+```
+
+候補は「既定ブランチ」と「過去の PR のマージ先」を合わせたものである。PR が 1 本も無ければ
+既定ブランチだけになる。
+
 ### 2. 未コミット変更の処理
 
 `git status --porcelain` に出力がある（=未コミット変更がある）場合:
 
-1. **現在のブランチが `release/*` または `master`（および `main`）の場合は、コミット前に新しいブランチを作成する。** 後述の「ブランチ命名ルール」に従う。新しいブランチ名を決める際、チケット番号が不明なら**ステップ3に進む前に**ユーザーに確認する（推測しない）。
+1. **現在のブランチが手順 1 の候補に入っている場合は、コミット前に新しいブランチを作成する。** 後述の「ブランチ名の決め方」に従う。名前が 1 つに決まらないときは**ステップ 3 に進む前に**ユーザーに確認する（推測しない）。
 2. 変更内容を確認した上でコミットする。コミットメッセージは変更の意図がわかるものにする。
 
-現在のブランチが `release/*` / `master` / `main` 以外なら、ブランチはそのままでコミットだけ行う。
+現在のブランチが候補に入っていなければ、ブランチはそのままでコミットだけ行う。
 
 未コミット変更が無い場合はこのステップをスキップする。
 
 ### 3. マージ先（base ブランチ）の判定
 
-以下の順で決定する。
+**`base` が引数で渡されていればこの手順を飛ばす。** 渡されていない場合、以下の順で決定する。
 
-1. **コミット履歴を遡って `release/*` または `master` を探す。**
-   現在の HEAD から到達可能なコミットのうち、`release/*` または `master`（`main`）ブランチが指しているものを探し、**直近（最も近い祖先）のもの**を base にする。
-
-   ```bash
-   # HEAD の祖先に含まれる release/* と master/main を、HEAD から近い順に列挙する
-   git for-each-ref --format='%(refname:short)' refs/heads/ refs/remotes/origin/ \
-     | grep -E '(^|/)(release/|master$|main$)' \
-     | while read ref; do
-         if git merge-base --is-ancestor "$ref" HEAD 2>/dev/null; then
-           # HEAD から ref までの距離（近いほど小さい）
-           dist=$(git rev-list --count "$ref"..HEAD 2>/dev/null)
-           echo "$dist $ref"
-         fi
-       done | sort -n
-   ```
-
-   上記で複数出た場合は `dist` が最小（最も近い）ものを採用する。1つに定まればそれを base にする。
-
-2. **1で定まらない場合は、ユーザーに選んでもらう。**
-   候補となる `release/*` および `master`/`main` を列挙し、どれをマージ先にするかユーザーに尋ねる。
+1. **手順 1 の候補のうち、HEAD の祖先になっているものを HEAD から近い順に並べ、最も近いものを base にする。**
 
    ```bash
-   git for-each-ref --format='%(refname:short)' refs/heads/ refs/remotes/origin/ \
-     | grep -E '(^|/)(release/|master$|main$)' | sort -u
+   # <候補> は手順 1 で得たブランチ名を並べる
+   for ref in <候補>; do
+     git merge-base --is-ancestor "origin/$ref" HEAD 2>/dev/null \
+       && echo "$(git rev-list --count "origin/$ref"..HEAD) $ref"   # 距離 ブランチ名
+   done | sort -n
    ```
+
+2. **1 つに定まらない場合は、ユーザーに選んでもらう。** 祖先が 1 つも無いとき、距離が同着のとき、
+   候補が 2 つ以上あって選べないときは、候補を並べてどれをマージ先にするか尋ねる。
 
 ### 4. PR テンプレートの確認
 
-リポジトリに PR テンプレートがあればそれに従って本文を組み立てる。以下を確認する。
+**`body-file` が引数で渡されていれば手順 4・5 を飛ばす。** 渡されていない場合、リポジトリに PR テンプレートがあればそれに従って本文を組み立てる。以下を確認する。
 
 ```bash
 ls .github/PULL_REQUEST_TEMPLATE.md \
@@ -96,7 +120,7 @@ git log <base>..HEAD --oneline
 - コードについて触れるのは、理解が難しい箇所・注意を払うべきと判断した箇所に限る。
 - チェック項目を作る場合は、**実際の挙動から観測できる変化** を具体的に書く。コード内部の状態（変数・フラグ等）は通常観測できないので書かない。
 - 「正しく」「正常に」など解釈に余地のある言葉は使わない。何がどう変わるかを具体的な事象で書く。
-- **チケット番号は推測しない。** ブランチ名や明示された情報から判別できない場合はユーザーに尋ねる。
+- **Issue 番号やチケット ID を推測しない。** ブランチ名や明示された情報から判別できなければ本文に書かない。
 
 テンプレートが無い場合の標準構成:
 
@@ -118,7 +142,7 @@ git log <base>..HEAD --oneline
 
 ### 6. PR の作成または更新
 
-まずブランチを push する。
+まずブランチを push する。`head` が渡されていればそのブランチを push する。
 
 ```bash
 git push -u origin "$(git branch --show-current)"
@@ -141,35 +165,38 @@ gh pr view --json number,url,baseRefName,title 2>/dev/null
 
   既存の本文をテンプレート構成で上書きしてよいか不安が残る場合（手動で書き加えられた節がある等）は、上書き前にユーザーへ確認する。
 
-- **既存 PR が無い場合**: 新規に作成する。
+- **既存 PR が無い場合**: 新規に作成する。`head` / `body-file` / `draft` が渡されていれば対応するフラグを付ける。
 
   ```bash
   gh pr create \
     --base "<base>" \
     --title "<タイトル>" \
     --body "<上で作成した本文>"
+  # head が渡された場合: --head "<head>"
+  # body-file が渡された場合: --body の代わりに --body-file "<path>"
+  # draft=true の場合: --draft
   ```
 
-作成・更新後、`gh pr view --web` の URL を含め、対象の PR をユーザーに伝える。
+作成・更新後、`gh pr view --web` の URL を含め、対象の PR をユーザーに伝える。**PR 番号は呼び出し元が使うので、返答に必ず含める。**
 
-## ブランチ命名ルール
+## ブランチ名の決め方
 
-新しいブランチを作るときは以下に従う。チケットが存在する場合は **チケット名を末尾につける**（`--` 区切り）。
+**そのリポジトリの既存のブランチ名に倣う。** 決め打ちの規則を持ち込まない。
 
-| 種別 | プレフィックス | 例 |
-|------|---------------|----|
-| リリース | `release/` | `release/v1.23.0` |
-| 機能追加 | `feature/` | `feature/add-user-roles--DVSPBASE-12345` |
-| 修正 | `fix/` | `fix/role-permission-inconsistency--DVSPBASE-23456` |
-| 緊急修正 | `hotfix/` | `hotfix/role-permission-inconsistency` |
+```bash
+gh pr list --state all --limit 50 --json headRefName -q '.[].headRefName'
+git for-each-ref --sort=-committerdate --format='%(refname:short)' refs/remotes/origin/ | head -30
+```
 
-- 説明部分はケバブケース（小文字・ハイフン区切り）で、変更内容が伝わる短い英語にする。
-- チケット番号が不明な場合は **推測せず** ユーザーに確認する。確認の結果チケットが無いなら末尾のチケット名は省略する。
+- 出てきた名前に共通の形（接頭辞、区切り文字、Issue 番号やチケット ID の有無と位置）があれば、それに合わせる。
+- 読み取れる形が無ければ `<種別>/<内容>` にする。種別は変更の性質を表す語（`feature` / `fix` / `hotfix` など）、内容はケバブケース（小文字・ハイフン区切り）で、変更が伝わる短い英語にする。
+- 既存の名前が Issue 番号やチケット ID を含んでいて、この変更のものが分からないときは **推測せず** ユーザーに確認する。無いと分かったら省略する。
 
 ## やらない
 
-- チケット番号・チケット名の推測（不明ならユーザーに尋ねる）
-- マージ先の推測（履歴から1つに定まらなければユーザーに選んでもらう）
+- ブランチ名の規則の推測（既存のブランチ名から読み取れなければユーザーに尋ねる）
+- Issue 番号・チケット ID の推測（不明ならユーザーに尋ねる）
+- マージ先の推測（候補から 1 つに定まらなければユーザーに選んでもらう）
 - コードの差分を逐一なぞる説明（挙動の変化に集約する）
 - 「正しく動く」「正常に処理される」等、観測できない・解釈に幅のある表現
 - コード内部状態をチェック項目にすること（観測できる挙動だけを項目にする）

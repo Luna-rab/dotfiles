@@ -6,13 +6,17 @@
 
 サブコマンドは無い。1 つの判定しかしないので、引数だけを渡す。
 
-  verify.py --branch <タスクブランチ> --base <topic/作業名>
+  verify.py --branch <タスクブランチ> --base <起点にしたブランチ>
 
-2 つの検査（ブランチが origin にある / base からのコミットが 1 件以上ある）が
+2 つの検査（ブランチが origin にある / 起点からのコミットが 1 件以上ある）が
 両方通ったときだけ終了コード 0 を返す。
 
-**PR は見ない。** PR はレビューが全件決着してからリードが作るので、この時点では存在しない
-（integration.md）。**レビューの決着も見ない。** そちらは
+`--base` に渡すのは、そのブランチを切った起点である（stacked PR の土台 `stack/<作業名>--task-0` か、
+起動時の stacked PR の先頭。state.json の `parent`）。stacked PR へ積んだ後は起点が動くので、この数え方は
+積む前にだけ意味がある（../integration.md §1）。
+
+**PR は見ない。** PR は全レビューが決着してからリードが作るので、この検査を叩く時点では
+まだ存在しない（../integration.md §2）。**レビューの決着も見ない。** そちらは
 `review.py list --dir <ベース>/notes/task<番号> --require-empty` が判定する。
 """
 
@@ -25,7 +29,11 @@ from lib.shell import die, emit, out, run, warn
 
 
 def main(args: argparse.Namespace) -> None:
-    run(["git", "fetch", "origin"])
+    # fetch は要る 2 ref に絞る。全ブランチの fetch にすると、呼び出し元の stack.py precheck が
+    # 直前に fetch したばかりのリポジトリで、無関係ブランチの転送をもう 1 回繰り返すことになる。
+    # タスクブランチはまだ origin に無いことがある（それ自体が branch-exists の検査対象）ので、
+    # 実在を ls-remote で確かめてから fetch する
+    run(["git", "fetch", "origin", args.base])
     checks: list[dict[str, Any]] = []
 
     code, _ = run(
@@ -44,6 +52,7 @@ def main(args: argparse.Namespace) -> None:
 
     commits = None
     if branch_exists:
+        run(["git", "fetch", "origin", args.branch])
         commits = int(
             out(["git", "rev-list", "--count", f"origin/{args.base}..origin/{args.branch}"])
         )
@@ -72,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="verify.py", description=__doc__)
     parser.add_argument("--branch", required=True, help="タスクブランチ名")
     parser.add_argument(
-        "--base", required=True, help="起点にした base ブランチ名（topic/<作業名>）"
+        "--base", required=True, help="起点にしたブランチ名（state.json の parent）"
     )
     return parser
 

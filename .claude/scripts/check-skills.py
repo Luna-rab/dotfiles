@@ -10,7 +10,7 @@
 実際にスキルを起動するまで気づけない。それを commit の時点で捕まえるために、次の 4 つを検査する。
 
 1. frontmatter（`SKILL.md` の先頭にある `---` で挟まれた YAML）が YAML として読めること
-2. `SKILL.md` が 500 行以下であること（基準は `.claude/rules/editing-skills.md`）
+2. `SKILL.md` が 500 行以下であること（基準は `.claude/skills/editing-skills/SKILL.md`）
 3. スキル内の `*.md` から張られた相対リンクの参照先が実在すること
 4. `*.md` が参照する `scripts/` 配下のファイルが実在し、直接起動されるファイル
    （`.sh`、および 1 行目が `#!` で始まるファイル）に実行権限があること
@@ -64,7 +64,7 @@ except ImportError:  # PyYAML が無い環境で traceback を出さない
 # `~/.claude/scripts` へ symlink するので、`__file__` 基準だと symlink の実体側を見てしまう。
 DEFAULT_SKILLS_ROOT = ".claude/skills"
 
-# `.claude/rules/editing-skills.md` が定める SKILL.md の行数上限。
+# `.claude/skills/editing-skills/SKILL.md` が定める SKILL.md の行数上限。
 MAX_SKILL_MD_LINES = 500
 
 # 検査名。CI や grep から使うので ASCII の固定文字列にする（説明文は日本語で変わりうる）。
@@ -321,7 +321,7 @@ def count_lines(text: str) -> int:
     """エディタや `wc -l` と同じ数え方で行数を返す。
 
     `str.splitlines()` を使わないのは、改行のほかに `\\v` `\\f` `\\x1c` `\\x1d` `\\x1e`
-    `\\x85` `U+2028` `U+2029` まで行の区切りに数えるからである。`.claude/rules/editing-skills.md`
+    `\\x85` `U+2028` `U+2029` まで行の区切りに数えるからである。`editing-skills` スキル
     の「500 行以下」はエディタが数える行のことなので、基準がずれる（`\\f` を各行に入れた
     403 行の SKILL.md が 803 行と報告されていた）。
 

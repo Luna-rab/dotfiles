@@ -18,11 +18,11 @@ link_to_homedir() {
       [[ $fname == .git* ]] && continue
       # .claude は link_claude_config() で個別に扱う（ランタイムデータを巻き込まないため）
       [[ $fname == .claude ]] && continue
-      # 開発ツールの生成物はリンクしない。このリポジトリで `uv run ruff` や `uv run ty` を
-      # 実行すると .venv/（uv が作る仮想環境）と .ruff_cache/（ruff のキャッシュ）が
-      # ルート直下に生まれる。どちらも .gitignore で追跡対象外なので clone した人の手元には
+      # 開発ツールの生成物はリンクしない。このリポジトリで `uv run ruff` / `uv run ty` /
+      # `uv run pytest` を実行すると .venv/（uv が作る仮想環境）、.ruff_cache/、.pytest_cache/
+      # がルート直下に生まれる。どれも .gitignore で追跡対象外なので clone した人の手元には
       # 無いが、検査を回した後に install.sh を実行すると $HOME に symlink が張られてしまう。
-      [[ $fname == .venv || $fname == .ruff_cache ]] && continue
+      [[ $fname == .venv || $fname == .ruff_cache || $fname == .pytest_cache ]] && continue
       if [[ -L "$HOME/$fname" ]];then
         command rm -f "$HOME/$fname"
       fi
@@ -129,6 +129,29 @@ link_claude_config() {
 
   merge_claude_settings "$src" "$dst"
   install_claude_plugins "$src"
+  warm_claude_hooks "$src"
+}
+
+# .claude/hooks/ のスクリプトが宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
+# フックは Claude Code が応答を終えるたびに起動されるので、初回の起動で uv が
+# パッケージをダウンロードし始めると、その間ユーザーは待たされる。
+# uv が無ければ（mise の導入に失敗しているなど）警告だけ出して先へ進む。
+warm_claude_hooks() {
+  local src=$1
+  [[ -d "$src/hooks" ]] || return 0
+  if ! command -v uv >/dev/null 2>&1; then
+    command echo "WARNING: uv not found. skip warming up $src/hooks (first Stop hook run will download deps)"
+    return 0
+  fi
+  local hook
+  for hook in "$src"/hooks/*.py; do
+    [[ -x "$hook" ]] || continue
+    if "$hook" --warm; then
+      command echo "warm up $hook"
+    else
+      command echo "WARNING: failed to warm up $hook"
+    fi
+  done
 }
 
 # ~/.claude/settings.json への dotfiles 設定のマージ。

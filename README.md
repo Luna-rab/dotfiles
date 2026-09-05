@@ -190,6 +190,25 @@ VS Code のユーザ設定に以下を追加すると、コンテナ作成時に
 "dotfiles.installCommand": "install.sh"
 ```
 
+### フック（`.claude/hooks/`）
+
+Claude Code のフック（決まったタイミングで Claude Code が起動するスクリプト）。
+`~/.claude/hooks/` が `.claude/hooks/` への symlink になり、`.claude/settings.json` の
+`hooks` がマージされて全プロジェクトで動く。
+
+| スクリプト | いつ | 何をするか |
+| --- | --- | --- |
+| `review-added-comments.py` | Stop（Claude が応答を終える直前） | その turn で Claude が追加したコメントを tree-sitter で拾い出し、`{"decision": "block", "reason": ...}` で 1 件ずつ要否を問い直させる。コメントを書いていない turn では何もしない |
+
+AI は処理を言い直しただけのコメントを大量に書く。書いている最中は推論の足場になるので
+残してよいが、放置するとコードが読みにくくなる。`CLAUDE.md` に書いても長い会話では埋もれる。
+PostToolUse ではなく Stop にしたのは、編集のたびに割り込むと会話がぶつ切りになるため。
+
+shebang は `#!/usr/bin/env -S uv run --script` で、依存（`tree-sitter-language-pack`）は
+初回起動時に uv が取り寄せる。`install.sh` が `--warm` で 1 回起動して先に取り寄せておく。
+uv が無い環境では起動に失敗し、何もしないフックになる（Claude の停止は妨げない）。
+テストは `.claude/hooks/tests/` にあり、`uv run pytest` で走る。
+
 ### 検証（`.claude/scripts/`）
 
 `.claude/skills/` 配下には Claude Code の skill 定義（`SKILL.md` と補助ファイル）が入っている。
@@ -202,13 +221,14 @@ VS Code のユーザ設定に以下を追加すると、コンテナ作成時に
 | `uv run ruff check .` | Python の lint（未使用の import、古い書き方など）。`--fix` を付けると直せるものを直す |
 | `uv run ruff format .` | Python の整形。CI は `--check` を付けて差分が無いことだけを見る |
 | `uv run ty check` | Python の型 |
+| `uv run pytest` | `.claude/hooks/` のフックの動作（テストは `.claude/hooks/tests/`） |
 | `./.claude/scripts/check-skills.py` | `.claude/skills/` 配下の全 skill について、frontmatter が YAML として読めるか、`SKILL.md` が 500 行以下か、本文中の相対リンクと `scripts/` 配下への参照先が実在するか、実行されるスクリプトに実行権限が付いているかを調べる |
 
 どれもリポジトリのルートから実行し、通れば終了コード 0、落ちれば 0 以外を返す。
-`.github/workflows/skill-checks.yml` が push と pull request のたびに 4 つとも走らせる。
+`.github/workflows/skill-checks.yml` が push と pull request のたびに 5 つとも走らせる。
 
 ```shell
-uv run ruff check . && uv run ruff format --check . && uv run ty check && ./.claude/scripts/check-skills.py
+uv run ruff check . && uv run ruff format --check . && uv run ty check && uv run pytest && ./.claude/scripts/check-skills.py
 ```
 
 #### 依存の置き場
@@ -222,8 +242,9 @@ supervisor スキルは動く。
 
 | どこ | 何のため | 誰が要るか |
 | --- | --- | --- |
-| `pyproject.toml` の `[dependency-groups] dev` | ruff・ty（と、ty が `import yaml` を解決するための pyyaml） | このリポジトリの Python を触る人と CI |
+| `pyproject.toml` の `[dependency-groups] dev` | ruff・ty・pytest（と、ty と pytest がスクリプトの import を解決するための pyyaml・tree-sitter-language-pack） | このリポジトリの Python を触る人と CI |
 | `.claude/scripts/check-skills.py` 先頭の `# /// script`（PEP 723） | 実行時の PyYAML | このスクリプトを走らせる人 |
+| `.claude/hooks/review-added-comments.py` 先頭の `# /// script`（PEP 723） | 実行時の tree-sitter-language-pack | このフックが動く（= install.sh を通した）マシン |
 
 `check-skills.py` の shebang は `#!/usr/bin/env -S uv run --script` なので、直接起動すれば
 uv が PyYAML を用意する。PyYAML が既に入っている環境なら

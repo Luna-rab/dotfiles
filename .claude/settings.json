@@ -24,5 +24,18 @@
       }
     }
   },
-  "tui": "fullscreen"
+  "tui": "fullscreen",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/review-added-comments.py",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
 }

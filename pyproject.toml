@@ -20,10 +20,12 @@ requires-python = ">=3.10"
 dependencies = []
 
 [dependency-groups]
-# `uv run ruff` / `uv run ty` が使う。実行時には要らない。
-# pyyaml が入っているのは ty が check-skills.py の `import yaml` を解決するためで、
-# 実行時の依存はスクリプト自身が PEP 723（`# /// script`）で宣言している
-dev = ["ruff>=0.16", "ty>=0.0.72", "pyyaml>=6"]
+# `uv run ruff` / `uv run ty` / `uv run pytest` が使う。実行時には要らない。
+# pyyaml と tree-sitter-language-pack が入っているのは、ty が check-skills.py の `import yaml` と
+# .claude/hooks/review-added-comments.py の `import tree_sitter_language_pack` を解決し、
+# pytest がフックを関数として呼べるようにするため。実行時の依存はスクリプト自身が
+# PEP 723（`# /// script`）で宣言している
+dev = ["ruff>=0.16", "ty>=0.0.72", "pytest>=8", "pyyaml>=6", "tree-sitter-language-pack>=0.13"]
 
 # パッケージとして配るものではないので、ビルドバックエンドを持たせない
 [tool.uv]
@@ -78,3 +80,6 @@ extra-paths = [".claude/skills/supervisor/scripts"]
 
 [tool.ty.src]
 exclude = [".claude/worktrees"]
+
+[tool.pytest.ini_options]
+testpaths = [".claude/hooks/tests"]

@@ -50,6 +50,8 @@
 # ruff がキャッシュを置く。ソースの副産物なので追跡しない
 /.ruff_cache/
 /.claude/**/.ruff_cache/
+# pytest がキャッシュを置く。同じく副産物
+/.pytest_cache/
 
 !install.sh
 !/README.md

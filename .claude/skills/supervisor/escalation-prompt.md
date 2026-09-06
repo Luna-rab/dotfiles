@@ -8,7 +8,7 @@
 ```javascript
 agent(replanPrompt(reason), {
   label: `replan:${task.id}`, phase: 'Escalation',
-  model: 'opus', isolation: 'worktree', schema: PLAN })
+  isolation: 'worktree', schema: PLAN })   // model / effort はリードを継承
 ```
 
 ## 0. あなたの役割

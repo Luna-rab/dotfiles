@@ -45,7 +45,11 @@ const LIGHT = task.tier === 'light'
 const NOTES = `${BASE}/notes/${task.id}`         // 引き継ぎノートと review.json の置き場
 // 各ループの 1 巡目で走らせるレビュアーの役割。2 巡目以降は通常レビューだけになる（下の runReview）
 const REVIEWER_ROLES = LIGHT ? ['review:normal'] : ['review:normal', 'review:adversarial']
-const implOpts = LIGHT ? { model: 'sonnet', effort: 'medium' } : { model: 'opus' }
+// standard の役割は model / effort を指定しない。**省略すると `/supervisor` を動かしている
+// セッション（リード）のモデルと effort を継承する**（workflow-script.md「役割ごとのモデルと
+// effort」）。sonnet に落とすのは light と、doc だけの修正の再レビューだけである
+const LIGHT_OPTS = { model: 'sonnet', effort: 'medium' }
+const implOpts = LIGHT ? LIGHT_OPTS : {}
 
 // --- schema（返すのは判断に要る値だけ。指摘の本文は review.json にある） ---
 // どの役割にも `worktree` がある。**割り当てられた worktree の絶対パスを自己申告させる値**で、
@@ -486,24 +490,24 @@ async function agentRetry(prompt, opts, isNoop) {
 // いる。同じ差分を粗探しの前提でもう一度読み直す価値は 1 巡目より低い。修正が持ち込んだ新規の
 // 問題は通常レビューが拾う（review-prompt.md §7 の 4）。impl-b の後は差分が全面的に入れ替わる
 // ので、そのループの 1 巡目でもう一度走る。
-async function runReview({ round, adversarial = !LIGHT, effort = 'medium', first = true,
-                            docsOnly = false }) {
+async function runReview({ round, adversarial = !LIGHT, first = true, docsOnly = false }) {
   // 検証の記録が無い、または契約を読んでいない応答は no-op を疑って 1 回だけ振り直す
   const noop = r => !r.notes || r.contractRead === false
   const roles = ['review:normal']
   const reviews = [
     () => agentRetry(reviewPrompt('review:normal', round, first),
       { label: `review:${task.id}#${round}`, phase: 'Review',
-        // docsOnly（doc だけの修正の再レビュー）は sonnet に落とす（review-prompt.md の表）
-        model: LIGHT || docsOnly ? 'sonnet' : 'opus', effort, isolation: 'worktree',
-        schema: REVIEW }, noop),
+        // docsOnly（doc だけの修正の再レビュー）は sonnet/low に落とす（review-prompt.md の表）。
+        // standard は指定せず、リードのモデルと effort を継承する
+        ...(docsOnly ? { model: 'sonnet', effort: 'low' } : LIGHT ? LIGHT_OPTS : {}),
+        isolation: 'worktree', schema: REVIEW }, noop),
   ]
   if (adversarial) {
     roles.push('review:adversarial')
     reviews.push(
       () => agentRetry(reviewPrompt('review:adversarial', round, first),
         { label: `review-adv:${task.id}#${round}`, phase: 'Review',
-          model: 'opus', effort, isolation: 'worktree', schema: REVIEW }, noop))
+          isolation: 'worktree', schema: REVIEW }, noop))
   }
 
   const results = await parallel(reviews)
@@ -563,9 +567,8 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
     // adversarialRan: false のまま approved になり、stack.py precheck（standard は
     // adversarialRan true を要求）を立て直しても永遠に通せなくなる
     const docsOnly = changeKind === 'docs' && i > 1
-    const review = await runReview({ round, first: i === 1,
-      adversarial: !LIGHT && i === 1,
-      effort: docsOnly ? 'low' : 'medium', docsOnly })
+    const review = await runReview({ round, first: i === 1, docsOnly,
+      adversarial: !LIGHT && i === 1 })
     see(...review.worktrees)   // 打ち切って返る経路でも、残した worktree をリードに知らせる
     carry.contractMisses += review.contractMisses
     // このタスクで敵対的レビューが 1 度でも結果を返したか。ラウンドごとの expected では
@@ -580,7 +583,7 @@ async function reviewFixLoop({ tag = '', maxRounds = 3 }) {
 
     const judge = await agentRetry(judgePrompt(round, review.roles),
       { label: `judge:${task.id}#${round}`, phase: 'Judge',
-        model: 'opus', effort: 'medium', isolation: 'worktree', schema: JUDGE })
+        isolation: 'worktree', schema: JUDGE })
     if (!judge)
       return { done: false, infra: true, round,
                reason: '裁定エージェントが起動しなかった（2 回）' }
@@ -653,7 +656,7 @@ if (r.infra) return fail(`エージェントが起動しなかった: ${r.reason
 if (!r.done) {
   const plan = await agentRetry(replanPrompt(r.reason),
     { label: `replan:${task.id}`, phase: 'Escalation',
-      model: 'opus', isolation: 'worktree', schema: PLAN })
+      isolation: 'worktree', schema: PLAN })
   if (!plan) return fail(`再計画エージェントが起動しなかった（2 回）。直前: ${r.reason}`)
   collect(plan)
   see(plan)   // 消してよいのは impl-b が push を終えてからなので、ここでは見かけただけにする
@@ -661,7 +664,7 @@ if (!r.done) {
 
   const implB = await agentRetry(implPrompt('impl-b', 0, null, plan.plan),
     { label: `impl-b:${task.id}`, phase: 'Escalation',
-      model: 'opus', isolation: 'worktree', schema: IMPL })
+      isolation: 'worktree', schema: IMPL })
   if (!implB) return fail(`impl-b が起動しなかった（2 回）。直前: ${r.reason}`)
   collect(implB)
   branch = implB.branch || branch
@@ -677,7 +680,7 @@ if (!r.done) {
 // --- 4. PR 本文を書く（PR に載せるのはリード） ---
 const prBody = await agentRetry(prBodyPrompt(),
   { label: `pr-body:${task.id}`, phase: 'PR',
-    model: 'opus', isolation: 'worktree', schema: PRBODY })
+    isolation: 'worktree', schema: PRBODY })
 collect(prBody)
 
 // --- 4.5. 最後の後始末（決着したので、残っている worktree は全部役目を終えている） ---

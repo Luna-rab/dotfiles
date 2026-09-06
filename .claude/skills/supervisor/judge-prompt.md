@@ -6,7 +6,7 @@
 ```javascript
 agent(judgePrompt(round), {
   label: `judge:${task.id}#${round}`, phase: 'Judge',
-  model: 'opus', effort: 'medium', isolation: 'worktree', schema: JUDGE })
+  isolation: 'worktree', schema: JUDGE })   // model / effort はリードを継承
 ```
 
 ## 0. あなたの役割

@@ -35,9 +35,11 @@
    `scripts/stack.py`・`scripts/state.py` の全スクリプトに実行ビットがあることを確かめ
    （`ls -l <スクリプト>`）、欠けていれば `chmod +x` する
    （`scripts/task-workflow.js` は `Workflow` ツールが読むので実行ビットは要らない）。
-4. **自分がどのモデルで動いているかをユーザーに申告する。** `opus` でなければ、タスク設計に
-   入る前に `/model` での切り替えを提案する（役割ごとのモデルは
-   [workflow-script.md](workflow-script.md) の表が `opus` を前提にコストを見積もっている）。
+4. **自分がどのモデルと effort で動いているかをユーザーに申告する。** standard の実装・レビュー・
+   裁定・再計画・PR 本文は、model と effort を指定せずにこのセッションの設定を継承する
+   （[workflow-script.md](workflow-script.md)「役割ごとのモデルと effort」）。つまり今のモデルと
+   effort がそのまま全エージェントの既定になる。変えたいならタスク設計に入る前に `/model` で
+   切り替える。
 5. **分岐元（＝ stacked PR の土台が向く base。`gh stack` の trunk）を確定する。** 候補は
    デフォルトブランチと、過去の PR が実際にマージ先にしているブランチである（ブランチ名の
    規則を決め打ちしない。リポジトリごとに違う）。候補が 2 つ以上あればどこから切るかを
@@ -142,7 +144,8 @@ EnterWorktree({ path: ".claude/worktrees/supervisor-<作業名>" })
 
 ## 3. 調査する
 
-- コードベースの現状は **Explore エージェント**（`model: "opus"`、"very thorough"）に調べさせる。
+- コードベースの現状は **Explore エージェント**（`model` は指定せずリードを継承、"very thorough"）に
+  調べさせる。
   行数を数える程度は自分でやってよい。
 - 結果は `<ベース>/map.md` に書く。**書くのは入口だけ**——関連ディレクトリと
   主要なクラス・関数の名前を数個。変更するファイルの一覧や行番号つきの内部構造は書かない

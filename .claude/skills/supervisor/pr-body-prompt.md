@@ -9,7 +9,7 @@
 ```javascript
 agent(prBodyPrompt(), {
   label: `pr-body:${task.id}`, phase: 'PR',
-  model: 'opus', isolation: 'worktree', schema: PRBODY })
+  isolation: 'worktree', schema: PRBODY })   // model / effort はリードを継承
 ```
 
 **この PR を読むのは人間である。** レビューの往復（review.json）は作業記録であって成果物では

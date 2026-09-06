@@ -129,21 +129,26 @@ design-notes.md「なぜ契約をエージェントに Read させるか」に�
 
 スクリプトが決めるので、リードは指定しない。コストを見積もるための表である。
 
+**standard の役割は `model` も `effort` も指定しない。** `agent()` で省略すると、`/supervisor` を
+動かしているセッション（リード）のモデルと effort をそのまま継承する。つまりリードを `/model` で
+切り替えれば、実装・レビュー・裁定・再計画・PR 本文が全部そのモデルと effort で走る。`sonnet` に
+落とすのは light と、doc だけの修正の再レビューと、worktree の後始末だけである。
+
 | 役割 | model | effort |
 | --- | --- | --- |
-| リード（`/supervisor` のセッション本体） | `opus` | — |
-| 実装・修正（standard） | `opus` | 既定 |
+| リード（`/supervisor` のセッション本体） | セッションの設定 | セッションの設定 |
+| 実装・修正（standard） | リードを継承 | リードを継承 |
 | 実装・修正（light） | `sonnet` | `medium` |
-| 実装の差し替え（impl-b） | `opus` | 既定 |
-| 通常レビュー（standard） | `opus` | `medium` |
+| 実装の差し替え（impl-b） | リードを継承 | リードを継承 |
+| 通常レビュー（standard） | リードを継承 | リードを継承 |
 | 通常レビュー（light） | `sonnet` | `medium` |
-| 敵対的レビュー（standard の 1 巡目だけ） | `opus` | `medium` |
+| 敵対的レビュー（standard の 1 巡目だけ） | リードを継承 | リードを継承 |
 | doc だけの修正の再レビュー | `sonnet` | `low` |
-| 裁定 | `opus` | `medium` |
-| 再計画（エスカレーション） | `opus` | 既定 |
-| PR 本文 | `opus` | 既定 |
+| 裁定 | リードを継承 | リードを継承 |
+| 再計画（エスカレーション） | リードを継承 | リードを継承 |
+| PR 本文 | リードを継承 | リードを継承 |
 | worktree の後始末（1 コマンド叩くだけ・worktree なし） | `sonnet` | `low` |
-| Explore 調査（リードの意思決定用） | `opus` | 既定 |
+| Explore 調査（リードの意思決定用） | リードを継承 | リードを継承 |
 
 **`isolation: 'worktree'` が付かないのは 1 つだけである**——worktree の後始末レーン。
 checkout をしないので worktree が要らず、自分に worktree が付くと消す対象の中に自分がいて、

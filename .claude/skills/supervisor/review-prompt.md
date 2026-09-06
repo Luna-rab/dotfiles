@@ -10,14 +10,14 @@
 ```javascript
 agent(reviewPrompt('review:normal', round), {
   label: `review:${task.id}#${round}`, phase: 'Review',
-  model: LIGHT ? 'sonnet' : 'opus', effort: 'medium',
+  ...(LIGHT ? { model: 'sonnet', effort: 'medium' } : {}),   // standard はリードを継承
   isolation: 'worktree', schema: REVIEW })
 ```
 
 | 種類 | いつ | model | effort |
 | --- | --- | --- | --- |
-| 通常レビュー | 毎ラウンド | standard `opus` / light `sonnet` | `medium` |
-| 敵対的レビュー | standard の**1 巡目だけ**（impl-b の後の 1 巡目も含む） | `opus` | `medium` |
+| 通常レビュー | 毎ラウンド | standard はリードを継承 / light `sonnet` | standard はリードを継承 / light `medium` |
+| 敵対的レビュー | standard の**1 巡目だけ**（impl-b の後の 1 巡目も含む） | リードを継承 | リードを継承 |
 | doc だけの修正の再レビュー | 直前の修正が `changeKind: "docs"` を返したとき。通常 1 本のみ | `sonnet` | `low` |
 
 **`isolation: 'worktree'` を必ず付ける。** 付けないと 2 体が同じツリーで検証コマンドを走らせて

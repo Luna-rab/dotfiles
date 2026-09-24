@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commits", "changeKind", "blocked"],
+  "properties": {
+    "branch": { "type": "string" },
+    "commits": {
+      "type": "integer",
+      "description": "<起点> から積んだコミットの数。1 以上でなければ検査②が落ちる"
+    },
+    "changeKind": {
+      "type": "string",
+      "enum": ["logic", "docs"],
+      "description": "docs（文章とコメントだけ）なら次のラウンドのレビューが 1 体になる。迷ったら logic"
+    },
+    "testConflict": {
+      "type": "string",
+      "description": "テストが仕様と矛盾しているときだけ理由を入れる。無ければ null"
+    },
+    "verified": {
+      "type": "array",
+      "description": "自分で流して緑を確かめたコマンド",
+      "items": { "type": "string" }
+    },
+    "blocked": { "type": "boolean" },
+    "questions": { "type": "array", "items": { "type": "string" } },
+    "decisions": {
+      "type": "array",
+      "description": "自分の判断で決めたこと。土台 PR の本文に出る",
+      "items": { "type": "string" }
+    },
+    "deferrals": {
+      "type": "array",
+      "description": "先送りにしたもの。土台 PR の本文に出る",
+      "items": { "type": "string" }
+    },
+    "notes": { "type": "string" }
+  }
+}

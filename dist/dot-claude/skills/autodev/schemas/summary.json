@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["prose"],
+  "properties": {
+    "prose": {
+      "type": "string",
+      "description": "見出しを付けない 2〜5 段落。表・箇条書きの進行状況は書かない（driver が組む）"
+    }
+  }
+}

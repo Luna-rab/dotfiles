@@ -3,14 +3,15 @@
 # requires-python = ">=3.10"
 # dependencies = ["pyyaml"]
 # ///
-"""`.claude/skills/` 配下のスキルが壊れていないかを検査する。
+"""`dist/dot-claude/skills/` 配下のスキルが壊れていないかを検査する。
 
-このリポジトリは Claude Code の skills（`.claude/skills/<スキル名>/SKILL.md` と、そこから
-参照される補助ファイル）を dotfiles として持ち歩く。リンク切れや権限の落ちたスクリプトは、
-実際にスキルを起動するまで気づけない。それを commit の時点で捕まえるために、次の 4 つを検査する。
+このリポジトリは Claude Code の skills（`dist/dot-claude/skills/<スキル名>/SKILL.md` と、
+そこから参照される補助ファイル）を dotfiles として持ち歩く。リンク切れや権限の落ちた
+スクリプトは、実際にスキルを起動するまで気づけない。それを commit の時点で捕まえるために、
+次の 4 つを検査する。
 
 1. frontmatter（`SKILL.md` の先頭にある `---` で挟まれた YAML）が YAML として読めること
-2. `SKILL.md` が 500 行以下であること（基準は `.claude/skills/editing-skills/SKILL.md`）
+2. `SKILL.md` が 500 行以下であること（基準は `editing-skills/SKILL.md`）
 3. スキル内の `*.md` から張られた相対リンクの参照先が実在すること
 4. `*.md` が参照する `scripts/` 配下のファイルが実在し、直接起動されるファイル
    （`.sh`、および 1 行目が `#!` で始まるファイル）に実行権限があること
@@ -20,17 +21,14 @@
     .claude/scripts/check-skills.py
 
 shebang が `uv run --script` なので、上の 1 行だけで PyYAML が用意される（uv が入っている
-必要がある。`mise/config.toml` に入れてあるので install.sh を通したマシンにはある）。
-PyYAML が既に入っている環境なら `python3 .claude/scripts/check-skills.py` でも動く。
-
-**この依存は supervisor スキルには波及しない。** `.claude/skills/supervisor/scripts/` の
-4 本は標準ライブラリだけで動き、shebang も `#!/usr/bin/env python3` のままである。
+必要がある。`dist/dot-config/mise/config.toml` に入れてあるので install.sh を通した
+マシンにはある）。PyYAML が既に入っている環境なら `python3` で起動しても動く。
 
 問題が無ければ終了コード 0、1 件でも見つかれば 1 を返す。落ちた箇所は
 `パス:行番号: 検査名: 説明` の形で 1 件 1 行ずつ標準出力に出す。
 検査対象のスキルが 1 つも見つからない場合も、CI が緑のまま素通りしないように 1 を返す。
 
-第 1 引数に別のディレクトリを渡すと、そこを `.claude/skills/` の代わりに検査する。
+第 1 引数に別のディレクトリを渡すと、そこをスキルのルートの代わりに検査する。
 これは「わざと壊した入力で終了コード 1 が返ること」を、実物のスキルに触らずに確かめるために
 ある。CI は引数なしで呼ぶので、既定値のままなら振る舞いは変わらない。
 """
@@ -60,11 +58,12 @@ except ImportError:  # PyYAML が無い環境で traceback を出さない
 # --- 定数 ---
 
 # 既定の検査対象。カレントディレクトリからの相対で解決する（リポジトリのルートで実行する前提）。
-# `__file__` からの相対にしない: install.sh の link_claude_config() が `.claude/scripts` を
-# `~/.claude/scripts` へ symlink するので、`__file__` 基準だと symlink の実体側を見てしまう。
-DEFAULT_SKILLS_ROOT = ".claude/skills"
+# `__file__` からの相対にしない: git worktree（Claude Code が `.claude/worktrees/` に作る
+# 別ブランチのチェックアウト）の中から親のチェックアウトのこのファイルを絶対パスで叩いたとき、
+# 手元の worktree ではなく親のスキルを検査してしまう。
+DEFAULT_SKILLS_ROOT = "dist/dot-claude/skills"
 
-# `.claude/skills/editing-skills/SKILL.md` が定める SKILL.md の行数上限。
+# `editing-skills/SKILL.md` が定める SKILL.md の行数上限。
 MAX_SKILL_MD_LINES = 500
 
 # 検査名。CI や grep から使うので ASCII の固定文字列にする（説明文は日本語で変わりうる）。
@@ -129,25 +128,24 @@ LINK_SKIP_REASONS = (
 # シェルの例（hooks.md の動作確認）で `;` まで取り込んで参照先を見失わないようにするため。
 PATH_CHARS = r"A-Za-z0-9._/\-"
 
-# スキルのディレクトリ名に使う文字。
 SKILL_NAME_CHARS = r"A-Za-z0-9._\-"
 
 # `scripts/` の直前 1 文字がこれなら参照として拾わない。目的は 2 つだけである。
 #   - 別語の一部を弾く（`myscripts/x.sh` の `scripts`）
-#   - スキルの外の `scripts/` を弾く（`.claude/scripts/statusline.sh`、`docs/scripts/x.sh`）
+#   - スキルの外の `scripts/` を弾く（`dist/dot-claude/scripts/statusline.sh`、`docs/scripts/x.sh`）
 # ASCII に限るのが要点。`\w` は Python 3 では Unicode に当たるため、このリポジトリのスキルが
 # 全文日本語であることと相まって `詳細はscripts/x.sh` を取りこぼしていた。
 NOT_BEFORE = r"A-Za-z0-9_/~.\-"
 
 # `scripts/` 配下への参照。4 つの書き方を 1 本の正規表現で拾う。並び順に意味がある
 # （前の候補から順に試されるので、より長い書き方を先に置く）。
-#   1. skills ルートから書いた形（`~/.claude/skills/supervisor/scripts/gh-review.py`）
+#   1. skills ルートから書いた形（`~/.claude/skills/autodev/scripts/autodev.py`）
 #      → skills ルートから解決する
-#   2. 隣のスキルを相対で指す形（`../supervisor/scripts/gh-review.py`）
+#   2. 隣のスキルを相対で指す形（`../autodev/scripts/autodev.py`）
 #      → そのスキルのディレクトリの 1 つ上から解決する
 #   3. 同じスキルの中を指す形（`scripts/x.sh`、`./scripts/x.sh`）
 #      → そのファイルが属するスキルのディレクトリから解決する
-#   4. スキル名から書いた形（`supervisor/scripts/gh-review.py`）
+#   4. スキル名から書いた形（`autodev/scripts/autodev.py`）
 #      → 1 と同じ skills ルートから解決する。ただし名前が実在するスキルのときだけ参照として
 #        扱う（`docs/scripts/x.sh` や `.claude/scripts/x.sh` を誤って拾わないため）
 # 拾わない書き方: `../scripts/x.sh`（`..` はスキル名ではないので 4 の検証で落ちる）、
@@ -480,7 +478,7 @@ def iter_script_refs(text: str) -> Iterator[tuple[int, str | None, str, str, boo
     - REF_BASE_MD_PARENT: その md が置かれたディレクトリ（`../` で書いた形）
     - REF_BASE_SKILL_DIR: そのファイルが属するスキルのディレクトリ（`scripts/x.sh` の形）
 
-    5 番目の値が True の書き方（`supervisor/scripts/x.sh`）は、スキル名の位置に
+    5 番目の値が True の書き方（`autodev/scripts/x.sh`）は、スキル名の位置に
     何が書かれていても形が同じなので、実在するスキル名のときだけ参照として扱う。
     そうしないと `docs/scripts/x.sh` を「スキル docs の参照」と誤って拾ってしまう。
     """
@@ -684,7 +682,7 @@ def check_skill(skill_dir: Path, known_skills: AbstractSet[str], counts: Counts)
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="`.claude/skills/` 配下のスキルを検査する。"
+        description="`dist/dot-claude/skills/` 配下のスキルを検査する。"
         " 問題があれば終了コード 1 と落ちた箇所を返す。",
     )
     parser.add_argument(

@@ -82,4 +82,4 @@ driver はタスクを止めずに、テストの直し・実装のやり直し�
 - テストを書き換えて完了チェックを通す
 - `gh pr merge` / `gh stack merge` を呼ぶ
 
-線引きの理由は [README.md](README.md) の「崩してはいけない線引き」にある。
+線引きの理由は [DESIGN.md](DESIGN.md) の「崩してはいけない線引き」にある。

@@ -61,6 +61,9 @@ def build(ctx: Ctx, task: dict[str, Any]) -> bool:
     result = got.result or {}
 
     conflict = result.get("testConflict")
+    # 無いときに `null` ではなく文字列の "null" を返す段がある。申告として扱うとテスト作成段を無駄に呼び直す
+    if isinstance(conflict, str) and conflict.strip().lower() in ("", "null", "none"):
+        conflict = None
     if conflict:
         # **テストを直せるのはテスト作成段だけである。** 実装段に直させると、テストを
         # 通すためにテストを緩める経路ができる

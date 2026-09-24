@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 from ..config import paths, stages
+from ..core import events
 from ..core import prompt as prompt_lib
 from ..ports import console, files, review_store, run_store, runner, templates
 from .context import Ctx
@@ -125,8 +126,9 @@ def stage_watch(ctx: Ctx, stage: stages.Stage) -> Any:
 
     def watch(event: dict[str, Any]) -> str | None:
         nonlocal wrote
-        if event.get("subtype") == "hook_response" and event.get("exit_code"):
-            seen["blocked"] = int(seen["blocked"]) + 1
+        denied = events.guard_denials(event)
+        if denied:
+            seen["blocked"] = int(seen["blocked"]) + denied
             if seen["blocked"] >= BLOCK_LIMIT:
                 return f"フックに {seen['blocked']} 回止められた（契約を読み違えている）"
         if event.get("type") == "assistant":

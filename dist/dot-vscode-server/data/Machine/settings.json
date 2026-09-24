@@ -1,0 +1,10 @@
+{
+  "terminal.integrated.profiles.linux": {
+    "autodev watch": {
+      "path": "zsh",
+      "args": ["-lic", "exec ~/.claude/scripts/autodev-watch.py"],
+      "icon": "checklist",
+      "overrideName": true
+    }
+  }
+}

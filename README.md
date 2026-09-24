@@ -38,6 +38,7 @@
 | `dist/dot-claude/` | `~/.claude/` | 項目ごと（下の「Claude Code」を見る） |
 | `dist/dot-config/git/ignore` | `~/.config/git/ignore` | コピー |
 | `dist/dot-config/mise/config.toml` | `~/.config/mise/config.toml` | symlink |
+| `dist/dot-vscode-server/data/Machine/settings.json` | `~/.vscode-server/data/Machine/settings.json` | ディープマージ（VS Code のリモート先だけ） |
 | `dist/dot-config/sheldon/plugins.toml` | `~/.config/sheldon/plugins.toml` | symlink |
 
 **ファイルを足しただけでは配られない。** `dist/dot-*`（`$HOME` の直下に行くもの）は
@@ -197,10 +198,58 @@ autodev range-field ▸ task2 review r1 · 4m12s 26往復 Read · 土台 PR #4
 - これからの段は決まった並び（testgen › impl › review › judge › PR）から出す。裁定で指摘が
   残ると fix › review › judge に戻るが、戻るかどうかは裁定が終わるまで分からない。
   2 巡目からは `review r2` のように巡目を添え、済んだ段が 4 つを超えたら古いものを `…` にする。
-- タスクが 5 本を超えたら、完了したものを `✔ 3 件完了` の 1 行にまとめる。
+- タスクが 5 本を超えたら、今のタスクの前後だけに窓を切る。完了は `✔ 3 件完了` の 1 行、
+  未着手は次の 2 本だけ出して残りを `◻ 他 4 件` にまとめる。実行中と保留は必ず出す。
 - 段と段の間（検証・push・PR 作成）は `running` が空になるが、タスクが running のあいだは
   出し続ける。`!` は段の制限時間（1 時間）を超えた印で、3 時間更新の無い run は driver が
   落ちたものとして出さない。
+
+#### 全部を見る画面（`dist/dot-claude/scripts/autodev-watch.py`）
+
+statusline はキーもホイールも受け取れない（Claude Code は標準出力を受け取るだけ）。全タスクと
+細かい進捗は、別のタブで開いたこの画面で見る。
+
+**VS Code では、ターミナルのパネルの「＋」の横の ▼ から「autodev watch」を選ぶと開く。**
+このプロファイルは `install.sh` の `merge_vscode_settings()` が
+`dist/dot-vscode-server/data/Machine/settings.json` をリモート側の設定
+（`~/.vscode-server/data/Machine/settings.json`）にディープマージして入れる。
+
+ショートカットで開きたければ、任意で足す。**母艦（Windows 側）の `keybindings.json` にしか
+置けない**ので dotfiles からは配らない。コマンドパレットの「Preferences: Open Keyboard
+Shortcuts (JSON)」で開いて、次を足すと、エディタの新しいタブに開く。
+
+```json
+{
+  "key": "ctrl+alt+w",
+  "command": "workbench.action.terminal.newWithProfile",
+  "args": { "profileName": "autodev watch", "location": "editor" }
+}
+```
+
+プロファイルは `zsh -lic` を通して起動する。VS Code はプロファイルの `path` をシェルを通さずに
+起動するので、直接 `autodev-watch.py` を指すと、mise が PATH に載せる `uv` が見つからないことがある。
+
+VS Code の外では、コマンドで開く。
+
+```shell
+~/.claude/scripts/autodev-watch.py            # 動いている run を開く
+~/.claude/scripts/autodev-watch.py <作業名>   # その run を開く
+```
+
+| ペイン | 出すもの |
+| --- | --- |
+| 左 | 全タスクの表。↑↓ かホイールで選ぶ |
+| 右 | 選んだタスクの段の並び・段の履歴（成否・巡目・往復数）・レビューの件数と未解決の指摘・受入条件・DoD・範囲 |
+| 下 | そのタスクで走っている段（無ければ最後の段）のログから、ツールの呼び出しと発言の 1 行目 |
+
+`[` `]` で run を切り替え、`l` でログのペインを隠し、`q` で終わる。2 秒ごとに読み直すだけで、
+何も書き込まない。
+
+- **Textual で描く。** Textual は rich の上に作られていて、statusline と部品を共有する
+  （`import statusline`）。statusline は 2 秒ごとに起動し直すので、起動の軽い rich だけを使う。
+- autodev の `scripts/` には置かない。そこは `python3` 単体で動かす決まり（`test_layers.py` が
+  第三者パッケージの import を拒む）なので、PEP 723 で依存を宣言するこの画面は
+  `dist/dot-claude/scripts/` に置く。
 
 ### 設定ファイルのマージ（`~/.claude/settings.json`）
 

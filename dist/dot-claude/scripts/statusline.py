@@ -53,8 +53,10 @@ BAR_WIDTH = 10
 LIMIT_BAR_WIDTH = 40
 #: 利用枠の窓の長さ。ペース（窓の経過に対して使いすぎているか）の計算に使う
 WINDOWS = {"five_hour": 5 * 3600, "seven_day": 7 * 86400}
-#: タスクがこれより多いと、完了したものを 1 行にまとめる
+#: タスクがこれより多いと、今のタスクの前後だけに窓を切る
 MAX_TASK_ROWS = 5
+#: 窓を切ったときに出す未着手の本数
+PENDING_ROWS = 2
 SUBJECT_WIDTH = 22
 REASON_WIDTH = 24
 
@@ -470,15 +472,36 @@ def autodev_block(st: dict) -> list[Text]:
     stages = live_stages(st)
     if not is_active(st, stages):
         return []
-    lines = [headline(st, stages)]
     tasks = [t for t in st.get("tasks") or [] if isinstance(t, dict)]
-    if len(tasks) > MAX_TASK_ROWS:
-        stacked = [t for t in tasks if t.get("status") == "stacked"]
-        if stacked:
-            lines.append(Text("  ✔ ", style=GREEN).append(f"{len(stacked)} 件完了", style=DIM))
-            tasks = [t for t in tasks if t.get("status") != "stacked"]
-    lines += [task_row(t, stages) for t in tasks]
-    return lines
+    return [headline(st, stages), *task_rows(tasks, stages)]
+
+
+def task_rows(tasks: list[dict], stages: list[tuple[str, dict, float]]) -> list[Text]:
+    """タスクの行。多いときは、今のタスクの前後だけに窓を切って高さを一定に保つ。
+
+    完了は 1 行にまとめ、未着手は次の `PENDING_ROWS` 本だけ出す。実行中と保留は必ず出す。
+    全部を見るのは `autodev-watch.py` の役目である。
+    """
+    if len(tasks) <= MAX_TASK_ROWS:
+        return [task_row(t, stages) for t in tasks]
+    rows = []
+    stacked = sum(1 for t in tasks if t.get("status") == "stacked")
+    if stacked:
+        rows.append(Text("  ✔ ", style=GREEN).append(f"{stacked} 件完了", style=DIM))
+    shown = hidden = 0
+    for task in tasks:
+        status = task.get("status")
+        if status == "stacked":
+            continue
+        if status == "pending":
+            if shown >= PENDING_ROWS:
+                hidden += 1
+                continue
+            shown += 1
+        rows.append(task_row(task, stages))
+    if hidden:
+        rows.append(Text("  ◻ ", style=DIM).append(f"他 {hidden} 件", style=DIM))
+    return rows
 
 
 # --- 組み立て ------------------------------------------------------------------

@@ -58,6 +58,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..core import events
 from . import files, proc
 
 CLAUDE = [
@@ -388,8 +389,8 @@ class _Collector:
             self.final = event
         elif event.get("subtype") == "init":
             self.capabilities = list(event.get("capabilities") or [])
-        elif event.get("subtype") == "hook_response" and event.get("exit_code"):
-            self.blocked += 1
+        else:
+            self.blocked += events.guard_denials(event)
 
     def build(self, code: int, err: str) -> Result:
         warnings: list[str] = []

@@ -165,6 +165,26 @@ def test_更新が止まったrunは出さない(tmp_path):
     assert len(run(tmp_path)) == 4
 
 
+def test_タスクが多いと今のタスクの前後に窓を切る(statusline):
+    statuses = [
+        "stacked",
+        "stacked",
+        "blocked",
+        "running",
+        "pending",
+        "pending",
+        "pending",
+        "pending",
+    ]
+    tasks = [
+        {"id": f"task{i}", "subject": f"件名{i}", "status": s} for i, s in enumerate(statuses, 1)
+    ]
+    rows = [row.plain for row in statusline.task_rows(tasks, [])]
+    assert rows[0] == "  ✔ 2 件完了"
+    assert [row.split()[1] for row in rows[1:5]] == ["task3", "task4", "task5", "task6"]
+    assert rows[5] == "  ◻ 他 2 件"
+
+
 def test_修正の巡目を添え古い段は省く(statusline):
     task = {
         "id": "task1",

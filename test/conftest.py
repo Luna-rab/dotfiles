@@ -1,4 +1,4 @@
-"""`autodevlib` を import できるようにする。
+"""`autodevlib` と `hud` を import できるようにする。
 
 インストールされるパッケージではない（`python3` 単体で動かすため、第三者パッケージも
 `pip install` も要らない作りにしてある）ので、置き場を `sys.path` に足さないと import
@@ -18,5 +18,6 @@ SCRIPTS_ROOT = SKILL_ROOT / "scripts"
 CLAUDE_HOOKS = REPO_ROOT / "dist" / "dot-claude" / "hooks"
 CLAUDE_SCRIPTS = REPO_ROOT / "dist" / "dot-claude" / "scripts"
 
-if str(SCRIPTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_ROOT))
+for root in (SCRIPTS_ROOT, CLAUDE_SCRIPTS):
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))

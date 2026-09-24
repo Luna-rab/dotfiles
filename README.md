@@ -148,7 +148,7 @@ driver は段を起動するとき `ANTHROPIC_API_KEY` などを外す——残�
   `ARCHIFY_CHROME_NO_SANDBOX=1`。
 - 使うたびに上の URL へ更新の有無を問い合わせる。止めるなら `ARCHIFY_UPDATE_CHECK_DISABLED=1`。
 
-### statusline（`dist/dot-claude/scripts/statusline.py`）
+### statusline（`dist/dot-claude/scripts/statusline.py`、中身は `hud/`）
 
 [rich](https://github.com/Textualize/rich) で 24bit カラーの行を組み立てて標準出力に出す。
 
@@ -245,11 +245,37 @@ VS Code の外では、コマンドで開く。
 `[` `]` で run を切り替え、`l` でログのペインを隠し、`q` で終わる。2 秒ごとに読み直すだけで、
 何も書き込まない。
 
-- **Textual で描く。** Textual は rich の上に作られていて、statusline と部品を共有する
-  （`import statusline`）。statusline は 2 秒ごとに起動し直すので、起動の軽い rich だけを使う。
+- **Textual で描く。** Textual は rich の上に作られていて、statusline と部品を共有する。
+  statusline は 2 秒ごとに起動し直すので、起動の軽い rich だけを使う。
 - autodev の `scripts/` には置かない。そこは `python3` 単体で動かす決まり（`test_layers.py` が
   第三者パッケージの import を拒む）なので、PEP 723 で依存を宣言するこの画面は
   `dist/dot-claude/scripts/` に置く。
+
+#### 中身の置き場（`dist/dot-claude/scripts/hud/`）
+
+`statusline.py` と `autodev-watch.py` は PEP 723 で依存を宣言するだけの入口で、中身は `hud/` に
+ある。入口を薄くするのは、ty が PEP 723 のスクリプトを別の環境で検査し、`pyproject.toml` の
+`extra-paths` を見ないため。`hud/` の中は通常どおり検査される。
+
+```mermaid
+flowchart LR
+    entry["statusline.py<br/>autodev-watch.py"] --> app
+    app --> ports
+    app --> render
+    app --> core
+    render --> core
+```
+
+| 層 | 受け持つこと | 使ってはいけないもの |
+| --- | --- | --- |
+| `core` | 決めること（段の並び・窓切り・見出し・ペース）。dict と文字列を受けてデータを返す | ファイル・`subprocess`・`os`・rich・Textual |
+| `ports` | ファイルと git を読む。読んだものを解釈しない | rich・Textual・hud のほかの層 |
+| `render` | `core` のデータを rich の `Text` にする | ファイル・`subprocess`・`os`・Textual |
+| `app` | `ports` で読み、`core` で決め、`render` で描く。statusline の 1 回と Textual の画面 | — |
+
+この向きは `test/dot-claude/hud/test_hud_layers.py` が import を読んで守らせる。`core` が 1 行
+`subprocess` を import すると、段の並びや窓切りを git とファイル無しでは試せなくなり、しかも
+ほかの検査は全部通るので誰も気づけない。
 
 ### 設定ファイルのマージ（`~/.claude/settings.json`）
 

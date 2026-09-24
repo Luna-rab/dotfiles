@@ -88,10 +88,12 @@ ignore = [
 [tool.ty.environment]
 python-version = "3.10"
 # スクリプトが自分のディレクトリを起点に import するので、その起点を教える
-# （autodev は `from autodevlib import ...`）。PEP 723 のスクリプトは ty が別の環境として
-# 検査するので、ここに足しても効かない。
+# （autodev は `from autodevlib import ...`、statusline と autodev-watch は `from hud import ...`）。
+# PEP 723 のスクリプト（statusline.py などの入口）は ty が別の環境として検査するので、ここに
+# 足しても効かない。入口は数行にして、中身を hud/ に置く。
 extra-paths = [
   "dist/dot-claude/skills/autodev/scripts",
+  "dist/dot-claude/scripts",
 ]
 
 [tool.ty.src]

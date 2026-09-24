@@ -38,6 +38,7 @@
 | `dist/dot-claude/` | `~/.claude/` | 項目ごと（下の「Claude Code」を見る） |
 | `dist/dot-config/git/ignore` | `~/.config/git/ignore` | コピー |
 | `dist/dot-config/mise/config.toml` | `~/.config/mise/config.toml` | symlink |
+| `dist/dot-vscode-server/data/Machine/settings.json` | `~/.vscode-server/data/Machine/settings.json` | ディープマージ（VS Code のリモート先だけ） |
 | `dist/dot-config/sheldon/plugins.toml` | `~/.config/sheldon/plugins.toml` | symlink |
 
 **ファイルを足しただけでは配られない。** `dist/dot-*`（`$HOME` の直下に行くもの）は
@@ -147,27 +148,134 @@ driver は段を起動するとき `ANTHROPIC_API_KEY` などを外す——残�
   `ARCHIFY_CHROME_NO_SANDBOX=1`。
 - 使うたびに上の URL へ更新の有無を問い合わせる。止めるなら `ARCHIFY_UPDATE_CHECK_DISABLED=1`。
 
-### statusline（`dist/dot-claude/scripts/statusline.py`）
+### statusline（`dist/dot-claude/scripts/statusline.py`、中身は `hud/`）
 
-`statusLine.command` はコマンドを 1 つしか取れない。だから入口は `statusline.py` で、
-モデル・git・コンテキスト・利用枠・PR の 4 行は `statusline.sh` にそのまま委ねる
-（`statusline.sh` 側に手は入っていない）。
-
-`statusline.py` が足すのは autodev の 1 行だけで、**段が走っていないときは何も出さない。**
+[rich](https://github.com/Textualize/rich) で 24bit カラーの行を組み立てて標準出力に出す。
 
 ```
-🤖 range-field · impl r1 4m12s 26往復 Edit · task2 1/3 · PR #4
-🤖 two-reviewers · adversarial+normal r1 1m05s · task1 0/1 · PR #9
-🤖 too-long · testgen r0 1h05m! · task1 0/1 · PR #7
+Opus 5.5 · high   ctx ━━━━━───── 47%   $3.21
+dotfiles   feature/x +2 ~1 ?3
+5h ━━━━━━━━━━━━━━━━━━━━━━━━┃━━━━╾─────────── 72% ▲12 1h59m
+7d ━━━━━━━━━━━━╾───────────────────┃─────── 31% ▼4 5d14h
 ```
 
-読むのは `~/.local/state/autodev/<作業名>/state.json` の `running` で、driver が段の開始と
-終了で書き、走行中は 5 秒ごとに往復数と直前のツールを上書きする。**段の途中で更新される値
-はこれだけ**なので、進行と生存の両方をここで見る。`!` は段の制限時間（1 時間）を超えた印で、
-3 時間を超えた run は driver が落ちたものとして表示しない。
+- 1 行目は使っている量（モデル・コンテキスト・費用）、2 行目はリポジトリとブランチ、
+  3・4 行目は利用枠。PR 番号は Claude Code 自身が出すので出さない。
+- **利用枠の棒は 40 マスで、0.5 マスまで刻む**（境目のマスは左半分だけ太い `╾`）。
+  棒は罫線で描く。ブロック要素（`█` `▌`）はもっと細かく刻めるが、マスの高さいっぱいを
+  塗るので、5h と 7d の棒が上下でくっついて見える。
+  `┃` は窓の時間が過ぎた位置で、棒がこれを越えていれば使いすぎている。
+- **端末の幅を変えても描き直されない**（Claude Code の描き直すきっかけに入っていない）。
+  次に描き直すまで前の幅の出力が残るので、右寄せや行末の空白で幅を埋めず、大事なものを
+  左から並べる。`settings.json` の `refreshInterval: 2` で 2 秒ごとに描き直させ、幅の変化に
+  追いつかせる（1 回の実行は約 50ms）。
+- **`▲12` は、利用枠の窓の時間が過ぎた割合より 12 ポイント多く使っているという意味。**
+  このままでは窓の途中で尽きる。`▼` は余裕がある側。後ろはリセットまでの残り時間。
+- **Ink のような常駐する描画はできない。** Claude Code はコマンドを起動し直して標準出力を
+  受け取るだけで、端末につながない。描き方は「1 回出して終わる」ものに限られる。
+- **端末の幅は `COLUMNS` から読む。** 収まらない行は優先度の低い部品（費用・worktree・
+  コンテキスト・ブランチ）から落とす。
+- **Nerd Font を前提にしない。** 既定のフォントにもある文字（`│` `━` `╾` `─` `✔` `◼` `◻`）で描く。
+- **`rich` は PEP 723 で宣言し、uv が取り寄せる。** 初回だけダウンロードで遅れるので、
+  `install.sh` の `warm_claude_hooks()` が先に 1 回起動しておく。
 
-往復とツールは段が 1 つのときだけ出す。1 巡目のレビューは 2 体が同時に走るので、並んでいる
-ときはどちらの数か分からない。
+#### autodev のタスクリスト
+
+autodev の run が動いている間は、Claude Code のタスクリストのように足す。**幅が足りれば
+右に、足りなければ下に置く。**
+
+```
+autodev range-field ▸ task2 review r1 · 4m12s 26往復 Read · 土台 PR #4
+  ✔ task1 パーサの土台を作る      #5
+  ◼ task2 範囲指定を足す          testgen ✔ › impl ✔ › review ◼ › judge › PR
+  ◻ task3 CLI に出す
+  ✘ task4 設定の移行              受入条件が曖昧: 旧形式 …
+```
+
+- 読むのは `~/.local/state/autodev/<作業名>/state.json`。済んだ段はタスクごとの `stages`
+  （driver が段の終わりに成否つきで足す）、走っている段は `running`（走行中は 5 秒ごとに
+  往復数と直前のツールを上書きする）から取る。
+- これからの段は決まった並び（testgen › impl › review › judge › PR）から出す。裁定で指摘が
+  残ると fix › review › judge に戻るが、戻るかどうかは裁定が終わるまで分からない。
+  2 巡目からは `review r2` のように巡目を添え、済んだ段が 4 つを超えたら古いものを `…` にする。
+- タスクが 5 本を超えたら、今のタスクの前後だけに窓を切る。完了は `✔ 3 件完了` の 1 行、
+  未着手は次の 2 本だけ出して残りを `◻ 他 4 件` にまとめる。実行中と保留は必ず出す。
+- 段と段の間（検証・push・PR 作成）は `running` が空になるが、タスクが running のあいだは
+  出し続ける。`!` は段の制限時間（1 時間）を超えた印で、3 時間更新の無い run は driver が
+  落ちたものとして出さない。
+
+#### 全部を見る画面（`dist/dot-claude/scripts/autodev-watch.py`）
+
+statusline はキーもホイールも受け取れない（Claude Code は標準出力を受け取るだけ）。全タスクと
+細かい進捗は、別のタブで開いたこの画面で見る。
+
+**VS Code では、ターミナルのパネルの「＋」の横の ▼ から「autodev watch」を選ぶと開く。**
+このプロファイルは `install.sh` の `merge_vscode_settings()` が
+`dist/dot-vscode-server/data/Machine/settings.json` をリモート側の設定
+（`~/.vscode-server/data/Machine/settings.json`）にディープマージして入れる。
+
+ショートカットで開きたければ、任意で足す。**母艦（Windows 側）の `keybindings.json` にしか
+置けない**ので dotfiles からは配らない。コマンドパレットの「Preferences: Open Keyboard
+Shortcuts (JSON)」で開いて、次を足すと、エディタの新しいタブに開く。
+
+```json
+{
+  "key": "ctrl+alt+w",
+  "command": "workbench.action.terminal.newWithProfile",
+  "args": { "profileName": "autodev watch", "location": "editor" }
+}
+```
+
+プロファイルは `zsh -lic` を通して起動する。VS Code はプロファイルの `path` をシェルを通さずに
+起動するので、直接 `autodev-watch.py` を指すと、mise が PATH に載せる `uv` が見つからないことがある。
+
+VS Code の外では、コマンドで開く。
+
+```shell
+~/.claude/scripts/autodev-watch.py            # 動いている run を開く
+~/.claude/scripts/autodev-watch.py <作業名>   # その run を開く
+```
+
+| ペイン | 出すもの |
+| --- | --- |
+| 左 | 全タスクの表。↑↓ かホイールで選ぶ |
+| 右 | 選んだタスクの段の並び・段の履歴（成否・巡目・往復数）・レビューの件数と未解決の指摘・受入条件・DoD・範囲 |
+| 下 | そのタスクで走っている段（無ければ最後の段）のログから、ツールの呼び出しと発言の 1 行目 |
+
+`[` `]` で run を切り替え、`l` でログのペインを隠し、`q` で終わる。2 秒ごとに読み直すだけで、
+何も書き込まない。
+
+- **Textual で描く。** Textual は rich の上に作られていて、statusline と部品を共有する。
+  statusline は 2 秒ごとに起動し直すので、起動の軽い rich だけを使う。
+- autodev の `scripts/` には置かない。そこは `python3` 単体で動かす決まり（`test_layers.py` が
+  第三者パッケージの import を拒む）なので、PEP 723 で依存を宣言するこの画面は
+  `dist/dot-claude/scripts/` に置く。
+
+#### 中身の置き場（`dist/dot-claude/scripts/hud/`）
+
+`statusline.py` と `autodev-watch.py` は PEP 723 で依存を宣言するだけの入口で、中身は `hud/` に
+ある。入口を薄くするのは、ty が PEP 723 のスクリプトを別の環境で検査し、`pyproject.toml` の
+`extra-paths` を見ないため。`hud/` の中は通常どおり検査される。
+
+```mermaid
+flowchart LR
+    entry["statusline.py<br/>autodev-watch.py"] --> app
+    app --> ports
+    app --> render
+    app --> core
+    render --> core
+```
+
+| 層 | 受け持つこと | 使ってはいけないもの |
+| --- | --- | --- |
+| `core` | 決めること（段の並び・窓切り・見出し・ペース）。dict と文字列を受けてデータを返す | ファイル・`subprocess`・`os`・rich・Textual |
+| `ports` | ファイルと git を読む。読んだものを解釈しない | rich・Textual・hud のほかの層 |
+| `render` | `core` のデータを rich の `Text` にする | ファイル・`subprocess`・`os`・Textual |
+| `app` | `ports` で読み、`core` で決め、`render` で描く。statusline の 1 回と Textual の画面 | — |
+
+この向きは `test/dot-claude/hud/test_hud_layers.py` が import を読んで守らせる。`core` が 1 行
+`subprocess` を import すると、段の並びや窓切りを git とファイル無しでは試せなくなり、しかも
+ほかの検査は全部通るので誰も気づけない。
 
 ### 設定ファイルのマージ（`~/.claude/settings.json`）
 

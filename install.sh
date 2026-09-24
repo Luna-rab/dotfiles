@@ -22,13 +22,14 @@ link_to_homedir() {
     local name
     name=$(command basename "$f")
     # 配布先が $HOME の直下ではないもの（dot-config → ~/.config、dot-local → ~/.local）と、
-    # 項目ごとに置き方が違うもの（dot-claude は link_claude_config() を見る）は、
+    # 項目ごとに置き方が違うもの（dot-claude は link_claude_config()、dot-vscode-server は
+    # merge_vscode_settings() を見る）は、
     # それぞれ専用の関数が受け持つ。
     #
     # **dot-config の下は 1 ファイルずつ名指しで配る。** `dist/dot-config/gh/config.yml` を
     # 足しても、それを配る関数が無ければ何も起きない（警告も出ない）。~/.config へ配る
     # ファイルを増やすときは、link_mise_config() と同じ形の関数を書いて呼び出しに足す。
-    [[ $name == dot-claude || $name == dot-config || $name == dot-local ]] && continue
+    [[ $name == dot-claude || $name == dot-config || $name == dot-local || $name == dot-vscode-server ]] && continue
     local dst="$HOME/.${name#dot-}"
     if [[ -L "$dst" ]]; then
       command rm -f "$dst"
@@ -178,7 +179,8 @@ link_claude_config() {
   warm_claude_hooks "$src"
 }
 
-# dist/dot-claude/hooks/ のスクリプトが宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
+# dist/dot-claude/hooks/ と scripts/ の statusline・autodev-watch が宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
+# statusline は取り寄せ終わるまで何も出ない。
 # フックは Claude Code が応答を終えるたびに起動されるので、初回の起動で uv が
 # tree-sitter-language-pack をダウンロードし始めると、その間ユーザーは待たされる
 # （settings.json の timeout 15 秒も超える）。取り寄せてあれば 1 回 0.06 秒で終わる。
@@ -200,7 +202,7 @@ warm_claude_hooks() {
     fi
   fi
   local hook
-  for hook in "$src"/hooks/*.py; do
+  for hook in "$src"/hooks/*.py "$src"/scripts/statusline.py "$src"/scripts/autodev-watch.py; do
     [[ -x "$hook" ]] || continue
     if PATH="${uv_dir:+$uv_dir:}$PATH" "$hook" --warm; then
       command echo "warm up $hook"
@@ -259,10 +261,29 @@ link_claude_skills() {
 # `/config` が effortLevel などを書く）で、symlink だとその書き込みが dotfiles
 # リポジトリへ漏れる。
 merge_claude_settings() {
-  local src=$1
-  local dst=$2
-  local fragment="$src/settings.json"
-  local target="$dst/settings.json"
+  merge_json "$1/settings.json" "$2/settings.json"
+}
+
+# VS Code がリモート（WSL・devcontainer）で動くときの設定。ターミナルのプロファイル
+# 「autodev watch」を足す。キーボードショートカットは母艦（Windows 側）にしか置けないので
+# ここでは配らない（README の「全部を見る画面」を見る）。
+#
+# VS Code 自身もこのファイルに書き込むので、~/.claude/settings.json と同じく symlink にせず
+# ディープマージする。~/.vscode-server が無い環境（VS Code を使っていない）では何もしない。
+merge_vscode_settings() {
+  local distdir=$1
+  local dstdir="$HOME/.vscode-server/data/Machine"
+  [[ -d "$dstdir" ]] || return 0
+  merge_json "$distdir/dot-vscode-server/data/Machine/settings.json" "$dstdir/settings.json"
+}
+
+# target にしか無いキー（その環境だけの設定）は残る。
+#
+# **target がコメント入りの JSON（JSONC）だと jq が読めない。** そのときは target に触らず
+# 警告だけ出す（読めないまま書き出すと target が空になる）。
+merge_json() {
+  local fragment=$1
+  local target=$2
 
   [[ -e "$fragment" ]] || return 0
 
@@ -272,12 +293,17 @@ merge_claude_settings() {
   fi
 
   if [[ -e "$target" ]]; then
-    command cp "$target" "$HOME/.dotbackup/settings.json.$(date +%s 2>/dev/null || echo bak)" 2>/dev/null || true
+    command cp "$target" "$HOME/.dotbackup/$(command basename "$target").$(date +%s 2>/dev/null || echo bak)" 2>/dev/null || true
     # '*' は再帰マージなので permissions などネストしたキーも安全に合流する
-    command jq -s '.[0] * .[1]' "$target" "$fragment" > "$target.tmp" \
-      && command mv "$target.tmp" "$target"
-    command echo "merge $fragment into $target (deep merge; local-only keys preserved)"
+    if command jq -s '.[0] * .[1]' "$target" "$fragment" > "$target.tmp" 2>/dev/null; then
+      command mv "$target.tmp" "$target"
+      command echo "merge $fragment into $target (deep merge; local-only keys preserved)"
+    else
+      command rm -f "$target.tmp"
+      command echo "WARNING: $target is not plain JSON (comments?). skip merging $fragment"
+    fi
   else
+    command mkdir -p "$(command dirname "$target")"
     command jq '.' "$fragment" > "$target"
     command echo "generate $target from $fragment"
   fi
@@ -448,6 +474,7 @@ install_mise_tools
 install_gh_extensions
 link_local_bin "$distdir"
 link_claude_config "$distdir"
+merge_vscode_settings "$distdir"
 install_archify_skill
 command echo "Install completed!!!!"
 command echo "run 'exec zsh' to start a shell with the installed tools on PATH"

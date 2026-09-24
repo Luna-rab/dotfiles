@@ -14,7 +14,7 @@
       "description": "docs（文章とコメントだけ）なら次のラウンドのレビューが 1 体になる。迷ったら logic"
     },
     "testConflict": {
-      "type": "string",
+      "type": ["string", "null"],
       "description": "テストが仕様と矛盾しているときだけ理由を入れる。無ければ null"
     },
     "verified": {

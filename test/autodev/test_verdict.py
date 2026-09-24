@@ -121,7 +121,7 @@ def test_コミットを数えられなければ落ちる():
 def test_openが0件なら通る():
     ok, detail = got(judge(evidence()), "reviews-settled")
     assert ok
-    assert detail == "open 0 件（must-fix 0 件） / closed 1 / rejected 1"
+    assert detail == "未解決 0 件（must-fix 0 件） / 解決済み 1 / 却下 1"
 
 
 def test_openが残っていれば落ちる():
@@ -135,7 +135,7 @@ def test_openが残っていれば落ちる():
     }
     ok, detail = got(judge(evidence(review=review)), "reviews-settled")
     assert not ok
-    assert detail == "open 2 件（must-fix 1 件） / closed 1 / rejected 0"
+    assert detail == "未解決 2 件（must-fix 1 件） / 解決済み 1 / 却下 0"
 
 
 def test_reviewjsonが無ければ落ちる():

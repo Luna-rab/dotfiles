@@ -42,6 +42,8 @@ STATUS_LABEL = {
     "failed": "失敗",
 }
 RATING_STYLE = {"must-fix": RED, "should-fix": YELLOW, "nit": DIM}
+#: 指摘の状態の表示名（`autodev/GLOSSARY.md`）
+FINDING_LABEL = {"open": "未解決", "closed": "解決済み", "rejected": "却下"}
 
 
 def status_mark(status: str) -> tuple[str, Style, Style]:

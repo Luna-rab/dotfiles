@@ -58,7 +58,7 @@ def review_fix_loop(
         # **ジャッジの報告を信じない。** 数は review.json から数える
         data = review_store.read(ctx.run.review(task["id"]))
         tally = review_policy.tally(data) if data else {"open": -1, "openMustFix": -1}
-        console.info(f"  r{label}: open {tally['open']}（must-fix {tally['openMustFix']}）")
+        console.info(f"  r{label}: 未解決 {tally['open']}（must-fix {tally['openMustFix']}）")
         run_store.set_task(st, task["id"], rounds=index)
 
         if tally["open"] == 0:

@@ -112,8 +112,8 @@ def check_reviews(report: Report, evidence: Evidence) -> bool:
     return report.add(
         "reviews-settled",
         tally["open"] == 0,
-        f"open {tally['open']} 件（must-fix {tally['openMustFix']} 件）"
-        f" / closed {tally['closed']} / rejected {tally['rejected']}",
+        f"未解決 {tally['open']} 件（must-fix {tally['openMustFix']} 件）"
+        f" / 解決済み {tally['closed']} / 却下 {tally['rejected']}",
     )
 
 

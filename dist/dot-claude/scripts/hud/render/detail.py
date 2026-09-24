@@ -12,7 +12,17 @@ from hud.core.pipeline import Step, full_name
 from hud.core.review import Review
 from hud.core.runs import Stage, short
 from hud.render.tasklist import pipeline
-from hud.render.theme import ACCENT, BLUE, BOLD, DIM, GREEN, RATING_STYLE, RED, STATUS_LABEL
+from hud.render.theme import (
+    ACCENT,
+    BLUE,
+    BOLD,
+    DIM,
+    FINDING_LABEL,
+    GREEN,
+    RATING_STYLE,
+    RED,
+    STATUS_LABEL,
+)
 
 #: 詳細ペインの末尾に出す、計画ステージが決めたタスクの項目
 PLAN_FIELDS = (("acceptance", "受入条件"), ("dod", "DoD"), ("scope", "範囲"))
@@ -64,7 +74,8 @@ def review_text(review: Review | None) -> Text:
     """指摘の件数と、未解決の指摘の中身。"""
     if review is None:
         return Text("（指摘なし）\n", style=DIM)
-    out = Text(" · ".join(f"{k} {v}" for k, v in review.counts.items()) + "\n", style=DIM)
+    counts = " · ".join(f"{FINDING_LABEL.get(k, k)} {v}" for k, v in review.counts.items())
+    out = Text(counts + "\n", style=DIM)
     for finding in review.open:
         out.append(f"{finding.key} ", style=DIM)
         out.append(f"{finding.rating:<10}", style=RATING_STYLE.get(finding.rating, DIM))

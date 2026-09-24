@@ -34,10 +34,11 @@ def test_ランからステージまでEnterで入りEscで戻る(tmp_path, monk
 
             await pilot.press("enter")
             await pilot.pause()
-            # 走っているステージを選ぶ。指示と出力を上下に出す
+            # 走っているステージを選ぶ。指示に続けて出力を出す
             assert (app.level, app.cursor[Level.STAGES]) == (Level.STAGES, "review:adversarial@1")
             text = screen_text(app)
             assert "あなたは敵対的レビューのステージである。" in text
+            assert text.index("あなたは敵対的レビュー") < text.index("Claude Code の出力")
             assert "テストを読む" in text and "続き" in text
             assert "▸ Edit a.py" in text
 

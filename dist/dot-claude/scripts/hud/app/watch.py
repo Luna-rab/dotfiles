@@ -50,8 +50,7 @@ class Watch(App):
     #crumb { height: 1; padding: 0 1; }
     #right { width: 2fr; border-left: solid $panel; }
     #info { padding: 0 1; }
-    #prompt-pane { height: 1fr; padding: 0 1; border-bottom: solid $panel; }
-    #output { height: 2fr; padding: 0 1; }
+    #stage { padding: 0 1; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("right", "enter", "深く", show=False),
@@ -79,10 +78,7 @@ class Watch(App):
             with ContentSwitcher(id="right", initial="info"):
                 with VerticalScroll(id="info"):
                     yield Static(id="info-body")
-                with Vertical(id="stage"):
-                    with VerticalScroll(id="prompt-pane"):
-                        yield Static(id="prompt")
-                    yield RichLog(id="output", markup=False, wrap=True)
+                yield RichLog(id="stage", markup=False, wrap=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -215,24 +211,29 @@ class Watch(App):
         return detail.task_detail(task, pipeline.steps(task, stages), mine, found)
 
     def show_stage(self, item: stagelist.StageItem) -> None:
-        run_name, task_id, code = str(self.run_name), str(self.task_id), str(item.code)
-        prompt = autodev.read_text(
-            autodev.stage_file(run_name, task_id, code, item.round, ".prompt.md")
-        )
-        self.query_one("#prompt", Static).update(detail.stage_prompt(prompt))
-        self.show_output(autodev.stage_file(run_name, task_id, code, item.round, ".jsonl"))
+        """渡した指示と出力を 1 つのペインに続けて出す。
 
-    def show_output(self, path: str) -> None:
-        """ステージの出力。同じファイルが伸びただけなら書き直さずに足す。末尾を見ているときだけ追う。"""
-        log = self.query_one("#output", RichLog)
+        同じログが伸びただけなら書き直さずに足す（書き直すとスクロール位置が先頭に戻る）。
+        開いたときは指示の先頭を見せ、末尾まで読み進めているときだけ新しい出力を追う。
+        """
+        run_name, task_id, code = str(self.run_name), str(self.task_id), str(item.code)
+        path = autodev.stage_file(run_name, task_id, code, item.round, ".jsonl")
+        pane = self.query_one("#stage", RichLog)
         events = activity.parse(autodev.read_lines(path), LOG_EVENTS)
         source, seen = self.log_source
         if path != source or len(events) < seen:
-            log.clear()
+            pane.clear()
+            pane.auto_scroll = False
+            prompt = autodev.read_text(
+                autodev.stage_file(run_name, task_id, code, item.round, ".prompt.md")
+            )
+            pane.write(detail.stage_prompt(prompt))
+            pane.write(detail.stage_output_heading())
             seen = 0
-        log.auto_scroll = seen == 0 or log.is_vertical_scroll_end
+        else:
+            pane.auto_scroll = pane.is_vertical_scroll_end
         for event in events[seen:]:
-            log.write(detail.activity_line(event))
+            pane.write(detail.activity_line(event))
         self.log_source = (path, len(events))
 
     # --- 操作 ------------------------------------------------------------------

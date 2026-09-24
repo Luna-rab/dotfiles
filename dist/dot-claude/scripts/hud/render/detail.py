@@ -1,4 +1,4 @@
-"""autodev-watch の詳細ペインとログのペイン。"""
+"""autodev-watch の右ペイン。ラン・タスクの詳細と、ステージの指示と出力。"""
 
 from __future__ import annotations
 
@@ -140,6 +140,11 @@ def task_line(task: dict) -> Text:
 
 def stage_prompt(text: str | None) -> Text:
     """ステージに渡した指示。driver が書き残し始める前のランには無い。"""
+    heading = Text("渡した指示\n", style=BOLD)
     if text is None:
-        return Text("（指示の記録が無い。この機能より前に走ったステージ）", style=DIM)
-    return Text(text.rstrip())
+        return heading.append("（指示の記録が無い。この機能より前に走ったステージ）", style=DIM)
+    return heading.append(text.rstrip())
+
+
+def stage_output_heading() -> Text:
+    return Text("\nClaude Code の出力", style=BOLD)

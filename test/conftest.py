@@ -16,6 +16,7 @@ SKILL_ROOT = REPO_ROOT / "dist" / "dot-claude" / "skills" / "autodev"
 #: 入口（`autodev.py`）と `autodevlib` の置き場
 SCRIPTS_ROOT = SKILL_ROOT / "scripts"
 CLAUDE_HOOKS = REPO_ROOT / "dist" / "dot-claude" / "hooks"
+CLAUDE_SCRIPTS = REPO_ROOT / "dist" / "dot-claude" / "scripts"
 
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))

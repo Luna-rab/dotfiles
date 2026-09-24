@@ -132,7 +132,7 @@ SKILL_NAME_CHARS = r"A-Za-z0-9._\-"
 
 # `scripts/` の直前 1 文字がこれなら参照として拾わない。目的は 2 つだけである。
 #   - 別語の一部を弾く（`myscripts/x.sh` の `scripts`）
-#   - スキルの外の `scripts/` を弾く（`dist/dot-claude/scripts/statusline.sh`、`docs/scripts/x.sh`）
+#   - スキルの外の `scripts/` を弾く（`dist/dot-claude/scripts/statusline.py`、`docs/scripts/x.sh`）
 # ASCII に限るのが要点。`\w` は Python 3 では Unicode に当たるため、このリポジトリのスキルが
 # 全文日本語であることと相まって `詳細はscripts/x.sh` を取りこぼしていた。
 NOT_BEFORE = r"A-Za-z0-9_/~.\-"
@@ -153,7 +153,7 @@ NOT_BEFORE = r"A-Za-z0-9_/~.\-"
 # `Counts.script_refs_unknown_skill` に数えて集計行に出す）。
 # 3 の `./scripts/` は、書かれた場所のスキルの `scripts/` とみなす。検査スクリプトはシェルの
 # 作業ディレクトリを追えないので、直前の `cd` は見ない。スキルのディレクトリ以外へ移動してから
-# 叩く例（`cd .claude && ./scripts/statusline.sh`）を書くと、実在するファイルを
+# 叩く例（`cd .claude && ./scripts/check-skills.py`）を書くと、実在するファイルを
 # 「参照先が無い」と誤って報告する。そういう例は `cd` 先からの形（`.claude/scripts/...`）で
 # 書けば、1〜4 のどれにも当たらないので検査されない。
 SCRIPT_REF_RE = re.compile(

@@ -178,7 +178,8 @@ link_claude_config() {
   warm_claude_hooks "$src"
 }
 
-# dist/dot-claude/hooks/ のスクリプトが宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
+# dist/dot-claude/hooks/ と statusline.py が宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
+# statusline は取り寄せ終わるまで何も出ない。
 # フックは Claude Code が応答を終えるたびに起動されるので、初回の起動で uv が
 # tree-sitter-language-pack をダウンロードし始めると、その間ユーザーは待たされる
 # （settings.json の timeout 15 秒も超える）。取り寄せてあれば 1 回 0.06 秒で終わる。
@@ -200,7 +201,7 @@ warm_claude_hooks() {
     fi
   fi
   local hook
-  for hook in "$src"/hooks/*.py; do
+  for hook in "$src"/hooks/*.py "$src"/scripts/statusline.py; do
     [[ -x "$hook" ]] || continue
     if PATH="${uv_dir:+$uv_dir:}$PATH" "$hook" --warm; then
       command echo "warm up $hook"

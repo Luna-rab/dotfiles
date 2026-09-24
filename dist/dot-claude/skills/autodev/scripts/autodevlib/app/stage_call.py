@@ -177,6 +177,7 @@ def call(
         f"段 {stage.name}（{task_id} / r{round_label}）を{'再開' if resume_from else '起動'}"
     )
     ctx.begin(stage.name, task_id, round_label)
+    ok = False
     try:
         got = runner.run(
             runner.Call(
@@ -197,8 +198,9 @@ def call(
                 watch=stage_watch(ctx, stage),
             )
         )
+        ok = got.ok
     finally:
-        ctx.end(stage.name)
+        ctx.end(stage.name, ok=ok)
     if got.result is not None:
         # **記録は driver が書く。** 段に書かせないので、在ることと形が保証される
         files.write_json(run.result(task_id, stage.name.replace(":", "-"), round_label), got.result)

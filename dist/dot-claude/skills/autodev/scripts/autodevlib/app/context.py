@@ -47,8 +47,18 @@ class Ctx:
         }
         self.save()
 
-    def end(self, stage: str) -> None:
-        (self.st.get("running") or {}).pop(stage, None)
+    def end(self, stage: str, *, ok: bool) -> None:
+        """走り終えた段を `running` から外し、そのタスクの `stages` に足す。
+
+        statusline はタスクごとの `stages` を読んで「済・今・これから」を描く。`running` は
+        走っている段しか持たないので、これが無いと済んだ段が外から見えない。
+        """
+        entry = (self.st.get("running") or {}).pop(stage, None)
+        task_id = entry.get("task") if isinstance(entry, dict) else None
+        for item in self.st.get("tasks") or []:
+            if item.get("id") == task_id:
+                done = {"name": stage, "round": entry["round"], "ok": ok}
+                item.setdefault("stages", []).append(done)
         self.save()
 
     def progress(self, stage: str, **fields: Any) -> None:

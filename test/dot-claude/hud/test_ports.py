@@ -18,7 +18,7 @@ def test_git_statusの出力を返しgitの外ならNone(tmp_path):
     assert git.status(str(tmp_path)) is None
 
 
-def test_runの置き場を読む(tmp_path, monkeypatch):
+def test_ランディレクトリを読む(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
     write_run(tmp_path)
     (tmp_path / "broken").mkdir()
@@ -26,13 +26,22 @@ def test_runの置き場を読む(tmp_path, monkeypatch):
     assert [st["name"] for st in autodev.read_states()] == ["range-field"]
     assert autodev.read_review("range-field", "task2")["items"]["r1"]["rating"] == "must-fix"
     assert autodev.read_review("range-field", "task9") is None
+    assert autodev.read_overview("range-field") == "範囲を指定して切り出す。"
 
 
-def test_走っているステージのログを選び無ければ最後に書かれたものを選ぶ(tmp_path, monkeypatch):
+def test_ステージのログと指示をコード名とラウンドで引く(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
     write_run(tmp_path)
-    running = autodev.log_path("range-field", "task2", [("review:adversarial", "1")])
-    assert running is not None and running.endswith("logs/task2/review-adversarial-1.jsonl")
-    assert autodev.log_path("range-field", "task2", []) == running
-    assert autodev.log_path("range-field", "task9", []) is None
-    assert len(autodev.read_lines(running)) == 4
+    log = autodev.stage_file("range-field", "task2", "review:adversarial", "1", ".jsonl")
+    assert log.endswith("logs/task2/review-adversarial-1.jsonl")
+    assert len(autodev.read_lines(log)) == 4
+    prompt = autodev.stage_file("range-field", "task2", "review:adversarial", "1", ".prompt.md")
+    assert "敵対的レビュー" in str(autodev.read_text(prompt))
+    assert autodev.read_text(prompt.replace("-1.", "-9.")) is None
+
+
+def test_ログのファイル名を書かれた順に並べる(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
+    write_run(tmp_path)
+    assert autodev.log_names("range-field", "task0") == ["plan-0.jsonl"]
+    assert autodev.log_names("range-field", "task9") == []

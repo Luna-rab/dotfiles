@@ -31,7 +31,7 @@ def test_指摘が無ければNone():
     assert review.summarize(None) is None
 
 
-def test_ログからツールの呼び出しと発言の1行目を拾う():
+def test_ログから発言の全文とツールの呼び出しを拾い結果は拾わない():
     events = [
         {"type": "system", "subtype": "init"},
         {
@@ -49,7 +49,7 @@ def test_ログからツールの呼び出しと発言の1行目を拾う():
     ]
     lines = [json.dumps(e) for e in events] + ["not json"]
     assert activity.parse(lines, limit=10) == [
-        activity.Activity(activity.Kind.TEXT, "テストを読む"),
+        activity.Activity(activity.Kind.TEXT, "テストを読む\n続き"),
         activity.Activity(activity.Kind.TOOL, "Bash uv run pytest"),
     ]
 

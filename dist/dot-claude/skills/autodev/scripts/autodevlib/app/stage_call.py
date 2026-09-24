@@ -175,6 +175,14 @@ def call(
             launcher_path=paths.launcher(),
         )
 
+    system_append = prompt_lib.system_append(stage)
+    if not resume_from:
+        # 再開ではプロンプトを渡さないので、最初に渡した指示の記録を残しておく
+        files.write_text(
+            run.prompt(task_id, stage.name.replace(":", "-"), round_label),
+            f"# 必須ルール（system prompt に足したもの）\n\n{system_append}\n\n"
+            f"# プロンプト\n\n{prompt}\n",
+        )
     console.info(
         f"{stage.role}ステージ（{task_id} / r{round_label}）を{'再開' if resume_from else '起動'}"
     )
@@ -185,7 +193,7 @@ def call(
             runner.Call(
                 stage=stage.name,
                 prompt=prompt,
-                system_append=prompt_lib.system_append(stage),
+                system_append=system_append,
                 cwd=run.tree,
                 log_path=run.log(task_id, stage.name.replace(":", "-"), round_label),
                 json_schema=stage_schema(stage),

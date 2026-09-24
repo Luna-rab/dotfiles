@@ -1,164 +1,276 @@
 """autodev のランを見る画面（Textual）。2 秒ごとに読み直すだけで、何も書き込まない。
 
+左ペインは「ラン → タスク → ステージ」のリストを 1 層ずつ出し、右ペインに選んでいる項目の
+詳細を出す。
+
 | キー | すること |
 | --- | --- |
-| ↑ ↓ / ホイール | タスクを選ぶ（詳細とログのペインはホイールでスクロール） |
-| Tab | 表・詳細・ログの間でフォーカスを移す |
-| [ ] | ランを切り替える |
-| l | ログのペインを出す・隠す |
+| ↑ ↓ / ホイール | 項目を選ぶ（右ペインの詳細が変わる） |
+| Enter / → | 1 つ深いリストに入る |
+| Esc / ← / Backspace | 1 つ浅いリストに戻る |
 | q | 終了 |
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
+from enum import Enum
 from typing import ClassVar
 
+from rich.console import Group
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import DataTable, Footer, RichLog, Static
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import ContentSwitcher, Footer, OptionList, RichLog, Static
+from textual.widgets.option_list import Option
 
-from hud.core import activity, headline, pipeline, review, runs
+from hud.core import activity, headline, pipeline, review, runs, stagelist
+from hud.core.pipeline import Mark
 from hud.ports import autodev
-from hud.render import detail
-from hud.render import tasklist as tasklist_view
-from hud.render.theme import DIM, STATUS_LABEL, status_mark
+from hud.render import detail, navigator
+from hud.render.theme import DIM
 
 REFRESH_SECONDS = 2.0
-#: ログのペインに出す、ステージのログの末尾のイベント数
-LOG_EVENTS = 60
+#: ステージの出力に出す、ログの末尾のイベント数
+LOG_EVENTS = 300
+
+
+class Level(Enum):
+    RUNS = "runs"
+    TASKS = "tasks"
+    STAGES = "stages"
 
 
 class Watch(App):
     TITLE = "autodev watch"
     CSS = """
-    #headline { height: 1; padding: 0 1; }
-    #tasks { width: 1fr; }
-    #detail-pane { width: 1fr; padding: 0 1; border-left: solid $panel; }
-    #log { height: 12; border-top: solid $panel; }
+    #left { width: 1fr; }
+    #crumb { height: 1; padding: 0 1; }
+    #right { width: 2fr; border-left: solid $panel; }
+    #info { padding: 0 1; }
+    #prompt-pane { height: 1fr; padding: 0 1; border-bottom: solid $panel; }
+    #output { height: 2fr; padding: 0 1; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("[", "switch_run(-1)", "前の run"),
-        Binding("]", "switch_run(1)", "次の run"),
-        Binding("l", "toggle_log", "ログ"),
+        Binding("right", "enter", "深く", show=False),
+        Binding("escape,left,backspace", "leave", "浅く"),
         Binding("q", "quit", "終了"),
     ]
 
     def __init__(self, run_name: str | None = None) -> None:
         super().__init__()
+        self.level = Level.TASKS if run_name else Level.RUNS
         self.run_name = run_name
-        self.selected: str | None = None
+        self.task_id: str | None = None
+        #: 層ごとに選んでいる項目。読み直しても同じ項目にカーソルを保つ
+        self.cursor: dict[Level, str | None] = {level: None for level in Level}
         self.states: list[dict] = []
-        self.stages: list[runs.Stage] = []
+        self.now = dt.datetime.now().astimezone()
+        self.signature: list[tuple[str, str]] = []
         self.log_source: tuple[str | None, int] = (None, 0)
 
     def compose(self) -> ComposeResult:
-        yield Static(id="headline")
         with Horizontal():
-            yield DataTable(id="tasks", cursor_type="row", zebra_stripes=True)
-            with VerticalScroll(id="detail-pane"):
-                yield Static(id="detail")
-        yield RichLog(id="log", max_lines=LOG_EVENTS * 2, markup=False)
+            with Vertical(id="left"):
+                yield Static(id="crumb")
+                yield OptionList(id="list")
+            with ContentSwitcher(id="right", initial="info"):
+                with VerticalScroll(id="info"):
+                    yield Static(id="info-body")
+                with Vertical(id="stage"):
+                    with VerticalScroll(id="prompt-pane"):
+                        yield Static(id="prompt")
+                    yield RichLog(id="output", markup=False, wrap=True)
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        table.add_columns("", "id", "件名", "状態", "PR")
-        # 指定しないとログのペインに当たり、↑↓ でタスクを選べない
-        table.focus()
+        self.query_one(OptionList).focus()
         self.reload()
         self.set_interval(REFRESH_SECONDS, self.reload)
 
+    # --- 読む ------------------------------------------------------------------
+
     @property
-    def current(self) -> dict | None:
-        return next((st for st in self.states if st.get("name") == self.run_name), None)
+    def current_run(self) -> dict | None:
+        return self.find_run(self.run_name)
+
+    def find_run(self, name: str | None) -> dict | None:
+        return next((st for st in self.states if runs.name_of(st) == name), None)
+
+    def stages_of(self, st: dict) -> list[runs.Stage]:
+        return runs.live_stages(st, self.now)
+
+    def head_of(self, st: dict) -> headline.Headline:
+        stages = self.stages_of(st)
+        return headline.build(st, stages, runs.is_active(st, stages, self.now))
+
+    def task(self) -> dict | None:
+        st = self.current_run or {}
+        return next((t for t in runs.tasks(st) if str(t.get("id")) == self.task_id), None)
+
+    def stage_items(self) -> list[stagelist.StageItem]:
+        st = self.current_run
+        if st is None or self.task_id is None:
+            return []
+        stages = self.stages_of(st)
+        if self.task_id == stagelist.RUN_TASK:
+            names = autodev.log_names(str(self.run_name), stagelist.RUN_TASK)
+            return stagelist.for_run(names, stages)
+        task = self.task()
+        return stagelist.for_task(task, stages) if task else []
+
+    def options(self) -> list[tuple[str, Text]]:
+        """今の層のリストの項目（キーと行）。"""
+        if self.level is Level.RUNS:
+            return [(runs.name_of(st), navigator.run_row(self.head_of(st))) for st in self.states]
+        st = self.current_run
+        if st is None:
+            return []
+        if self.level is Level.TASKS:
+            active = any(s.task == stagelist.RUN_TASK for s in self.stages_of(st))
+            rows = [(stagelist.RUN_TASK, navigator.run_task_row(active))]
+            return rows + [(str(t.get("id")), navigator.task_row(t)) for t in runs.tasks(st)]
+        return [(item.key, navigator.stage_row(item)) for item in self.stage_items()]
+
+    def default_key(self, keys: list[str]) -> str | None:
+        """その層に初めて入ったときに選ぶ項目。走っているもの、無ければ先頭。"""
+        if self.level is Level.RUNS:
+            return keys[0] if keys else None
+        if self.level is Level.TASKS:
+            st = self.current_run or {}
+            running = next((t for t in runs.tasks(st) if t.get("status") == "running"), None)
+            return str(running.get("id")) if running else (keys[0] if keys else None)
+        items = self.stage_items()
+        current = next((i for i in items if i.mark is Mark.CURRENT), None)
+        started = [i for i in items if i.mark is not Mark.NEXT]
+        pick = current or (started[-1] if started else (items[0] if items else None))
+        return pick.key if pick else None
+
+    # --- 描く ------------------------------------------------------------------
 
     def reload(self) -> None:
-        now = dt.datetime.now().astimezone()
-        self.states = runs.order(autodev.read_states(), now)
-        if self.current is None:
-            self.run_name = self.states[0].get("name") if self.states else None
-        st = self.current
-        headline_widget = self.query_one("#headline", Static)
-        if st is None:
-            headline_widget.update(Text("autodev のランが無い", style=DIM))
-            return
-        self.stages = runs.live_stages(st, now)
-        head = headline.build(st, self.stages, runs.is_active(st, self.stages, now))
-        position = f"  [{self.states.index(st) + 1}/{len(self.states)}]"
-        headline_widget.update(tasklist_view.headline(head).append(position, style=DIM))
-        self.fill_table(runs.tasks(st))
-        self.show_task()
-
-    def fill_table(self, tasks: list[dict]) -> None:
-        table = self.query_one(DataTable)
-        ids = [str(t.get("id")) for t in tasks]
-        if self.selected not in ids:
-            running = next((t for t in tasks if t.get("status") == "running"), None)
-            self.selected = str(running.get("id")) if running else (ids[0] if ids else None)
-        table.clear()
-        for task in tasks:
-            status = str(task.get("status"))
-            mark, mark_style, _ = status_mark(status)
-            table.add_row(
-                Text(mark, style=mark_style),
-                str(task.get("id")),
-                str(task.get("subject") or ""),
-                STATUS_LABEL.get(status, status),
-                f"#{task['pr']}" if task.get("pr") else "",
-                key=str(task.get("id")),
+        self.now = dt.datetime.now().astimezone()
+        self.states = runs.order(autodev.read_states(), self.now)
+        if self.level is not Level.RUNS and self.current_run is None:
+            self.level, self.run_name, self.task_id = Level.RUNS, None, None
+        self.query_one("#crumb", Static).update(
+            navigator.breadcrumb(
+                self.run_name if self.level is not Level.RUNS else None,
+                self.task_id if self.level is Level.STAGES else None,
             )
-        if self.selected in ids:
-            table.move_cursor(row=ids.index(self.selected), animate=False)
+        )
+        self.fill_list()
+        self.show_detail()
 
-    def show_task(self) -> None:
-        st = self.current or {}
-        task = next((t for t in runs.tasks(st) if str(t.get("id")) == self.selected), None)
-        pane = self.query_one("#detail", Static)
-        if task is None:
-            pane.update(Text("（計画中。タスクはまだ無い）", style=DIM))
+    def fill_list(self) -> None:
+        """リストを組み直す。**中身が変わらなければ組み直さない**（2 秒ごとにちらつかせない）。"""
+        listing = self.query_one(OptionList)
+        options = self.options()
+        keys = [key for key, _ in options]
+        if self.cursor[self.level] not in keys:
+            self.cursor[self.level] = self.default_key(keys)
+        signature = [(key, row.plain) for key, row in options]
+        if signature != self.signature:
+            self.signature = signature
+            listing.clear_options()
+            listing.add_options([Option(row, id=key) for key, row in options])
+        if self.cursor[self.level] in keys:
+            listing.highlighted = keys.index(str(self.cursor[self.level]))
+
+    def show_detail(self) -> None:
+        switcher = self.query_one(ContentSwitcher)
+        key = self.cursor[self.level]
+        st = self.current_run if self.level is not Level.RUNS else self.find_run(key)
+        if st is None or key is None:
+            switcher.current = "info"
+            self.query_one("#info-body", Static).update(Text("autodev のランが無い", style=DIM))
             return
-        run_name, task_id = str(st.get("name")), str(task.get("id"))
-        mine = [s for s in self.stages if s.task == task_id]
-        found = review.summarize(autodev.read_review(run_name, task_id))
-        pane.update(detail.task_detail(task, pipeline.steps(task, self.stages), mine, found))
-        self.show_log(autodev.log_path(run_name, task_id, [(s.name, s.round) for s in mine]))
+        if self.level is Level.STAGES:
+            item = next((i for i in self.stage_items() if i.key == key), None)
+            if item is not None and item.code is not None:
+                switcher.current = "stage"
+                self.show_stage(item)
+                return
+        switcher.current = "info"
+        self.query_one("#info-body", Static).update(self.info(st, key))
 
-    def show_log(self, path: str | None) -> None:
-        """ログのペイン。同じファイルが伸びただけなら、書き直さずに足す。"""
-        log = self.query_one(RichLog)
-        events = activity.parse(autodev.read_lines(path), LOG_EVENTS) if path else []
+    def info(self, st: dict, key: str) -> Text | Group:
+        if self.level is Level.RUNS:
+            return detail.run_detail(self.head_of(st), st, autodev.read_overview(key))
+        if self.level is Level.STAGES:
+            return Text("まだ走っていない", style=DIM)
+        if key == stagelist.RUN_TASK:
+            head = self.head_of(st)
+            return Text(navigator.RUN_TASK_LABEL + "\n\n", style="bold").append(
+                f"いま: {head.doing}\nEnter で計画ステージとまとめステージの一覧に入る", style=DIM
+            )
+        task = next((t for t in runs.tasks(st) if str(t.get("id")) == key), None)
+        if task is None:
+            return Text("")
+        stages = self.stages_of(st)
+        mine = [s for s in stages if s.task == key]
+        found = review.summarize(autodev.read_review(runs.name_of(st), key))
+        return detail.task_detail(task, pipeline.steps(task, stages), mine, found)
+
+    def show_stage(self, item: stagelist.StageItem) -> None:
+        run_name, task_id, code = str(self.run_name), str(self.task_id), str(item.code)
+        prompt = autodev.read_text(
+            autodev.stage_file(run_name, task_id, code, item.round, ".prompt.md")
+        )
+        self.query_one("#prompt", Static).update(detail.stage_prompt(prompt))
+        self.show_output(autodev.stage_file(run_name, task_id, code, item.round, ".jsonl"))
+
+    def show_output(self, path: str) -> None:
+        """ステージの出力。同じファイルが伸びただけなら書き直さずに足す。末尾を見ているときだけ追う。"""
+        log = self.query_one("#output", RichLog)
+        events = activity.parse(autodev.read_lines(path), LOG_EVENTS)
         source, seen = self.log_source
         if path != source or len(events) < seen:
             log.clear()
             seen = 0
-            if path:
-                log.write(Text(os.path.basename(path), style="bold"))
+        log.auto_scroll = seen == 0 or log.is_vertical_scroll_end
         for event in events[seen:]:
             log.write(detail.activity_line(event))
         self.log_source = (path, len(events))
 
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        key = event.row_key.value
-        if key and key != self.selected:
-            self.selected = key
-            self.show_task()
+    # --- 操作 ------------------------------------------------------------------
 
-    def action_switch_run(self, step: int) -> None:
-        if not self.states:
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        key = event.option.id
+        if key and key != self.cursor[self.level]:
+            self.cursor[self.level] = key
+            self.show_detail()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.action_enter()
+
+    def action_enter(self) -> None:
+        key = self.cursor[self.level]
+        if key is None or self.level is Level.STAGES:
             return
-        index = next((i for i, st in enumerate(self.states) if st.get("name") == self.run_name), 0)
-        self.run_name = self.states[(index + step) % len(self.states)].get("name")
-        self.selected = None
+        if self.level is Level.RUNS:
+            if key != self.run_name:
+                self.cursor[Level.TASKS] = None
+            self.run_name, self.level = key, Level.TASKS
+        else:
+            if key != self.task_id:
+                self.cursor[Level.STAGES] = None
+            self.task_id, self.level = key, Level.STAGES
+        self.signature = []
         self.reload()
 
-    def action_toggle_log(self) -> None:
-        log = self.query_one(RichLog)
-        log.display = not log.display
+    def action_leave(self) -> None:
+        if self.level is Level.STAGES:
+            self.level = Level.TASKS
+        elif self.level is Level.TASKS:
+            self.level = Level.RUNS
+            self.cursor[Level.RUNS] = self.run_name
+        else:
+            return
+        self.signature = []
+        self.reload()
 
 
 def main() -> int:

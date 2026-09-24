@@ -44,6 +44,8 @@ def test_タスクごとのファイルをtasksの下に置く(run: paths.Run):
     assert run.result("task1", "impl", "1") == "/tmp/st/demo/tasks/task1/result-impl-1.json"
     assert run.task_pr_body("task1") == "/tmp/st/demo/tasks/task1/pr-body.md"
     assert run.log("task1", "impl", "1") == "/tmp/st/demo/logs/task1/impl-1.jsonl"
+    # autodev-watch がログの隣から読む
+    assert run.prompt("task1", "impl", "1") == "/tmp/st/demo/logs/task1/impl-1.prompt.md"
 
 
 def test_guardはworktreeの外に置く(run: paths.Run):

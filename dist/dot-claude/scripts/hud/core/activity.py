@@ -18,7 +18,7 @@ class Kind(Enum):
 @dataclass(frozen=True)
 class Activity:
     kind: Kind
-    #: ツールなら「名前 対象」、発言なら 1 行目
+    #: ツールなら「名前 対象」の 1 行、発言なら全文。ツールの結果は拾わない（量が多く発言が埋もれる）
     text: str
 
 
@@ -38,7 +38,7 @@ def parse(lines: list[str], limit: int) -> list[Activity]:
             if block.get("type") == "tool_use":
                 out.append(Activity(Kind.TOOL, _tool(block)))
             elif block.get("type") == "text" and str(block.get("text") or "").strip():
-                out.append(Activity(Kind.TEXT, str(block["text"]).strip().splitlines()[0][:200]))
+                out.append(Activity(Kind.TEXT, str(block["text"]).strip()))
     return out[-limit:]
 
 

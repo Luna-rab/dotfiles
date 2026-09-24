@@ -8,9 +8,11 @@ from rich.console import Group
 from rich.text import Text
 
 from hud.core.activity import Activity, Kind
+from hud.core.headline import Headline, outcome
 from hud.core.pipeline import Step, full_name
 from hud.core.review import Review
-from hud.core.runs import Stage, short
+from hud.core.runs import Stage, short, tasks
+from hud.render.parts import bar
 from hud.render.tasklist import pipeline
 from hud.render.theme import (
     ACCENT,
@@ -22,10 +24,12 @@ from hud.render.theme import (
     RATING_STYLE,
     RED,
     STATUS_LABEL,
+    status_mark,
 )
 
 #: 詳細ペインの末尾に出す、計画ステージが決めたタスクの項目
 PLAN_FIELDS = (("acceptance", "受入条件"), ("dod", "DoD"), ("scope", "範囲"))
+PROGRESS_BAR_WIDTH = 20
 
 
 def task_detail(task: dict, steps: list[Step], stages: list[Stage], review: Review | None) -> Group:
@@ -86,6 +90,56 @@ def review_text(review: Review | None) -> Text:
 
 
 def activity_line(activity: Activity) -> Text:
+    """ステージの出力の 1 件。発言は全文を、2 行目以降も字下げしてそろえる。"""
     if activity.kind is Kind.TOOL:
         return Text("▸ ", style=BLUE).append(activity.text)
-    return Text(f"  {activity.text}", style=DIM)
+    return Text("\n".join(f"  {line}" for line in activity.text.splitlines()))
+
+
+def run_detail(head: Headline, st: dict, overview: str | None) -> Group:
+    """ランを選んだときの詳細。ゴール・進み具合・判断ログとスコープ外。"""
+    title = Text(head.run_name, style=BOLD).append(f" · {outcome(head)}", style=DIM)
+    if head.overview_pr:
+        title.append(f" · 概要 PR #{head.overview_pr}", style=DIM)
+    parts: list[Any] = [title, Text()]
+
+    parts += [Text("ゴール", style=BOLD), Text("起動時の指示", style=DIM)]
+    parts.append(Text(f"{str(st.get('instruction') or '（なし）').strip()}\n"))
+    if overview and overview.strip():
+        parts += [Text("まとめステージの説明", style=DIM), Text(f"{overview.strip()}\n")]
+
+    pct = head.stacked / head.total * 100 if head.total else 0.0
+    progress = Text("進み具合  ", style=BOLD).append_text(bar(pct, PROGRESS_BAR_WIDTH))
+    progress.append(f" {head.stacked}/{head.total} スタック済み", style=DIM)
+    if head.held:
+        progress.append(f" · 要対応 {head.held}", style=RED)
+    parts.append(progress)
+    for task in tasks(st):
+        parts.append(task_line(task))
+    parts.append(Text())
+
+    for key, label in (("decisions", "判断ログ"), ("deferrals", "スコープ外")):
+        entries = [e for e in st.get(key) or [] if isinstance(e, dict)]
+        if entries:
+            parts.append(Text(label, style=BOLD))
+            parts += [Text(f"・{e.get('body', '')}") for e in entries]
+            parts.append(Text())
+    return Group(*parts)
+
+
+def task_line(task: dict) -> Text:
+    """タスクの一覧の 1 行（記号・id・件名・PR）。"""
+    status = str(task.get("status"))
+    mark, mark_style, body_style = status_mark(status)
+    line = Text("  ").append(mark, style=mark_style).append(f" {task.get('id', '?')} ", style=DIM)
+    line.append(str(task.get("subject") or ""), style=body_style)
+    label = STATUS_LABEL.get(status, status)
+    line.append(f"  {label}" + (f" · #{task['pr']}" if task.get("pr") else ""), style=DIM)
+    return line
+
+
+def stage_prompt(text: str | None) -> Text:
+    """ステージに渡した指示。driver が書き残し始める前のランには無い。"""
+    if text is None:
+        return Text("（指示の記録が無い。この機能より前に走ったステージ）", style=DIM)
+    return Text(text.rstrip())

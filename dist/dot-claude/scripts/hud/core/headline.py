@@ -1,4 +1,4 @@
-"""ラン1 つの見出し。いま何をしているかを 1 つに決める。"""
+"""ラン 1 つの見出し。いま何をしているかを 1 つに決める。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 
 from hud.core.pipeline import full_name, short_name
-from hud.core.runs import STAGE_TIMEOUT, Stage, tasks
+from hud.core.runs import STAGE_TIMEOUT, Stage, name_of, tasks
 
 #: タスクに属さないステージ。見出しにだけ出す
 RUN_STAGES = {"plan": "計画中", "summary": "まとめ"}
@@ -45,7 +45,7 @@ class Headline:
 def build(st: dict, stages: list[Stage], active: bool) -> Headline:
     items = tasks(st)
     stopped = Headline(
-        run_name=str(st.get("name", "?")),
+        run_name=name_of(st),
         state=State.STOPPED,
         doing="止まっている",
         overview_pr=st.get("overviewPr") or None,
@@ -83,3 +83,16 @@ def build(st: dict, stages: list[Stage], active: bool) -> Headline:
             stopped, state=State.BETWEEN, doing=f"{current.get('id', '?')} 完了チェックと公開"
         )
     return stopped
+
+
+def outcome(head: Headline) -> str:
+    """ランの状態の表示名（`autodev/GLOSSARY.md` の「ランの状態」）。"""
+    if head.state is State.WAITING:
+        return "回答待ち"
+    if head.state in (State.RUNNING, State.BETWEEN):
+        return "計画中" if head.total == 0 else "実行中"
+    if head.held:
+        return "要対応"
+    if head.total and head.stacked == head.total:
+        return "完了"
+    return "止まっている"

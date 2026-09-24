@@ -94,3 +94,11 @@ def write_run(root, **over) -> None:
     ]
     log = run / "logs" / "task2" / "review-adversarial-1.jsonl"
     log.write_text("\n".join(json.dumps(e) for e in events) + "\nnot json\n", encoding="utf-8")
+    prompt = run / "logs" / "task2" / "review-adversarial-1.prompt.md"
+    prompt.write_text(
+        "# プロンプト\n\nあなたは敵対的レビューのステージである。\n", encoding="utf-8"
+    )
+    (run / "logs" / "task0").mkdir(parents=True)
+    (run / "logs" / "task0" / "plan-0.jsonl").write_text("", encoding="utf-8")
+    (run / "prose").mkdir()
+    (run / "prose" / "overview.md").write_text("範囲を指定して切り出す。", encoding="utf-8")

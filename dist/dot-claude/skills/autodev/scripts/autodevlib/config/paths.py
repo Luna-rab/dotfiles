@@ -175,6 +175,10 @@ class Run:
     def log(self, task_id: str, stage: str, round_label: str) -> str:
         return self.path("logs", task_id, f"{stage}-{round_label}.jsonl")
 
+    def prompt(self, task_id: str, stage: str, round_label: str) -> str:
+        """ステージに渡した指示。autodev-watch がステージの詳細に出す。"""
+        return self.path("logs", task_id, f"{stage}-{round_label}.prompt.md")
+
     def exists(self) -> bool:
         return os.path.exists(self.state)
 

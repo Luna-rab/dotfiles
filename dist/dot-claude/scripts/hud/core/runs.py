@@ -89,6 +89,11 @@ def tasks(st: dict) -> list[dict]:
     return [t for t in st.get("tasks") or [] if isinstance(t, dict)]
 
 
+def name_of(st: dict) -> str:
+    """ラン名。`name` に改名する前のランは `work` に入っている（続きから再開はできないが、見られるようにする）。"""
+    return str(st.get("name") or st.get("work") or "?")
+
+
 def short(seconds: float) -> str:
     """経過時間の表記。1 分未満は秒、1 時間未満は分と秒、それ以上は時と分。"""
     total = int(seconds)

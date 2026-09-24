@@ -1,6 +1,6 @@
-"""段を 1 回呼ぶ。渡す値・環境変数・セッション・結果の形をここで決める。
+"""ステージを 1 回呼ぶ。渡す値・環境変数・セッション・結果の形をここで決める。
 
-**段の中身は決めない。** 文面を組むのは `core/prompt.py`、起動するのは `ports/runner.py` で、
+**ステージの中身は決めない。** 文面を組むのは `core/prompt.py`、起動するのは `ports/runner.py` で、
 ここはその 2 つへ渡すものを揃えて結果を記録に落とす。
 """
 
@@ -17,8 +17,8 @@ from ..core import prompt as prompt_lib
 from ..ports import console, files, review_store, run_store, runner, templates
 from .context import Ctx
 
-#: フックに何回止められたら段を打ち切るか。契約を読み違えている段は、そのまま続けても
-#: 直らないので、往復の上限まで使い切る前に止める
+#: フックに何回止められたらステージを打ち切るか。指示書を読み違えているステージは、そのまま続けても
+#: 直らないので、ターンの上限まで使い切る前に止める
 BLOCK_LIMIT = 10
 #: 進行を state.json に書き出す間隔（秒）
 PROGRESS_EVERY = 5.0
@@ -33,7 +33,7 @@ def stage_values(
 ) -> dict[str, Any]:
     run, st = ctx.run, ctx.st
     values: dict[str, Any] = {
-        "work": st["work"],
+        "run_name": st["name"],
         "instruction": st.get("instruction"),
         "tree": run.tree,
         "brief": run.brief,
@@ -61,13 +61,13 @@ def stage_values(
 
 
 def stage_env(ctx: Ctx, stage: stages.Stage) -> dict[str, str | None]:
-    """段ごとに渡す環境変数。**渡さないものは `None` で外す**（空文字では
+    """ステージごとに渡す環境変数。**渡さないものは `None` で外す**（空文字では
     「設定されている」と読む相手がいる）。
 
-    - 裁定の鍵は裁定の段だけ。他の段が status を動かせると自己承認になる
-    - テストの解禁はテスト作成段だけ
-    - ソースを書き換えない段は worktree の中を書けない（`hooks/deny-writes.py` が止める）
-    - **資格情報は全段で外す。** `ANTHROPIC_API_KEY` が残っていると claude が
+    - ジャッジトークンはジャッジだけ。他のステージが status を動かせると自己承認になる
+    - テストの解禁はテスト作成ステージだけ
+    - ソースを書き換えないステージは worktree の中を書けない（`hooks/deny-writes.py` が止める）
+    - **資格情報は全ステージで外す。** `ANTHROPIC_API_KEY` が残っていると claude が
       サブスクリプションではなく従量課金に切り替わる。無人のマシンで使う
       `CLAUDE_CODE_OAUTH_TOKEN` は claude 自身のものなので通す
     """
@@ -99,7 +99,7 @@ def stage_session(task: dict[str, Any] | None, stage: stages.Stage) -> tuple[str
 
 
 def stage_schema(stage: stages.Stage) -> str | None:
-    """段の結果の形。**`claude --json-schema` はファイルパスではなく JSON の本文を取る。**"""
+    """ステージの結果の形。**`claude --json-schema` はファイルパスではなく JSON の本文を取る。**"""
     if not stage.writes_result:
         return None
     path = paths.schema(stage.contract)
@@ -110,13 +110,13 @@ def stage_schema(stage: stages.Stage) -> str | None:
 
 
 def stage_watch(ctx: Ctx, stage: stages.Stage) -> Any:
-    """段を走らせながら driver が見る係を作る。**判断するのはこのコードで、モデルは入らない。**
+    """ステージを走らせながら driver が見る係を作る。**判断するのはこのコードで、モデルは入らない。**
 
     見るのは 2 つだけである。
 
-    - **進行**（往復数と直前のツール）を state.json に書く。段の途中の様子が外から見える
-    - **ガードとの衝突**。`BLOCK_LIMIT` 回止められた段は打ち切る。契約を読み違えていて、
-      そのまま続けても直らないので、往復の上限まで使い切る前に止める
+    - **進行**（ターン数と直前のツール）を state.json に書く。ステージの途中の様子が外から見える
+    - **ガードとの衝突**。`BLOCK_LIMIT` 回止められたステージは打ち切る。指示書を読み違えていて、
+      そのまま続けても直らないので、ターンの上限まで使い切る前に止める
 
     ツール 1 回ごとの許可をここでやらない。同期の関門を挟むと、答える相手が生きていない
     と進めなくなり、無人で回せなくなる。
@@ -130,7 +130,7 @@ def stage_watch(ctx: Ctx, stage: stages.Stage) -> Any:
         if denied:
             seen["blocked"] = int(seen["blocked"]) + denied
             if seen["blocked"] >= BLOCK_LIMIT:
-                return f"フックに {seen['blocked']} 回止められた（契約を読み違えている）"
+                return f"フックに {seen['blocked']} 回止められた（指示書を読み違えている）"
         if event.get("type") == "assistant":
             seen["turns"] = int(seen["turns"]) + 1
             for block in (event.get("message") or {}).get("content") or []:
@@ -154,9 +154,9 @@ def call(
     extra: str = "",
     resume_from: str | None = None,
 ) -> runner.Result:
-    """段を 1 回呼ぶ。**結果がスキーマに合わなければ、その段は失敗である。**
+    """ステージを 1 回呼ぶ。**結果がスキーマに合わなければ、そのステージは失敗である。**
 
-    `resume_from` を渡すと、答えを待って止まった段をそのセッションから再開する。
+    `resume_from` を渡すと、回答を待って止まったステージをそのセッションから再開する。
     **そのときプロンプトは渡さない**——渡すと新しいターンが始まり、止まったツール呼び出しが
     再開されない。
     """
@@ -176,7 +176,7 @@ def call(
         )
 
     console.info(
-        f"段 {stage.name}（{task_id} / r{round_label}）を{'再開' if resume_from else '起動'}"
+        f"{stage.role}ステージ（{task_id} / r{round_label}）を{'再開' if resume_from else '起動'}"
     )
     ctx.begin(stage.name, task_id, round_label)
     ok = False
@@ -204,7 +204,7 @@ def call(
     finally:
         ctx.end(stage.name, ok=ok)
     if got.result is not None:
-        # **記録は driver が書く。** 段に書かせないので、在ることと形が保証される
+        # **記録は driver が書く。** ステージに書かせないので、在ることと形が保証される
         files.write_json(run.result(task_id, stage.name.replace(":", "-"), round_label), got.result)
 
     console.info(f"  → {'ok' if got.ok else 'NG'} / {runner.usage_line(got)}")
@@ -216,7 +216,7 @@ def call(
 
 
 def record_judgements(st: dict[str, Any], result: dict[str, Any]) -> None:
-    """段が申告した「自分で決めたこと」「先送りにしたもの」を残す。
+    """ステージが報告した「自分で決めたこと」「スコープ外にしたもの」を残す。
 
     バックグラウンドに埋もれると、いつの間にか目標が変わったことに誰も気づけない。
     """

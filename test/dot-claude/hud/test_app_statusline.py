@@ -63,7 +63,7 @@ def test_幅が足りればタスクリストを右に置く(tmp_path):
     assert len(lines) == 5
     left, right = lines[0].split("  │  ")
     assert left.startswith("Opus 5.5")
-    assert right == "autodev range-field ▸ task2 review r1 · 4m12s 26往復 Read · 土台 PR #4"
+    assert right == "autodev range-field ▸ task2 レビュー r1 · 4m12s 26ターン Read · 概要 PR #4"
     assert lines[2].split("  │  ")[1].startswith("  ◼ task2 範囲指定")
     assert lines[4].split("  │  ")[0].strip() == ""
 
@@ -71,22 +71,22 @@ def test_幅が足りればタスクリストを右に置く(tmp_path):
 def test_幅が足りなければタスクリストを下に置く(tmp_path):
     write_run(tmp_path)
     lines = run(tmp_path, columns=100)
-    assert lines[4].startswith("autodev range-field ▸ task2 review r1")
+    assert lines[4].startswith("autodev range-field ▸ task2 レビュー r1")
     assert lines[5].startswith("  ✔ task1 パーサの土台")
     assert lines[5].endswith("#5")
-    assert lines[6].endswith("testgen ✔ › impl ✔ › review ◼ › judge › PR")
+    assert lines[6].endswith("テスト作成 ✔ › 実装 ✔ › レビュー ◼ › ジャッジ › PR 本文")
     assert lines[7] == "  ◻ task3 CLI"
     assert lines[8].endswith("受入条件が曖昧")
 
 
-def test_走っている段が無くても実行中のタスクがあれば出す(tmp_path):
+def test_走っているステージが無くても実行中のタスクがあれば出す(tmp_path):
     write_run(tmp_path, running={})
     lines = run(tmp_path)
-    assert lines[4] == "autodev range-field ▸ task2 検査と PR · 土台 PR #4"
-    assert lines[6].endswith("review ✔ › judge › PR")
+    assert lines[4] == "autodev range-field ▸ task2 完了チェックと公開 · 概要 PR #4"
+    assert lines[6].endswith("レビュー ✔ › ジャッジ › PR 本文")
 
 
-def test_更新が止まったrunは出さない(tmp_path):
+def test_更新が止まったランは出さない(tmp_path):
     stale = (dt.datetime.now().astimezone() - dt.timedelta(hours=4)).isoformat()
     write_run(tmp_path, running={}, updatedAt=stale)
     assert len(run(tmp_path)) == 4

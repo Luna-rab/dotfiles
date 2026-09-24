@@ -6,7 +6,7 @@
     "branch": { "type": "string" },
     "commits": {
       "type": "integer",
-      "description": "<起点> から積んだコミットの数。1 以上でなければ検査②が落ちる"
+      "description": "<親ブランチ> から足したコミットの数。1 以上でなければ完了チェック②が落ちる"
     },
     "changeKind": {
       "type": "string",
@@ -26,12 +26,12 @@
     "questions": { "type": "array", "items": { "type": "string" } },
     "decisions": {
       "type": "array",
-      "description": "自分の判断で決めたこと。土台 PR の本文に出る",
+      "description": "自分の判断で決めたこと。概要 PR の本文に出る",
       "items": { "type": "string" }
     },
     "deferrals": {
       "type": "array",
-      "description": "先送りにしたもの。土台 PR の本文に出る",
+      "description": "スコープ外にしたもの。概要 PR の本文に出る",
       "items": { "type": "string" }
     },
     "notes": { "type": "string" }

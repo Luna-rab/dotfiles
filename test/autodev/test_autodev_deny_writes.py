@@ -1,8 +1,8 @@
 """autodev の `deny-writes.py` の検査。
 
-このフックは autodev の**唯一の強制点**である。テストを書けるのはテスト作成段だけ、
-読むだけの段は worktree の中を書けない——どちらもここでしか止まらない。緩めすぎると
-検査⑤まで気づかず、締めすぎると段が読むだけのコマンドで止まる。
+このフックは autodev の**唯一の強制点**である。テストを書けるのはテスト作成ステージだけ、
+読むだけのステージは worktree の中を書けない——どちらもここでしか止まらない。緩めすぎると
+完了チェック⑤まで気づかず、締めすぎるとステージが読むだけのコマンドで止まる。
 
 実行はリポジトリのルートから `uv run pytest`。
 """
@@ -21,7 +21,7 @@ HOOK_PATH = SKILL_ROOT / "hooks" / "deny-writes.py"
 TREE = "/w"
 GLOBS = "test_*.py\ntests/**"
 
-#: 段ごとの環境変数。driver が `stage_env()` で渡すものと同じ形
+#: ステージごとの環境変数。driver が `stage_env()` で渡すものと同じ形
 TESTGEN = {"AUTODEV_ALLOW_TESTS": "1"}
 IMPL: dict[str, str] = {}
 READ_ONLY = {"AUTODEV_READ_ONLY": "1"}
@@ -48,7 +48,7 @@ def call(hook, monkeypatch, stage: dict[str, str], tool: str, tool_input: dict) 
     return hook.main()
 
 
-# --- 実装段: テストだけ守る ---------------------------------------------------
+# --- 実装ステージ: テストだけ守る ---------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -85,7 +85,7 @@ def test_testgen_can_touch_tests(hook, monkeypatch):
     assert got == 0
 
 
-# --- 読むだけの段: worktree の中を全部守る -----------------------------------
+# --- 読むだけのステージ: worktree の中を全部守る -----------------------------------
 
 
 @pytest.mark.parametrize(
@@ -102,14 +102,14 @@ def test_read_only_cannot_write_in_tree(hook, monkeypatch, tool, tool_input):
 
 
 def test_read_only_can_write_its_result_outside_the_tree(hook, monkeypatch):
-    """**結果の JSON は worktree の外にある。** ここを止めると段が結果を返せない。"""
+    """**結果の JSON は worktree の外にある。** ここを止めるとステージが結果を返せない。"""
     got = call(hook, monkeypatch, READ_ONLY, "Write", {"file_path": "/run/result.json"})
     assert got == 0
 
 
 # --- リダイレクトの読み分け ---------------------------------------------------
 #
-# ここを緩めると段がソースを書き換えられ、締めると読むだけのコマンドで段が止まる。
+# ここを緩めるとステージがソースを書き換えられ、締めると読むだけのコマンドでステージが止まる。
 # `2>&1` は fd の複製、`/dev/null` はファイルではなく、**引用の中の `>` と `rm` は
 # シェルに届かない**。
 

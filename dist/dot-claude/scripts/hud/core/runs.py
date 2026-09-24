@@ -1,7 +1,7 @@
 """autodev の run（`state.json` の中身）が、いま動いているか。
 
-判定に使うのは `running`（driver が段の開始と終了で書き、走行中は 5 秒ごとに往復数と直前の
-ツールを上書きする）。**段の途中で更新される値はこれだけ**なので、進行と生存の両方をここで見る。
+判定に使うのは `running`（driver がステージの開始と終了で書き、走行中は 5 秒ごとにターン数と直前の
+ツールを上書きする）。**ステージの途中で更新される値はこれだけ**なので、進行と生存の両方をここで見る。
 """
 
 from __future__ import annotations
@@ -10,15 +10,15 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Any
 
-#: 段 1 つの制限時間（`autodevlib/config/stages.py` の `Stage.timeout`）。これを超えたら `!`
+#: ステージ 1 つの制限時間（`autodevlib/config/stages.py` の `Stage.timeout`）。これを超えたら `!`
 STAGE_TIMEOUT = 3600
-#: これを超えて更新の無い run・段は、driver が落ちたものとして扱う
+#: これを超えて更新の無いラン・ステージは、driver が落ちたものとして扱う
 GIVE_UP = 3 * 3600
 
 
 @dataclass(frozen=True)
 class Stage:
-    """走っている段 1 つ。"""
+    """走っているステージ 1 つ。"""
 
     name: str
     task: str
@@ -41,7 +41,7 @@ def age(stamp: Any, now: dt.datetime) -> float | None:
 
 
 def live_stages(st: dict, now: dt.datetime) -> list[Stage]:
-    """走っている段。driver が段の途中で落ちると `running` が残るので、`GIVE_UP` を超えたものは外す。"""
+    """走っているステージ。driver がステージの途中で落ちると `running` が残るので、`GIVE_UP` を超えたものは外す。"""
     running = st.get("running")
     if not isinstance(running, dict):
         return []
@@ -66,7 +66,7 @@ def live_stages(st: dict, now: dt.datetime) -> list[Stage]:
 
 
 def is_active(st: dict, stages: list[Stage], now: dt.datetime) -> bool:
-    """表示する run か。**段と段の間**（検証・push・PR 作成）も、タスクが running なら出す。"""
+    """表示するランか。**ステージとステージの間**（検証・push・PR 作成）も、タスクが running なら出す。"""
     if stages or st.get("deferred"):
         return True
     updated = age(st.get("updatedAt"), now)
@@ -75,7 +75,7 @@ def is_active(st: dict, stages: list[Stage], now: dt.datetime) -> bool:
 
 
 def order(states: list[dict], now: dt.datetime) -> list[dict]:
-    """動いている run を先に、あとは更新の新しい順に並べる。"""
+    """動いているランを先に、あとは更新の新しい順に並べる。"""
 
     def key(st: dict) -> tuple[bool, float]:
         active = is_active(st, live_stages(st, now), now)

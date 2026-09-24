@@ -11,8 +11,8 @@ from typing import Any
 STATUS_LABEL = {
     "pending": "未着手",
     "running": "進行中",
-    "stacked": "積んだ",
-    "blocked": "保留",
+    "stacked": "スタック済み",
+    "blocked": "要確認",
     "failed": "失敗",
 }
 
@@ -33,7 +33,7 @@ def held_block(st: dict[str, Any]) -> str:
     held = [i for i in st.get("tasks", []) if i["status"] in ("blocked", "failed")]
     if not held:
         return ""
-    lines = ["## 残課題", ""]
+    lines = ["## 要対応", ""]
     for item in held:
         reason = item.get("reason") or "理由の記録なし"
         lines.append(f"- {item['id']}（{STATUS_LABEL[item['status']]}）: {reason}")

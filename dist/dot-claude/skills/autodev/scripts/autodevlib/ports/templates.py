@@ -6,7 +6,7 @@
 - **数と状態は state.json から毎回組み立てる**（`${tasks}` `${held}` `${decisions}`）。
   agent には書かせない——書かせると出所が state.json と本文の 2 つになり、
   「state.json では blocked なのに本文では進行中」がありえる。
-- **散文は agent が書いたものを差す**（`${prose}` `${notes}`）。値は `<run>/prose/*.md` に
+- **自由記述は agent が書いたものを差す**（`${prose}` `${notes}`）。値は `<ランディレクトリ>/prose/*.md` に
   置き、書き出すたびに読み直す。agent を呼ぶのは 1 回で、そのあと何回書き出しても同じ文が入る。
 
 `string.Template` の `safe_substitute` を使うので、**埋め忘れたマーカーはそのまま残る**
@@ -37,11 +37,11 @@ def fill(name: str, values: dict[str, Any]) -> str:
     )
 
 
-# --- agent が書いた散文 ------------------------------------------------------
+# --- agent が書いた自由記述 ------------------------------------------------------
 
 
 def read_prose(run: paths.Run, name: str, empty: str) -> str:
-    """`<run>/prose/<name>.md` を読む。無ければ `empty` を返す。
+    """`<ランディレクトリ>/prose/<name>.md` を読む。無ければ `empty` を返す。
 
     **agent を呼び直さずに何度でも書き出せる**ようにファイルへ置いてある。
     """

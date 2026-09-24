@@ -1,4 +1,4 @@
-"""autodev の run の置き場（`~/.local/state/autodev/<作業名>/`）を読む。**何も書き込まない。**
+"""autodev の ランディレクトリ（`~/.local/state/autodev/<ラン名>/`）を読む。**何も書き込まない。**
 
 driver が書き換えている最中のファイルに当たることがあるので、読めないものは飛ばす。
 """
@@ -11,7 +11,7 @@ from typing import Any
 
 
 def state_root() -> str:
-    """run の置き場。**出所は `autodevlib/config/paths.py` の `state_root()`** と同じ規則。"""
+    """ランディレクトリ。**出所は `autodevlib/config/paths.py` の `state_root()`** と同じ規則。"""
     override = os.environ.get("AUTODEV_STATE_DIR")
     if override:
         return os.path.abspath(override)
@@ -28,7 +28,7 @@ def read_json(path: str) -> Any:
 
 
 def read_states() -> list[dict]:
-    """全 run の `state.json`。作業名の順。"""
+    """全ランの `state.json`。ラン名の順。"""
     root = state_root()
     if not os.path.isdir(root):
         return []
@@ -38,13 +38,13 @@ def read_states() -> list[dict]:
     return [st for st in loaded if isinstance(st, dict)]
 
 
-def read_review(work: str, task: str) -> Any:
-    return read_json(os.path.join(state_root(), work, "tasks", task, "review.json"))
+def read_review(run_name: str, task: str) -> Any:
+    return read_json(os.path.join(state_root(), run_name, "tasks", task, "review.json"))
 
 
-def log_path(work: str, task: str, running: list[tuple[str, str]]) -> str | None:
-    """そのタスクのログ。`running`（走っている段の名前と巡目）のログがあればそれ、無ければ最後に書かれたもの。"""
-    root = os.path.join(state_root(), work, "logs", task)
+def log_path(run_name: str, task: str, running: list[tuple[str, str]]) -> str | None:
+    """そのタスクのログ。`running`（走っているステージの名前とラウンド）のログがあればそれ、無ければ最後に書かれたもの。"""
+    root = os.path.join(state_root(), run_name, "logs", task)
     for name, round_label in running:
         path = os.path.join(root, f"{name.replace(':', '-')}-{round_label}.jsonl")
         if os.path.exists(path):

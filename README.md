@@ -113,15 +113,15 @@ symlink にしているとコピーがこのリポジトリの中に落ちる。
 
 ### autodev（指示 1 つを stacked PR にするスキル）
 
-`/autodev` から起動する。実装・レビュー・裁定・修正を無人で回して stacked PR を積む。
-段は `claude -p` を 1 プロセスずつ起動して走らせ、進行の決定（段の順序・回数の上限・
+`/autodev` から起動する。実装・レビュー・ジャッジ・修正を無人で回して、タスク PR をスタックに追加する。
+ステージは `claude -p` を 1 プロセスずつ起動して走らせ、進行の決定（ステージの順序・回数の上限・
 打ち切り・git と gh の操作）は Python の driver
 （`dist/dot-claude/skills/autodev/scripts/`）が持つ。skill がやるのは入口（リポジトリ・
-作業名・指示の確定）と出口（終了コードと `autodev status` の読み取り）だけである。
+ラン名・指示の確定）と出口（終了コードと `autodev status` の読み取り）だけである。
 **マージはしない**——人間がレビューして `gh stack merge` で下から行う。
 
 **資格情報は `claude` のログインだけである。** Anthropic Console の API キーは要らない。
-driver は段を起動するとき `ANTHROPIC_API_KEY` などを外す——残っていると claude が
+driver はステージを起動するとき `ANTHROPIC_API_KEY` などを外す——残っていると claude が
 サブスクリプションではなく従量課金に切り替わる。無人のマシンでは
 `CLAUDE_CODE_OAUTH_TOKEN` を置く。
 
@@ -181,27 +181,27 @@ dotfiles   feature/x +2 ~1 ?3
 
 #### autodev のタスクリスト
 
-autodev の run が動いている間は、Claude Code のタスクリストのように足す。**幅が足りれば
+autodev のランが動いている間は、Claude Code のタスクリストのように足す。**幅が足りれば
 右に、足りなければ下に置く。**
 
 ```
-autodev range-field ▸ task2 review r1 · 4m12s 26往復 Read · 土台 PR #4
+autodev range-field ▸ task2 レビュー r1 · 4m12s 26ターン Read · 概要 PR #4
   ✔ task1 パーサの土台を作る      #5
-  ◼ task2 範囲指定を足す          testgen ✔ › impl ✔ › review ◼ › judge › PR
+  ◼ task2 範囲指定を足す          テスト作成 ✔ › 実装 ✔ › レビュー ◼ › ジャッジ › PR 本文
   ◻ task3 CLI に出す
   ✘ task4 設定の移行              受入条件が曖昧: 旧形式 …
 ```
 
-- 読むのは `~/.local/state/autodev/<作業名>/state.json`。済んだ段はタスクごとの `stages`
-  （driver が段の終わりに成否つきで足す）、走っている段は `running`（走行中は 5 秒ごとに
-  往復数と直前のツールを上書きする）から取る。
-- これからの段は決まった並び（testgen › impl › review › judge › PR）から出す。裁定で指摘が
-  残ると fix › review › judge に戻るが、戻るかどうかは裁定が終わるまで分からない。
-  2 巡目からは `review r2` のように巡目を添え、済んだ段が 4 つを超えたら古いものを `…` にする。
+- 読むのは `~/.local/state/autodev/<ラン名>/state.json`。済んだステージはタスクごとの `stages`
+  （driver がステージの終わりに成否つきで足す）、走っているステージは `running`（走行中は 5 秒ごとに
+  ターン数と直前のツールを上書きする）から取る。
+- これからのステージは決まった並び（テスト作成 › 実装 › レビュー › ジャッジ › PR 本文）から出す。ジャッジで指摘が
+  残ると修正 › レビュー › ジャッジに戻るが、戻るかどうかはジャッジが終わるまで分からない。
+  2 ラウンド目からは `レビュー r2` のようにラウンドを添え、済んだステージが 4 つを超えたら古いものを `…` にする。
 - タスクが 5 本を超えたら、今のタスクの前後だけに窓を切る。完了は `✔ 3 件完了` の 1 行、
-  未着手は次の 2 本だけ出して残りを `◻ 他 4 件` にまとめる。実行中と保留は必ず出す。
-- 段と段の間（検証・push・PR 作成）は `running` が空になるが、タスクが running のあいだは
-  出し続ける。`!` は段の制限時間（1 時間）を超えた印で、3 時間更新の無い run は driver が
+  未着手は次の 2 本だけ出して残りを `◻ 他 4 件` にまとめる。実行中と要対応は必ず出す。
+- ステージとステージの間（検証・push・PR 作成）は `running` が空になるが、タスクが running のあいだは
+  出し続ける。`!` はステージの制限時間（1 時間）を超えた印で、3 時間更新の無いランは driver が
   落ちたものとして出さない。
 
 #### 全部を見る画面（`dist/dot-claude/scripts/autodev-watch.py`）
@@ -232,17 +232,17 @@ Shortcuts (JSON)」で開いて、次を足すと、エディタの新しいタ�
 VS Code の外では、コマンドで開く。
 
 ```shell
-~/.claude/scripts/autodev-watch.py            # 動いている run を開く
-~/.claude/scripts/autodev-watch.py <作業名>   # その run を開く
+~/.claude/scripts/autodev-watch.py            # 動いているランを開く
+~/.claude/scripts/autodev-watch.py <ラン名>   # そのランを開く
 ```
 
 | ペイン | 出すもの |
 | --- | --- |
 | 左 | 全タスクの表。↑↓ かホイールで選ぶ |
-| 右 | 選んだタスクの段の並び・段の履歴（成否・巡目・往復数）・レビューの件数と未解決の指摘・受入条件・DoD・範囲 |
-| 下 | そのタスクで走っている段（無ければ最後の段）のログから、ツールの呼び出しと発言の 1 行目 |
+| 右 | 選んだタスクのステージの並び・ステージの履歴（成否・ラウンド・ターン数）・レビューの件数と未解決の指摘・受入条件・DoD・範囲 |
+| 下 | そのタスクで走っているステージ（無ければ最後のステージ）のログから、ツールの呼び出しと発言の 1 行目 |
 
-`[` `]` で run を切り替え、`l` でログのペインを隠し、`q` で終わる。2 秒ごとに読み直すだけで、
+`[` `]` でランを切り替え、`l` でログのペインを隠し、`q` で終わる。2 秒ごとに読み直すだけで、
 何も書き込まない。
 
 - **Textual で描く。** Textual は rich の上に作られていて、statusline と部品を共有する。
@@ -268,13 +268,13 @@ flowchart LR
 
 | 層 | 受け持つこと | 使ってはいけないもの |
 | --- | --- | --- |
-| `core` | 決めること（段の並び・窓切り・見出し・ペース）。dict と文字列を受けてデータを返す | ファイル・`subprocess`・`os`・rich・Textual |
+| `core` | 決めること（ステージの並び・窓切り・見出し・ペース）。dict と文字列を受けてデータを返す | ファイル・`subprocess`・`os`・rich・Textual |
 | `ports` | ファイルと git を読む。読んだものを解釈しない | rich・Textual・hud のほかの層 |
 | `render` | `core` のデータを rich の `Text` にする | ファイル・`subprocess`・`os`・Textual |
 | `app` | `ports` で読み、`core` で決め、`render` で描く。statusline の 1 回と Textual の画面 | — |
 
 この向きは `test/dot-claude/hud/test_hud_layers.py` が import を読んで守らせる。`core` が 1 行
-`subprocess` を import すると、段の並びや窓切りを git とファイル無しでは試せなくなり、しかも
+`subprocess` を import すると、ステージの並びや窓切りを git とファイル無しでは試せなくなり、しかも
 ほかの検査は全部通るので誰も気づけない。
 
 ### 設定ファイルのマージ（`~/.claude/settings.json`）

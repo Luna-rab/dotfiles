@@ -1,6 +1,6 @@
-"""段へ渡す文面の組み立て（`core/prompt.py`）。
+"""ステージへ渡す文面の組み立て（`core/prompt.py`）。
 
-マーカーが埋まらないと、段は `${tree}` のような文字列をそのままパスとして扱う。
+マーカーが埋まらないと、ステージは `${tree}` のような文字列をそのままパスとして扱う。
 `safe_substitute` は例外を投げないので、**埋め忘れはこの検査でしか出ない。**
 """
 
@@ -30,7 +30,7 @@ def loaded() -> str:
 
 def values(**over: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "work": "demo",
+        "run_name": "demo",
         "tree": "/state/autodev/demo/tree",
         "brief": "/state/autodev/demo/brief.md",
         "map": "/state/autodev/demo/map.md",
@@ -62,33 +62,33 @@ def build(stage: stages.Stage, **over: Any) -> str:
 
 
 def test_マーカーを全部埋める():
-    """`${` が 1 つ残ると、段がそれをパスやブランチ名として扱う。"""
+    """`${` が 1 つ残ると、ステージがそれをパスやブランチ名として扱う。"""
     body = build(stages.TABLE["impl"])
     assert "${" not in body
     assert "$" not in body
 
 
-def test_契約と前提と地図のパスを渡したまま出す():
+def test_指示書とブリーフとコードマップのパスを渡したまま出す():
     body = build(stages.TABLE["impl"])
     assert CONTRACT in body
     assert "/state/autodev/demo/brief.md" in body
     assert "/state/autodev/demo/map.md" in body
 
 
-def test_読み替え表に起動用のパスを入れる():
-    """段は `autodev review …` を絶対パスで呼ぶ。PATH に頼らない。"""
+def test_プレースホルダ表に起動用のパスを入れる():
+    """ステージは `autodev review …` を絶対パスで呼ぶ。PATH に頼らない。"""
     body = build(stages.TABLE["review:normal"])
     assert f"| `<autodev>` | `{LAUNCHER}` |" in body
     assert "| `<ツリー>` | `/state/autodev/demo/tree` |" in body
 
 
-def test_タスクの無い段はこのタスクの節を出さない():
+def test_タスクの無いステージはこのタスクの節を出さない():
     body = build(stages.TABLE["plan"], task_id=None)
     assert "## このタスク" not in body
     assert "${" not in body
 
 
-def test_タスクのある段は番号と受入条件を出す():
+def test_タスクのあるステージは番号と受入条件を出す():
     body = build(stages.TABLE["impl"])
     assert "- 番号: `task1`（リスク階層 `standard`）" in body
     assert "- 受入条件: A が B になる" in body
@@ -102,7 +102,7 @@ def test_指示が無ければ節ごと出さない():
 
 
 def test_埋め忘れたマーカーはそのまま残る():
-    """`safe_substitute` なので例外で落ちない。段は `${…}` をパスとして扱って落ちる。
+    """`safe_substitute` なので例外で落ちない。ステージは `${…}` をパスとして扱って落ちる。
 
     埋め忘れを見つけるのは `test_マーカーを全部埋める` で、ここは落ち方を決める。
     """
@@ -118,55 +118,55 @@ def test_埋め忘れたマーカーはそのまま残る():
 
 def test_値にドル記号が入っても崩れない():
     """`safe_substitute` は 1 度しか置換しない。埋めた値の中の `$` は再展開されない。"""
-    body = build(stages.TABLE["impl"], extra="`$HOME` と `${work}` をそのまま出す")
-    assert "`$HOME` と `${work}` をそのまま出す" in body
+    body = build(stages.TABLE["impl"], extra="`$HOME` と `${run_name}` をそのまま出す")
+    assert "`$HOME` と `${run_name}` をそのまま出す" in body
 
 
-# --- 不変条件 ----------------------------------------------------------------
+# --- 必須ルール ----------------------------------------------------------------
 
 
-def test_共通の不変条件はどの段にも入る():
+def test_共通の必須ルールはどのステージにも入る():
     for stage in stages.TABLE.values():
         text = prompt.system_append(stage)
         assert "PR を作らない" in text
         assert "push しない" in text
 
 
-def test_実装段はテストを変更しないことを含む():
+def test_実装ステージはテストを変更しないことを含む():
     text = prompt.system_append(stages.TABLE["impl"])
     assert "テストファイルを変更しない" in text
-    assert "StructuredOutput" in text  # 結果を返す段
+    assert "StructuredOutput" in text  # 結果を返すステージ
 
 
-def test_修正段は実装と同じ不変条件で走る():
-    """`fix` の役割の鍵は `impl` である。ここがずれると修正段だけ網が外れる。"""
-    assert prompt.INVARIANTS[prompt.ROLE_KEY["fix"]] == prompt.INVARIANTS["impl"]
+def test_修正ステージは実装と同じ必須ルールで走る():
+    """`fix` の役割のキーは `impl` である。ここがずれると修正ステージだけ網が外れる。"""
+    assert prompt.REQUIRED_RULES[prompt.ROLE_KEY["fix"]] == prompt.REQUIRED_RULES["impl"]
 
 
-def test_レビュー段はdoneを必ず呼ぶことを含む():
+def test_レビューステージはdoneを必ず呼ぶことを含む():
     text = prompt.system_append(stages.TABLE["review:adversarial"])
     assert "review done` を必ず呼ぶ" in text
-    assert "StructuredOutput" not in text  # 結果を返さない段
+    assert "StructuredOutput" not in text  # 結果を返さないステージ
 
 
-def test_裁定段はopenの全件に決着を付けることを含む():
-    assert "open の全件に決着を付ける" in prompt.system_append(stages.TABLE["judge"])
+def test_ジャッジは未解決の全件の状態を決めることを含む():
+    assert "未解決（`open`）の全件の状態を決める" in prompt.system_append(stages.TABLE["judge"])
 
 
-def test_段の役割を名乗り次の段を呼ばないと書く():
+def test_ステージの役割を名乗り次のステージを呼ばないと書く():
     text = prompt.system_append(stages.TABLE["plan"])
-    assert text.startswith("あなたは autodev の **計画** の段である。")
-    assert "次の段を自分で呼ばない" in text
+    assert text.startswith("あなたは autodev の **計画** のステージである。")
+    assert "次のステージを自分で呼ばない" in text
 
 
-# --- 段の表の全段 ------------------------------------------------------------
+# --- ステージの表の全ステージ ------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", sorted(stages.TABLE))
-def test_全段で文面が組める(name: str):
-    """`config/stages.py` に段を足して `ROLE_KEY` を足し忘れると `KeyError` で落ちる。
+def test_全ステージで文面が組める(name: str):
+    """`config/stages.py` にステージを足して `ROLE_KEY` を足し忘れると `KeyError` で落ちる。
 
-    段の起動時に落ちると run が 1 本無駄になるので、ここで落とす。
+    ステージの起動時に落ちるとランが 1 本無駄になるので、ここで落とす。
     """
     stage = stages.TABLE[name]
     assert stage.role in prompt.system_append(stage)

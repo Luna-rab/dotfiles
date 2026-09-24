@@ -1,8 +1,8 @@
-"""run ごとの置き場（`config/paths.py`）。
+"""ランごとの置き場（`config/paths.py`）。
 
 **ここは driver が書き込む先である。** 字面がずれると、対象リポジトリに記録が混ざる
 （`guard.json` を worktree の中に置く）か、書いた場所と読む場所が食い違う
-（`questions/` と `answers/`）。どちらも run を 1 本潰すまで気づけないので、
+（`questions/` と `answers/`）。どちらもランを 1 本潰すまで気づけないので、
 パスを字面で留める。
 
 `AUTODEV_STATE_DIR` を差し替えて確かめるので、`~/.local/state/` には触らない。
@@ -24,16 +24,16 @@ def run(monkeypatch: pytest.MonkeyPatch) -> paths.Run:
     return paths.Run("demo")
 
 
-# --- run の中のパス ----------------------------------------------------------
+# --- ランの中のパス ----------------------------------------------------------
 
 
-def test_runのファイルを作業名のディレクトリの直下に置く(run: paths.Run):
+def test_runのファイルをラン名のディレクトリの直下に置く(run: paths.Run):
     assert run.dir == "/tmp/st/demo"
     assert run.state == "/tmp/st/demo/state.json"
     assert run.config == "/tmp/st/demo/config.json"
     assert run.brief == "/tmp/st/demo/brief.md"
     assert run.map == "/tmp/st/demo/map.md"
-    assert run.stack_pr_body == "/tmp/st/demo/stack-pr-body.md"
+    assert run.overview_pr_body == "/tmp/st/demo/overview-pr-body.md"
     assert run.tree == "/tmp/st/demo/tree"
     assert run.prose("plan") == "/tmp/st/demo/prose/plan.md"
 
@@ -52,8 +52,8 @@ def test_guardはworktreeの外に置く(run: paths.Run):
     assert not run.guard.startswith(f"{run.tree}/")
 
 
-def test_聞いたことと答えを別のディレクトリに置く(run: paths.Run):
-    """答えの実在が段の再開の合図である。同じ場所にすると、聞いた瞬間に再開する。"""
+def test_質問と回答を別のディレクトリに置く(run: paths.Run):
+    """回答の実在がステージの再開の合図である。同じ場所にすると、聞いた瞬間に再開する。"""
     assert run.question("q1") == "/tmp/st/demo/questions/q1.json"
     assert run.answer("q1") == "/tmp/st/demo/answers/q1.json"
 
@@ -65,7 +65,7 @@ def test_置き場の根を環境変数で差し替えられる(monkeypatch: pyt
 
 
 def test_一覧と実在の判定が同じファイルを見る(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    """`autodev list` が並べた run を `autodev status` が「その run が無い」と言わないこと。"""
+    """`autodev list` が並べたランを `autodev status` が「そのランが無い」と言わないこと。"""
     monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
     fresh = paths.Run("demo")
     fresh.ensure()
@@ -77,16 +77,16 @@ def test_一覧と実在の判定が同じファイルを見る(tmp_path, monkey
     assert fresh.exists() is True
 
 
-# --- 作業名 ------------------------------------------------------------------
+# --- ラン名 ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("work", ["demo", "a", "a-1", "1", "a" * 49])
-def test_英小文字と数字とハイフンの作業名を通す(work: str):
-    assert paths.check_work(work) == work
+@pytest.mark.parametrize("run_name", ["demo", "a", "a-1", "1", "a" * 49])
+def test_英小文字と数字とハイフンのラン名を通す(run_name: str):
+    assert paths.check_name(run_name) == run_name
 
 
-@pytest.mark.parametrize("work", ["../x", "a/b", "A", "", "-a", "a b", "a_b", "a" * 50])
-def test_それ以外の作業名を弾く(work: str):
-    """作業名は `Run.dir` とブランチ名に入る。`../x` が通れば置き場の外へ書く。"""
+@pytest.mark.parametrize("run_name", ["../x", "a/b", "A", "", "-a", "a b", "a_b", "a" * 50])
+def test_それ以外のラン名を弾く(run_name: str):
+    """ラン名は `Run.dir` とブランチ名に入る。`../x` が通れば置き場の外へ書く。"""
     with pytest.raises(ValueError):
-        paths.check_work(work)
+        paths.check_name(run_name)

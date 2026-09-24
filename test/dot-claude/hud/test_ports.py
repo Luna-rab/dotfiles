@@ -23,12 +23,12 @@ def test_runの置き場を読む(tmp_path, monkeypatch):
     write_run(tmp_path)
     (tmp_path / "broken").mkdir()
     (tmp_path / "broken" / "state.json").write_text("{", encoding="utf-8")
-    assert [st["work"] for st in autodev.read_states()] == ["range-field"]
+    assert [st["name"] for st in autodev.read_states()] == ["range-field"]
     assert autodev.read_review("range-field", "task2")["items"]["r1"]["rating"] == "must-fix"
     assert autodev.read_review("range-field", "task9") is None
 
 
-def test_走っている段のログを選び無ければ最後に書かれたものを選ぶ(tmp_path, monkeypatch):
+def test_走っているステージのログを選び無ければ最後に書かれたものを選ぶ(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
     write_run(tmp_path)
     running = autodev.log_path("range-field", "task2", [("review:adversarial", "1")])

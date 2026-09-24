@@ -43,7 +43,7 @@ def test_タスクの一覧を表にする():
     assert body.splitlines() == [
         "| # | 状態 | PR | 階層 | 内容 |",
         "| --- | --- | --- | --- | --- |",
-        "| task1 | 積んだ | #12 | standard | 土台を作る |",
+        "| task1 | スタック済み | #12 | standard | 土台を作る |",
         "| task2 | 未着手 | — | light | 本体を書く |",
     ]
 
@@ -59,10 +59,10 @@ def test_知らない状態はそのまま出す():
     assert "| task1 | unknown |" in body
 
 
-# --- 残課題 ------------------------------------------------------------------
+# --- 要対応 ------------------------------------------------------------------
 
 
-def test_保留と失敗だけを残課題に挙げる():
+def test_要確認と失敗だけを要対応に挙げる():
     body = markdown.held_block(
         state(
             task(),
@@ -71,11 +71,11 @@ def test_保留と失敗だけを残課題に挙げる():
         )
     )
     assert body == (
-        "## 残課題\n\n- task2（保留）: 受入条件が定まらない\n- task3（失敗）: 理由の記録なし\n\n"
+        "## 要対応\n\n- task2（要確認）: 受入条件が定まらない\n- task3（失敗）: 理由の記録なし\n\n"
     )
 
 
-def test_残課題が無ければ節ごと出さない():
+def test_要対応が無ければ節ごと出さない():
     assert markdown.held_block(state(task())) == ""
     assert markdown.held_block(state()) == ""
 
@@ -84,9 +84,9 @@ def test_残課題が無ければ節ごと出さない():
 
 
 def test_決定を箇条書きにする():
-    data = state(decisions=[{"body": "ORM を使わない"}, {"body": "移行は 2 段で"}])
+    data = state(decisions=[{"body": "ORM を使わない"}, {"body": "移行は 2 ステージで"}])
     assert markdown.entries_block(data, "decisions", "決めたこと") == (
-        "## 決めたこと\n\n- ORM を使わない\n- 移行は 2 段で\n\n"
+        "## 決めたこと\n\n- ORM を使わない\n- 移行は 2 ステージで\n\n"
     )
 
 
@@ -106,5 +106,5 @@ def test_値をコード記法の箇条書きにする():
 
 
 def test_空のときは渡した文言を出す():
-    """検証コマンドが 0 本の run では、空行ではなくその旨を brief に出す。"""
+    """検証コマンドが 0 本のランでは、空行ではなくその旨を brief に出す。"""
     assert markdown.bullets([], "設定されていない。") == "設定されていない。"

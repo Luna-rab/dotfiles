@@ -1,7 +1,7 @@
-"""タスク 1 本を回す。テスト作成 → 実装 → レビュー → 6 検査 → PR。
+"""タスク 1 本を回す。テスト作成 → 実装 → レビュー → 完了チェック → PR。
 
 **⑥は①〜⑤が通ってから流す。** `judge()` を 2 度呼ぶのはそのためである（時間のかかる
-検証コマンドを、落ちると分かっている run で流さない）。
+検証コマンドを、落ちると分かっているランで流さない）。
 """
 
 from __future__ import annotations
@@ -19,10 +19,12 @@ from .stage_call import call, record_judgements
 
 
 def make_tests(ctx: Ctx, task: dict[str, Any], extra: str = "", label: str = "0") -> bool:
-    """テスト作成段。**この段だけテストへ書ける**（driver が `AUTODEV_ALLOW_TESTS` を渡す）。"""
+    """テスト作成ステージ。**このステージだけテストへ書ける**（driver が `AUTODEV_ALLOW_TESTS` を渡す）。"""
     got = call(ctx, stages.TABLE["testgen"], task, label, extra=extra)
     if not got.ok:
-        run_store.set_task(ctx.st, task["id"], status="failed", reason=f"テスト作成段: {got.error}")
+        run_store.set_task(
+            ctx.st, task["id"], status="failed", reason=f"テスト作成ステージ: {got.error}"
+        )
         return False
     result = got.result or {}
     if result.get("blocked"):
@@ -31,16 +33,16 @@ def make_tests(ctx: Ctx, task: dict[str, Any], extra: str = "", label: str = "0"
             ctx.st, task["id"], status="blocked", reason=f"受入条件が曖昧: {questions}"
         )
         return False
-    # **テストを書いた時点のコミットを控える。** 検査⑤はここから先でテストが動いていないかを
-    # 見る（テスト作成段はタスクのブランチに commit するので、parent から見ると必ず差分が出る）
+    # **テストを書いた時点のコミットを控える。** 完了チェック⑤はここから先でテストが動いていないかを
+    # 見る（テスト作成ステージはタスクのブランチに commit するので、parent から見ると必ず差分が出る）
     run_store.set_task(ctx.st, task["id"], testsAt=repo.head_sha(ctx.run.tree))
     return True
 
 
 def implement(ctx: Ctx, task: dict[str, Any], label: str) -> runner.Result:
-    """実装段。テストファイルは read-only にして走らせ、終わったら必ず戻す。
+    """実装ステージ。テストファイルは read-only にして走らせ、終わったら必ず戻す。
 
-    フックは run の頭で書いた `guard.json` を全段に渡してあるので、ここで出し入れするのは
+    フックはランの頭で書いた `guard.json` を全ステージに渡してあるので、ここで出し入れするのは
     ファイルの書き込み権だけである（フックの裏をかかれても書けないようにする二重の栓）。
     """
     repo.lock_tests(ctx.run.tree, ctx.st["testGlobs"])
@@ -51,34 +53,37 @@ def implement(ctx: Ctx, task: dict[str, Any], label: str) -> runner.Result:
 
 
 def build(ctx: Ctx, task: dict[str, Any]) -> bool:
-    """実装させる。テストの矛盾が申告されたら、テスト作成段を呼び直してから実装に戻る。"""
+    """実装させる。テストの矛盾が報告されたら、テスト作成ステージを呼び直してから実装に戻る。"""
     st = ctx.st
-    got = implement(ctx, task, "1")
+    # テスト作成と実装はラウンド 0（レビュー前）。呼び直した 2 回目は 0-2 にして、ログを上書きしない
+    got = implement(ctx, task, "0")
     if not got.ok:
-        run_store.set_task(st, task["id"], status="failed", reason=f"実装段: {got.error}")
+        run_store.set_task(st, task["id"], status="failed", reason=f"実装ステージ: {got.error}")
         return False
     run_store.set_task(st, task["id"], implSession=got.session_id)
     result = got.result or {}
 
     conflict = result.get("testConflict")
-    # 無いときに `null` ではなく文字列の "null" を返す段がある。申告として扱うとテスト作成段を無駄に呼び直す
+    # 無いときに `null` ではなく文字列の "null" を返すステージがある。報告として扱うとテスト作成ステージを無駄に呼び直す
     if isinstance(conflict, str) and conflict.strip().lower() in ("", "null", "none"):
         conflict = None
     if conflict:
-        # **テストを直せるのはテスト作成段だけである。** 実装段に直させると、テストを
+        # **テストを直せるのはテスト作成ステージだけである。** 実装ステージに直させると、テストを
         # 通すためにテストを緩める経路ができる
-        console.info(f"テストの矛盾が申告された: {str(conflict)[:200]}")
+        console.info(f"テストの矛盾が報告された: {str(conflict)[:200]}")
         extra = (
-            "## 実装段からの申告\n\n"
+            "## 実装ステージからの報告\n\n"
             f"{conflict}\n\n"
-            "この申告を受入条件と照らして検証し、**正しければテストを直す**。"
+            "この報告を受入条件と照らして検証し、**正しければテストを直す**。"
             "誤っていれば直さず、理由を結果の `notes` に書く。"
         )
-        if not make_tests(ctx, task, extra=extra, label="1"):
+        if not make_tests(ctx, task, extra=extra, label="0-2"):
             return False
-        got = implement(ctx, task, "2")
+        got = implement(ctx, task, "0-2")
         if not got.ok:
-            run_store.set_task(st, task["id"], status="failed", reason=f"実装段（再）: {got.error}")
+            run_store.set_task(
+                st, task["id"], status="failed", reason=f"実装ステージ（呼び直し）: {got.error}"
+            )
             return False
         run_store.set_task(st, task["id"], implSession=got.session_id)
         result = got.result or {}
@@ -86,7 +91,7 @@ def build(ctx: Ctx, task: dict[str, Any]) -> bool:
     if result.get("blocked"):
         questions = "; ".join(result.get("questions", []))
         run_store.set_task(
-            st, task["id"], status="blocked", reason=f"実装段が blocked: {questions}"
+            st, task["id"], status="blocked", reason=f"実装ステージが blocked: {questions}"
         )
         return False
     record_judgements(st, result)
@@ -94,7 +99,7 @@ def build(ctx: Ctx, task: dict[str, Any]) -> bool:
 
 
 def run_task(ctx: Ctx, task: dict[str, Any]) -> bool:
-    """タスク 1 本を回す。戻り値は「積めたか」。"""
+    """タスク 1 本を回す。戻り値は「スタックに追加できたか」。"""
     run, st = ctx.run, ctx.st
     parent = task_order.parent_of(st, task)
     run_store.set_task(st, task["id"], status="running", parent=parent)
@@ -115,7 +120,7 @@ def run_task(ctx: Ctx, task: dict[str, Any]) -> bool:
     settled, rounds, reason = review_fix_loop(ctx, task)
     facts = evidence.collect(
         stage_ok=settled,
-        stage_detail=reason or "レビューが全件決着した",
+        stage_detail=reason or "レビューが全件解消した",
         tree=run.tree,
         parent=parent,
         branch=task["branch"],

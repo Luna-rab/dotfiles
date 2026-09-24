@@ -1,10 +1,10 @@
 """git の操作と、worktree に置くフックの出し入れ。
 
-**git と `gh stack` を叩くのは run の worktree（`<run>/tree`）1 か所だけである。**
+**git と `gh stack` を叩くのはランの worktree（`<ランディレクトリ>/tree`）1 か所だけである。**
 `gh stack` の追跡情報は worktree ごとに別なので（別の worktree で `gh stack view` を叩くと
 終了コード 2 で "not part of a stack"）、場所を固定しないと stacked PR が見えなくなる。
 
-worktree は**対象リポジトリの外**（`~/.local/state/autodev/<作業名>/tree`）に作る。
+worktree は**対象リポジトリの外**（`~/.local/state/autodev/<ラン名>/tree`）に作る。
 対象リポジトリに `.gitignore` を 1 行も足さずに済む。
 """
 
@@ -46,13 +46,13 @@ def fetch(repo: str) -> proc.Run:
     return proc.run(["git", "-C", repo, "fetch", "--prune", "origin"], timeout=900)
 
 
-def create_stack_base(repo: str, tree: str, branch: str, base: str) -> proc.Run:
-    """土台ブランチと worktree を作る。
+def create_overview_branch(repo: str, tree: str, branch: str, base: str) -> proc.Run:
+    """概要ブランチと worktree を作る。
 
-    土台に空コミット 1 つを載せるのは、**base と差分が 0 の状態では `gh pr create` が
+    概要ブランチに空コミット 1 つを載せるのは、**base と差分が 0 の状態では `gh pr create` が
     `No commits between …` で失敗する**ためである。
 
-    先に `worktree prune` を通す。**run のディレクトリを手で消しても git 側の登録は残り**、
+    先に `worktree prune` を通す。**ランディレクトリを手で消しても git 側の登録は残り**、
     そのままだとブランチが「別の場所でチェックアウト中」として扱われて作り直せない。
     """
     proc.run(["git", "-C", repo, "worktree", "prune"])
@@ -64,7 +64,7 @@ def create_stack_base(repo: str, tree: str, branch: str, base: str) -> proc.Run:
     if not added.ok and "already used by worktree" not in (added.err or ""):
         return added
     if commit_count(tree, f"origin/{base}", branch) == 0:
-        return git(tree, "commit", "--allow-empty", "-m", f"chore: {branch} の土台")
+        return git(tree, "commit", "--allow-empty", "-m", f"chore: 概要ブランチ {branch}")
     return proc.Run(0, "", "")
 
 
@@ -76,7 +76,7 @@ def start_task_branch(tree: str, branch: str, parent: str) -> proc.Run:
 
 
 def head_sha(tree: str) -> str | None:
-    """いまの HEAD。**テスト作成段の後にテストが動いていないか**を見る起点に使う。"""
+    """いまの HEAD。**テスト作成ステージの後にテストが動いていないか**を見る基準に使う。"""
     got = git(tree, "rev-parse", "HEAD")
     return got.out.strip() if got.ok else None
 
@@ -112,7 +112,7 @@ def push(tree: str, branch: str) -> proc.Run:
 def remove_worktree(repo: str, tree: str) -> proc.Run:
     """**worktree を消すと、無視されたファイルも一緒に消える**（実測）。
 
-    記録は `<run>/` 側に置いてあるので消えないが、消す前に push が済んでいることを
+    記録は `<ランディレクトリ>/` 側に置いてあるので消えないが、消す前に push が済んでいることを
     呼び出し側が確かめる。
     """
     return proc.run(["git", "-C", repo, "worktree", "remove", "--force", tree])
@@ -125,8 +125,8 @@ def write_guard_settings(path: str) -> str:
     """書いてはいけないファイルへの書き込みを止めるフックの設定を書き出す。
 
     **worktree の外に置き、`claude --settings` で渡す。** worktree に置くと commit に
-    混ざる危険があった。段ごとに出し入れする必要も無く、run の頭で 1 度書けばよい
-    ——何を止めるかは driver が段ごとに渡す環境変数（`AUTODEV_READ_ONLY` /
+    混ざる危険があった。ステージごとに出し入れする必要も無く、ランの頭で 1 度書けばよい
+    ——何を止めるかは driver がステージごとに渡す環境変数（`AUTODEV_READ_ONLY` /
     `AUTODEV_ALLOW_TESTS`）で決まる。
     """
     settings = {
@@ -139,7 +139,7 @@ def write_guard_settings(path: str) -> str:
                     ],
                 },
                 {
-                    # 段が `autodev ask` を呼んだら、答えが置かれるまで段を止める。
+                    # ステージが `autodev ask` を呼んだら、回答が置かれるまでステージを止める。
                     # **`deny` より優先順位が低い**（deny > defer）ので、書き込みの拒否と
                     # 並べても順番を気にしなくてよい
                     "matcher": "Bash",
@@ -154,7 +154,7 @@ def write_guard_settings(path: str) -> str:
 
 
 def lock_tests(tree: str, test_globs: list[str]) -> None:
-    """実装段の前に呼ぶ。終わったら `unlock_tests()` で戻す。"""
+    """実装ステージの前に呼ぶ。終わったら `unlock_tests()` で戻す。"""
     _chmod_tests(tree, test_globs, writable=False)
 
 

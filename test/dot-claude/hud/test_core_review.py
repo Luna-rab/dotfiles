@@ -1,4 +1,4 @@
-"""レビュー記録の要約（`hud/core/review.py`）と段のログの読み方（`hud/core/activity.py`）。"""
+"""レビュー記録の要約（`hud/core/review.py`）とステージのログの読み方（`hud/core/activity.py`）。"""
 
 from __future__ import annotations
 

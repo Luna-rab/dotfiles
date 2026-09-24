@@ -34,22 +34,22 @@ def test_幅に収まらなければkeepの小さい部品から落とす():
     assert parts.fit(row, 3).plain == "aaaa"
 
 
-def test_段の並びを記号つきで描く():
+def test_ステージの並びを記号つきで描く():
     steps = [
         Step("…", "", Mark.ELIDED),
-        Step("fix", "2", Mark.FAILED),
-        Step("review", "2", Mark.CURRENT),
-        Step("judge", "", Mark.NEXT),
+        Step("修正", "2", Mark.FAILED),
+        Step("レビュー", "2", Mark.CURRENT),
+        Step("ジャッジ", "", Mark.NEXT),
     ]
-    assert tasklist.pipeline(steps).plain == "… › fix r2 ✘ › review r2 ◼ › judge"
+    assert tasklist.pipeline(steps).plain == "… › 修正 r2 ✘ › レビュー r2 ◼ › ジャッジ"
 
 
 def test_タスク行は右に続くものがあるときだけ件名の幅をそろえる():
     running = tasklist.task_row(
-        {"id": "task2", "subject": "範囲", "status": "running"}, [Step("impl", "0", Mark.CURRENT)]
+        {"id": "task2", "subject": "範囲", "status": "running"}, [Step("実装", "0", Mark.CURRENT)]
     )
     pending = tasklist.task_row({"id": "task3", "subject": "CLI", "status": "pending"}, [])
-    assert running.plain == "  ◼ task2 範囲" + " " * 18 + "  impl ◼"
+    assert running.plain == "  ◼ task2 範囲" + " " * 18 + "  実装 ◼"
     assert pending.plain == "  ◻ task3 CLI"
 
 

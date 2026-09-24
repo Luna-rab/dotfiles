@@ -1,4 +1,4 @@
-"""呼んだ側に見せる出力。"""
+"""呼び出し元のエージェントに見せる出力。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import NoReturn
 
 
 def die(message: str, code: int = 1) -> NoReturn:
-    """呼んだ側へ理由を出して終える。**ここから戻らない**（呼び出し側の分岐が減る）。"""
+    """呼び出し元のエージェントへ理由を出して終える。**ここから戻らない**（呼び出し側の分岐が減る）。"""
     print(f"autodev: {message}", file=sys.stderr)
     raise SystemExit(code)
 

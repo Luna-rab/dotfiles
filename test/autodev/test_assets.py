@@ -1,8 +1,8 @@
-"""契約・スキーマ・テンプレート・フック・launcher が実在すること。
+"""指示書・スキーマ・テンプレート・フック・launcher が実在すること。
 
 **これらのパスは、他のどの検査も踏まない。** `config/paths.py` の `skill_root()` が 1 階層
 ずれると、5 つ全部が実在しない場所を指す。そのとき ruff も ty も CLI の起動も通るので、
-気づけるのは run を 1 本潰したあとである。
+気づけるのはランを 1 本潰したあとである。
 
 パスの計算は文字列の連結なので、**実在するかどうかはここでしか分からない。**
 """
@@ -17,7 +17,7 @@ from autodevlib.config import paths, stages
 from autodevlib.ports import templates
 from conftest import SKILL_ROOT
 
-#: 結果を返す段だけがスキーマを持つ（`claude --json-schema` に渡す）
+#: 結果を返すステージだけがスキーマを持つ（`claude --json-schema` に渡す）
 WITH_SCHEMA = sorted(name for name, s in stages.TABLE.items() if s.writes_result)
 
 
@@ -36,9 +36,9 @@ def test_SKILLmdが実在する():
 
 
 def test_launcherが実在して直接起動できる():
-    """段は `autodev review …` をこの絶対パスで呼ぶ。PATH に頼らない。
+    """ステージは `autodev review …` をこの絶対パスで呼ぶ。PATH に頼らない。
 
-    読み替え表の `<autodev>` にそのまま入るので、実行権が落ちると段が呼べない。
+    プレースホルダ表の `<autodev>` にそのまま入るので、実行権が落ちるとステージが呼べない。
     """
     assert os.path.exists(paths.launcher()), paths.launcher()
     assert os.access(paths.launcher(), os.X_OK), paths.launcher()
@@ -48,22 +48,22 @@ def test_launcherが実在して直接起動できる():
 def test_フックが実在する(name: str):
     """フックは claude の子プロセスとして別に起動される。**無くても driver は落ちない。**
 
-    `deny-writes.py` が起動しないと、読むだけの段が worktree を書き換えられる。
+    `deny-writes.py` が起動しないと、読むだけのステージが worktree を書き換えられる。
     """
     assert os.path.exists(paths.hook(name)), paths.hook(name)
 
 
 @pytest.mark.parametrize("name", sorted(stages.TABLE))
-def test_全段の契約が実在する(name: str):
-    """契約が無い段は、何をするかを渡されないまま起動する。"""
+def test_全ステージの指示書が実在する(name: str):
+    """指示書が無いステージは、何をするかを渡されないまま起動する。"""
     path = paths.contract(stages.TABLE[name].contract)
     assert os.path.exists(path), path
     assert os.path.getsize(path) > 0, path
 
 
 @pytest.mark.parametrize("name", WITH_SCHEMA)
-def test_結果を返す段のスキーマがjsonとして読める(name: str):
-    """`claude --json-schema` に渡すので、読めない JSON は段の起動時に落ちる。"""
+def test_結果を返すステージのスキーマがjsonとして読める(name: str):
+    """`claude --json-schema` に渡すので、読めない JSON はステージの起動時に落ちる。"""
     path = paths.schema(stages.TABLE[name].contract)
     assert os.path.exists(path), path
     with open(path, encoding="utf-8") as fh:
@@ -72,8 +72,8 @@ def test_結果を返す段のスキーマがjsonとして読める(name: str):
     assert schema["properties"], path
 
 
-def test_結果を返す段の一覧が変わっていない():
-    """段を足してスキーマを置き忘れると、その段だけが結果を返せない。"""
+def test_結果を返すステージの一覧が変わっていない():
+    """ステージを足してスキーマを置き忘れると、そのステージだけが結果を返せない。"""
     assert WITH_SCHEMA == ["fix", "impl", "judge", "plan", "pr-body", "summary", "testgen"]
 
 
@@ -85,6 +85,6 @@ def test_テンプレートを全部読める():
         assert templates.template(name).strip(), name
 
 
-def test_段へ渡す文面のテンプレートが本文から始まる():
+def test_ステージへ渡す文面のテンプレートが本文から始まる():
     """マーカーだけの空ファイルに差し替わっていないことを見る。"""
     assert templates.template("prompt").startswith("あなたは")

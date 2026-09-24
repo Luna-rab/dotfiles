@@ -1,4 +1,4 @@
-"""state.json の tasks を組み立て、次に回す 1 本・積む先・run 全体の状態を決める。"""
+"""state.json の tasks を組み立て、次に回す 1 本・スタックに追加する先・ラン全体の状態を決める。"""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ STATUSES = ("pending", "running", "stacked", "blocked", "failed")
 TIERS = ("light", "standard")
 
 
-def add_tasks(data: dict[str, Any], work: str, planned: list[dict[str, Any]]) -> None:
-    """計画段の割り方を state に入れる。ブランチ名は既存の規約のまま組み立てる。"""
+def add_tasks(data: dict[str, Any], run_name: str, planned: list[dict[str, Any]]) -> None:
+    """計画ステージの割り方を state に入れる。ブランチ名は既存の規約のまま組み立てる。"""
     for index, src in enumerate(planned, start=1):
         tier = src.get("tier", "standard")
         if tier not in TIERS:
@@ -19,7 +19,7 @@ def add_tasks(data: dict[str, Any], work: str, planned: list[dict[str, Any]]) ->
                 "id": f"task{index}",
                 "subject": src.get("subject", f"task{index}"),
                 "tier": tier,
-                "branch": f"stack/{work}--task-{index}",
+                "branch": f"stack/{run_name}--task-{index}",
                 "dod": src.get("dod", ""),
                 "acceptance": src.get("acceptance", ""),
                 "scope": src.get("scope", ""),
@@ -30,7 +30,7 @@ def add_tasks(data: dict[str, Any], work: str, planned: list[dict[str, Any]]) ->
                 "pr": None,
                 "reason": None,
                 "implSession": None,
-                #: テスト作成段が commit した時点の SHA。検査⑤の起点になる
+                #: テスト作成ステージが commit した時点の SHA。完了チェック⑤の基準になる
                 "testsAt": None,
                 "rounds": 0,
                 "adversarialRan": False,
@@ -62,8 +62,8 @@ def counts(data: dict[str, Any]) -> dict[str, int]:
 
 
 def parent_of(st: dict[str, Any], task: dict[str, Any]) -> str:
-    """そのタスクを積む先。**順に 1 本ずつ回すので、起点は動かない**（積み替えが要らない）。"""
-    parent = st["stackBranch"]
+    """そのタスクをスタックに追加する先。**順に 1 本ずつ回すので、親ブランチは動かない**（積み替えが要らない）。"""
+    parent = st["overviewBranch"]
     for item in st["tasks"]:
         if item["id"] == task["id"]:
             break
@@ -73,7 +73,7 @@ def parent_of(st: dict[str, Any], task: dict[str, Any]) -> str:
 
 
 def outcome_of(st: dict[str, Any]) -> str:
-    """run が今どういう状態か。**呼んだ側がこれを読んで次を決める。**"""
+    """ランが今どういう状態か。**呼び出し元のエージェントがこれを読んで次を決める。**"""
     if st.get("deferred"):
         return "waiting"
     if not st["tasks"]:

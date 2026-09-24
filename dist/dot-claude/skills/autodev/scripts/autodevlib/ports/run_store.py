@@ -1,7 +1,7 @@
 """進行状態（state.json）の読み書き。
 
-**state.json は driver だけが書く。** 段には渡さない（渡すと `--dangerously-skip-permissions`
-で走る段が進行状態を書き換えられる）。段が返すのは構造化出力で、
+**state.json は driver だけが書く。** ステージには渡さない（渡すと `--dangerously-skip-permissions`
+で走るステージが進行状態を書き換えられる）。ステージが返すのは構造化出力で、
 それを読んで state に写すのは driver である。
 
 **文面はここに無い。** テンプレートは `templates/*.md` にあり、state.json から塊を
@@ -23,28 +23,28 @@ def now() -> str:
 
 
 def new_state(
-    work: str,
+    run_name: str,
     instruction: str,
     repo: str,
     base: str,
 ) -> dict[str, Any]:
     return {
-        "work": work,
+        "name": run_name,
         "instruction": instruction,
         "repo": repo,
         "base": base,
-        "stackBranch": f"stack/{work}--task-0",
-        "stackPr": None,
+        "overviewBranch": f"stack/{run_name}--task-0",
+        "overviewPr": None,
         "createdAt": now(),
         "updatedAt": now(),
         "tasks": [],
         "decisions": [],
         "deferrals": [],
-        #: いま走っている段。鍵は段の名前（同時に走る 2 体を並べる）
+        #: いま走っているステージ。キーはステージの名前（同時に走る 2 体を並べる）
         "running": {},
-        #: 答えを待って止まっている段（`{"stage": …, "session": …}`）
+        #: 回答を待って止まっているステージ（`{"stage": …, "session": …}`）
         "deferred": None,
-        #: まだ答えが置かれていない質問
+        #: まだ回答が置かれていない質問
         "questions": [],
     }
 
@@ -79,10 +79,10 @@ def set_task(data: dict[str, Any], task_id: str, **fields: Any) -> dict[str, Any
 
 
 def add_decision(data: dict[str, Any], kind: str, body: str) -> None:
-    """自分の判断で変えた目標・先送りにした作業を残す。
+    """自分の判断で変えた目標・スコープ外にした作業を残す。
 
     バックグラウンドに埋もれると「いつの間にか目標が変わった」ことに誰も気づけない。
-    土台 PR の本文に出すので、記録が GitHub 側に残る。
+    概要 PR の本文に出すので、記録が GitHub 側に残る。
     """
     bucket = "deferrals" if kind == "deferral" else "decisions"
     data[bucket].append({"at": now(), "body": body})

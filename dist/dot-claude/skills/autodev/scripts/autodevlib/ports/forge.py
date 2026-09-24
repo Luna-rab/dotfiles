@@ -1,4 +1,4 @@
-"""GitHub 側の操作。**呼ぶのは driver の後段だけである。**
+"""GitHub 側の操作。**呼ぶのは driver の公開だけである。**
 
 実装ブロックは `gh` を 1 度も叩かない（決定: インフラと実装を分ける）。コンテナ化したときに
 GitHub の資格情報をコンテナへ渡さなくて済む。
@@ -14,7 +14,7 @@ stacked PR の組み立てには `gh stack link` を使う。
    制約を踏まない。
 2. **PR のタイトルと本文を自分で決められる。** `gh stack submit --auto` は自動生成の
    タイトルになり、非対話では draft で作られる（`--open` を付けない限り）。autodev は
-   PR 本文段が書いた本文を載せたいので、`gh pr create` で作ってから link で連ねる。
+   PR 本文ステージが書いた本文を載せたいので、`gh pr create` で作ってから link で連ねる。
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ def pr_view(tree: str, pr: int) -> dict[str, Any] | None:
 def stack_link(tree: str, members: list[str]) -> proc.Run:
     """下から上の順に並べて stacked PR を組む・継ぎ足す。
 
-    **2 つ以上渡す必要がある**（`gh stack link <a> <b> [...]`）。土台 PR だけの時点では
+    **2 つ以上渡す必要がある**（`gh stack link <a> <b> [...]`）。概要 PR だけの時点では
     呼ばない。
     """
     if len(members) < 2:

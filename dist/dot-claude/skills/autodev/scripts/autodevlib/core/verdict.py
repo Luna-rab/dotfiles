@@ -1,13 +1,13 @@
-"""完了の根拠を実物で確かめる 6 検査。
+"""完了の根拠を実物で確かめる 完了チェック。
 
-**段の自己申告を完了の根拠にしない。** 実行中の run に「完了」通知が誤って発火し、PR 番号・
+**ステージの報告を完了の根拠にしない。** 実行中のランに「完了」通知が誤って発火し、PR 番号・
 マージ・失敗談まで含む精巧な捏造レポートが届いたことがある。だから driver は毎回ここを通す。
 
-    ①stage-finished   段が正常終了した（終了コードと result イベントの subtype）
-    ②commits          起点からのコミットが 1 件以上ある
+    ①stage-finished   ステージが正常終了した（終了コードと result イベントの subtype）
+    ②commits          親ブランチからのコミットが 1 件以上ある
     ③reviews-settled  review.json が実在し、open が 0 件
-    ④reviewer-count   走り終えたレビュアーが、段の一覧から期待される体数に届いている
-    ⑤tests-untouched  テスト作成段の後、テストファイルの差分が空
+    ④reviewer-count   走り終えたレビューステージが、ステージの一覧から期待される体数に届いている
+    ⑤tests-untouched  テスト作成ステージの後、テストファイルの差分が空
     ⑥verify           検証コマンド一式が緑（**driver が自分で流す**）
 
 **ここは証拠を受け取って合否を決めるだけである。** git もコマンドも呼ばない——集めるのは
@@ -39,16 +39,16 @@ class VerifyResult:
 
 @dataclass(frozen=True)
 class Evidence:
-    """6 検査が見る事実。"""
+    """完了チェックが見る事実。"""
 
     stage_ok: bool
     stage_detail: str
-    #: 検査②が数えた区間。合否の文言にそのまま出る
+    #: 完了チェック②が数えた区間。合否の文言にそのまま出る
     parent: str
     branch: str
-    #: 起点からのコミット数。数えられなければ -1
+    #: 親ブランチからのコミット数。数えられなければ -1
     commits: int
-    #: テスト作成段のコミット
+    #: テスト作成ステージのコミット
     tests_since: str | None
     changed_since_tests: tuple[str, ...]
     review_path: str
@@ -105,7 +105,7 @@ def check_commits(report: Report, evidence: Evidence) -> bool:
 
 def check_reviews(report: Report, evidence: Evidence) -> bool:
     if evidence.review is None:
-        # ファイルの実在が「レビューが走った」証拠である。無いのは、レビュー段が起動
+        # ファイルの実在が「レビューが走った」証拠である。無いのは、レビューステージが起動
         # していないか、渡したパスが違っている
         return report.add("reviews-settled", False, f"review.json が無い: {evidence.review_path}")
     tally = review_policy.tally(evidence.review)
@@ -126,7 +126,7 @@ def check_reviewer_count(
     """各ラウンドで期待した体数が走り終えたか、と、敵対的が 1 度でも走ったかを見る。
 
     ラウンド単位の体数だけでは「standard なのに敵対的が 1 度も走っていない」を表せない
-    （2 巡目で決着したタスクは期待も実測も 1 になる）。タスク全体でも見る。
+    （2 ラウンド目で解消したタスクは期待も実測も 1 になる）。タスク全体でも見る。
     """
     if evidence.review is None:
         return report.add("reviewer-count", False, "review.json が無い")
@@ -149,24 +149,26 @@ def check_reviewer_count(
 
 
 def check_tests_untouched(report: Report, evidence: Evidence, *, test_globs: list[str]) -> bool:
-    """**テスト作成段が commit した後、テストが動いていないこと。**
+    """**テスト作成ステージが commit した後、テストが動いていないこと。**
 
-    比べる起点は `tests_since`（テスト作成段のコミット）で、`parent` ではない。テスト作成段は
+    比べる基準は `tests_since`（テスト作成ステージのコミット）で、`parent` ではない。テスト作成ステージは
     タスクのブランチに commit するので、`parent..branch` の差分にはテストが必ず含まれる
-    ——そこを起点にすると、実装段がテストに触っていない run でも落ちる。
+    ——そこを基準にすると、実装ステージがテストに触っていないランでも落ちる。
 
-    `tests_since` が無いときは判定できないので落とす（テスト作成段が走っていない run である）。
+    `tests_since` が無いときは判定できないので落とす（テスト作成ステージが走っていないランである）。
     """
     if not evidence.tests_since:
-        return report.add("tests-untouched", False, "テスト作成段のコミットが記録されていない")
+        return report.add(
+            "tests-untouched", False, "テスト作成ステージのコミットが記録されていない"
+        )
     after_tests = list(evidence.changed_since_tests)
     touched = globs.pick(after_tests, test_globs)
     return report.add(
         "tests-untouched",
         not touched,
-        "テスト作成段の後にテストが動いた: " + ", ".join(touched[:5])
+        "テスト作成ステージの後にテストが動いた: " + ", ".join(touched[:5])
         if touched
-        else f"テスト作成段の後の変更 {len(after_tests)} 件にテストは無い",
+        else f"テスト作成ステージの後の変更 {len(after_tests)} 件にテストは無い",
     )
 
 
@@ -190,7 +192,7 @@ def check_verify(report: Report, evidence: Evidence) -> bool:
 
 
 #: ⑥をまだ流していない印。**`needs_verify()` でしか読まない。** これが残った Report で
-#: タスクを積んではいけない
+#: タスクをスタックに追加してはいけない
 VERIFY_PENDING = "⑥はまだ流していない"
 
 
@@ -202,7 +204,7 @@ def judge(
     test_globs: list[str],
     verify_ran: bool = False,
 ) -> Report:
-    """6 検査をまとめて通す。**引数だけで動く。**
+    """完了チェックをまとめて通す。**引数だけで動く。**
 
     ⑥は時間がかかるので①〜⑤が通ってから流す。流すのは呼び出し側なので、2 度呼ばれる。
 
@@ -214,7 +216,7 @@ def judge(
     別の理由に化けない。
     """
     report = Report()
-    check_stage(report, "段", evidence.stage_ok, evidence.stage_detail)
+    check_stage(report, "ステージ", evidence.stage_ok, evidence.stage_detail)
     check_commits(report, evidence)
     check_reviews(report, evidence)
     check_reviewer_count(report, evidence, tier, rounds)

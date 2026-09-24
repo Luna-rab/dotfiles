@@ -188,6 +188,63 @@ def set_status(path: str, review_id: str, to: str, body: str) -> dict[str, int]:
         return review_policy.tally(data)
 
 
+# --- driver だけが呼ぶ ------------------------------------------------------
+# ステージは `autodev review` を通すので、ここへは届かない。ジャッジトークンを見ないのはそのためである
+
+
+def _append(data: dict[str, Any], **fields: Any) -> str:
+    review_id = f"r{data['nextId']}"
+    data["nextId"] += 1
+    data["items"][review_id] = {
+        "status": "open",
+        "at": now(),
+        "comments": [],
+        "transitions": [],
+        **fields,
+    }
+    return review_id
+
+
+def add_gate_failure(path: str, check: str, detail: str, round_label: str) -> str:
+    """落ちた完了チェックを must-fix の指摘として立てる。修正ステージが直し、ジャッジが閉じる。"""
+    with opened(path) as data:
+        return _append(
+            data,
+            reviewer="gate",
+            round=round_label,
+            rating="must-fix",
+            location=f"完了チェック {check}",
+            review=detail,
+        )
+
+
+def move(path: str, review_id: str, to_task: str, reason: str) -> dict[str, Any]:
+    """指摘を同じランの別のタスクへ移す。**移した先のタスクで解決を確かめる**（`add_carried()`）。"""
+    with opened(path) as data:
+        item = _get(data, review_id)
+        item["comments"].append(
+            {"by": "driver", "at": now(), "body": f"{to_task} へ移した: {reason}"}
+        )
+        item["transitions"].append({"from": item["status"], "to": "moved", "at": now()})
+        item["status"] = "moved"
+        item["movedTo"] = to_task
+        return {"id": review_id, **item}
+
+
+def add_carried(path: str, item: dict[str, Any], from_task: str) -> str:
+    """移されてきた指摘を、未解決として立て直す。ジャッジが閉じるまでこのタスクはスタックに追加されない。"""
+    with opened(path) as data:
+        return _append(
+            data,
+            reviewer=item.get("reviewer", "review:normal"),
+            round="0",
+            rating=item["rating"],
+            location=item["location"],
+            review=item["review"],
+            movedFrom=f"{from_task}/{item['id']}",
+        )
+
+
 def _get(data: dict[str, Any], review_id: str) -> dict[str, Any]:
     item = data["items"].get(review_id)
     if item is None:

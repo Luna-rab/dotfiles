@@ -8,19 +8,23 @@
                     公開（タスク PR を作ってスタックに追加する）
     仕上げ        : 概要 PR の draft を外して人間に渡す
 
-**タスクは番号順に 1 本ずつ回す。** `next_pending()` が要対応（`blocked` か `failed`）の
-タスクを見つけたら `None` を返すので、そこで止まって後続を回さない。
+**タスクは番号順に 1 本ずつ回す。** タスクが進めなくなったら、次の 2 つのどちらかになる。
+
+- タスクの割り方が合っていない → 再計画ステージが割り直し、ループを続ける
+- 人の判断が要る → 質問を出して回答待ち（終了コード 4）で終わる。回答を置いて呼び直すと、
+  そのタスクの続きから進む
 """
 
 from __future__ import annotations
 
 from ..core import task_order
 from ..ports import repo
-from .context import Ctx
+from .context import Ctx, NeedsReplan, Waiting
 from .finish import finish
 from .inputs import load_config, prepare_inputs
-from .planning import plan
+from .planning import ask_human, plan, take_answers
 from .publish import ensure_overview_pr, ensure_tree, summarize
+from .replan import replan
 from .task import run_task
 
 
@@ -43,13 +47,20 @@ def drive(ctx: Ctx) -> int:
         summarize(ctx, "0")
 
     ensure_overview_pr(ctx)
+    take_answers(ctx)
     ctx.save()
 
     while True:
         task = task_order.next_pending(ctx.st)
         if task is None:
             break
-        run_task(ctx, task)
+        try:
+            try:
+                run_task(ctx, task)
+            except NeedsReplan as need:
+                replan(ctx, need)
+        except Waiting as wait:
+            ask_human(ctx, wait)
         ctx.save()
 
     code = finish(ctx)

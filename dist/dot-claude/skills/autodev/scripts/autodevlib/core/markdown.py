@@ -12,6 +12,7 @@ STATUS_LABEL = {
     "pending": "未着手",
     "running": "実行中",
     "stacked": "スタック済み",
+    "dropped": "取り下げ",
     "blocked": "要確認",
     "failed": "失敗",
 }

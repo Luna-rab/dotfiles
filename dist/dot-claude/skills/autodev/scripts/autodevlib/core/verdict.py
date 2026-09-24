@@ -194,6 +194,8 @@ def check_verify(report: Report, evidence: Evidence) -> bool:
 #: ⑥をまだ流していない印。**`needs_verify()` でしか読まない。** これが残った Report で
 #: タスクをスタックに追加してはいけない
 VERIFY_PENDING = "⑥はまだ流していない"
+#: ①〜⑤のどれかが落ちたので⑥を流さなかった印。⑥そのものの失敗ではない
+VERIFY_SKIPPED = "①〜⑤が通っていないので流していない"
 
 
 def judge(
@@ -222,7 +224,7 @@ def judge(
     check_reviewer_count(report, evidence, tier, rounds)
     check_tests_untouched(report, evidence, test_globs=test_globs)
     if not report.ok:
-        report.add("verify", False, "①〜⑤が通っていないので流していない")
+        report.add("verify", False, VERIFY_SKIPPED)
     elif verify_ran:
         check_verify(report, evidence)
     else:

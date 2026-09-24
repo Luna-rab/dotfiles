@@ -10,6 +10,7 @@ from hud.core.runs import Stage
 #: ステージのコード名から、画面に出す名前へ（`autodev/GLOSSARY.md` のステージ名）
 FULL = {
     "plan": "計画",
+    "replan": "再計画",
     "testgen": "テスト作成",
     "impl": "実装",
     "fix": "修正",

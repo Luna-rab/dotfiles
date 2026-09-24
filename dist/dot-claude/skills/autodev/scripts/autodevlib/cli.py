@@ -78,13 +78,20 @@ def start_run(args: argparse.Namespace, run: paths.Run) -> dict[str, Any]:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    run = paths.Run(args.name)
+    if run.exists() and args.instruction:
+        # 黙って捨てると、呼んだ側は指示を足したつもりになる。人の判断は `autodev answer` で渡す
+        console.die(
+            f"{args.name} は既にある。続きから始めるときは --instruction を付けない"
+            "（回答待ちのランには `autodev answer` で判断を渡す）"
+        )
+
     problems = preflight()
     if problems:
         for problem in problems:
             console.info(f"足りない: {problem}")
         console.die("起動前の確認に落ちたので走らない")
 
-    run = paths.Run(args.name)
     if run.exists():
         st = run_store.load(run.state)
         console.info(f"{args.name} を続きから始める（タスク {len(st['tasks'])} 件）")

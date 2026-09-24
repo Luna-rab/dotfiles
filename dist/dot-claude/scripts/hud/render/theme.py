@@ -32,18 +32,20 @@ STATUS_MARK: dict[str, tuple[str, Style, Style]] = {
     "running": ("◼", ACCENT, BOLD),
     "blocked": ("✘", RED, RED),
     "failed": ("✘", RED, RED),
+    "dropped": ("–", DIM, DIM),
 }
 PENDING_MARK = ("◻", DIM, Style())
 STATUS_LABEL = {
     "stacked": "スタック済み",
     "running": "実行中",
     "pending": "未着手",
+    "dropped": "取り下げ",
     "blocked": "要確認",
     "failed": "失敗",
 }
 RATING_STYLE = {"must-fix": RED, "should-fix": YELLOW, "nit": DIM}
 #: 指摘の状態の表示名（`autodev/GLOSSARY.md`）
-FINDING_LABEL = {"open": "未解決", "closed": "解決済み", "rejected": "却下"}
+FINDING_LABEL = {"open": "未解決", "closed": "解決済み", "rejected": "却下", "moved": "移管"}
 
 
 def status_mark(status: str) -> tuple[str, Style, Style]:

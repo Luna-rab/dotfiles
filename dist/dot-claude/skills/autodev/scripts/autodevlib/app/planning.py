@@ -1,4 +1,4 @@
-"""計画ステージと、回答を待って止まったステージの park / 再開。
+"""計画ステージと、回答待ち（ステージの `ask` と driver の質問）の park / 再開。
 
 **呼び直すかどうかは driver が決めない。** 進めなくなったら、待っている事実と質問を出して
 終了コードに載せる。
@@ -12,7 +12,7 @@ from typing import Any, NoReturn
 from ..config import paths, stages
 from ..core import task_order
 from ..ports import console, files, run_store, runner, templates
-from .context import EXIT_PLAN_BLOCKED, EXIT_WAITING, Ctx
+from .context import EXIT_PLAN_BLOCKED, EXIT_WAITING, Ctx, Waiting
 from .inputs import save_config, write_brief
 from .stage_call import call, record_judgements
 
@@ -44,6 +44,56 @@ def park(ctx: Ctx, stage_name: str, got: runner.Result) -> NoReturn:
     print()
     print(f'{paths.launcher()} answer --name {st["name"]} --id <質問 ID> --body "<回答>"')
     raise SystemExit(EXIT_WAITING)
+
+
+def ask_human(ctx: Ctx, wait: Waiting) -> NoReturn:
+    """タスクを進めるのに人の判断が要る。質問を書き出し、回答待ちで終わる。
+
+    ステージの `ask` と同じ置き場（`questions/`）に書くので、回答は同じ `autodev answer` で置ける。
+    回答が置かれたら `take_answers()` がタスクの `notes` に写し、タスクは `phase` から続く。
+    """
+    st = ctx.st
+    for item in wait.questions:
+        files.write_json(ctx.run.question(item["id"]), item)
+    st["deferred"] = {"stage": "task", "task": wait.task_id}
+    st["questions"] = unanswered(ctx.run)
+    ctx.save()
+    console.info(f"{wait.task_id} を進めるのに人の判断が要る。回答を置いてから呼び直してください。")
+    for item in st["questions"]:
+        print(f"- [{item.get('id')}] {item.get('question')}")
+    print()
+    print(f'{paths.launcher()} answer --name {st["name"]} --id <質問 ID> --body "<回答>"')
+    raise SystemExit(EXIT_WAITING)
+
+
+def take_answers(ctx: Ctx) -> None:
+    """driver が出した質問に回答が揃っていれば、タスクの `notes` と判断ログに写して片付ける。
+
+    まだ揃っていなければ、質問を出し直して回答待ちで終わる。
+    """
+    st = ctx.st
+    deferred = st.get("deferred") or {}
+    if deferred.get("stage") != "task":
+        return
+    waiting = unanswered(ctx.run)
+    if waiting:
+        st["questions"] = waiting
+        ctx.save()
+        console.info(f"{deferred.get('task')} はまだ回答を待っている。")
+        for item in waiting:
+            print(f"- [{item.get('id')}] {item.get('question')}")
+        raise SystemExit(EXIT_WAITING)
+    task = run_store.task(st, str(deferred["task"]))
+    for key in ctx.run.question_keys():
+        asked = files.read_json(ctx.run.question(key))
+        answered = files.read_json(ctx.run.answer(key))
+        question = asked.get("question", "") if isinstance(asked, dict) else ""
+        answer = answered.get("answer", "") if isinstance(answered, dict) else ""
+        note = f"{question} → {answer}"
+        task.setdefault("notes", []).append(note)
+        run_store.add_decision(st, "decision", f"人の判断（{task['id']}）: {note}")
+    clear_questions(ctx)
+    ctx.save()
 
 
 def clear_questions(ctx: Ctx) -> None:

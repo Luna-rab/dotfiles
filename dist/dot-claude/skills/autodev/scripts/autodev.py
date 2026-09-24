@@ -75,6 +75,17 @@ def build_parser() -> argparse.ArgumentParser:
     clean_cmd.add_argument("--name", required=True)
     clean_cmd.set_defaults(func=cli.cmd_clean)
 
+    purge_cmd = sub.add_parser(
+        "purge", help="worktree・手元のブランチ・記録をすべて消す（GitHub の PR は残す）"
+    )
+    purge_cmd.add_argument("--name", required=True)
+    purge_cmd.add_argument(
+        "--force",
+        action="store_true",
+        help="走っている記録や push していないコミットがあっても消す",
+    )
+    purge_cmd.set_defaults(func=cli.cmd_purge)
+
     ask_cmd = sub.add_parser("ask", help="ステージが使う。回答が置かれるまでステージが止まる")
     ask_cmd.add_argument("--id", required=True, help="質問 ID（英数字・ハイフン）")
     ask_cmd.add_argument("--question", help="聞きたいこと")

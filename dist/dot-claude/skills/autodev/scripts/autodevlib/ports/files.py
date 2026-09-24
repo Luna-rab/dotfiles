@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 
 
 def write_text(path: str, body: str) -> str:
@@ -32,6 +33,12 @@ def remove(path: str) -> None:
     """あれば消す。無いときは何もしない。"""
     with contextlib.suppress(FileNotFoundError):
         os.remove(path)
+
+
+def remove_tree(path: str) -> None:
+    """ディレクトリを中身ごと消す。無いときは何もしない。"""
+    if os.path.isdir(path):
+        shutil.rmtree(path)
 
 
 def read_json(path: str, default: object = None) -> object:

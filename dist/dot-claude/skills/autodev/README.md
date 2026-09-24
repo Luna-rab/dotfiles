@@ -31,7 +31,12 @@ scripts/autodev.py run --name add-cache        # 続きから（state.json が�
 scripts/autodev.py status --name add-cache
 scripts/autodev.py list
 scripts/autodev.py clean --name add-cache      # worktree を外す（記録は残す）
+scripts/autodev.py purge --name add-cache      # worktree・手元のブランチ・記録をすべて消す
 ```
+
+`purge` は GitHub の PR とリモートのブランチには触らず、残っている PR 番号を出すだけにする。
+push していないコミットがあるか、ステージが走っている記録があると何も消さずに止まる
+（`--force` で消す）。
 
 新しく始めるときは `--instruction` が要る（無ければ走らない）。長い指示は
 `--instruction -` で標準入力から渡せる。**走り始めたら途中で口を出せない。**

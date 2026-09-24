@@ -118,6 +118,31 @@ def remove_worktree(repo: str, tree: str) -> proc.Run:
     return proc.run(["git", "-C", repo, "worktree", "remove", "--force", tree])
 
 
+def prune_worktrees(repo: str) -> proc.Run:
+    return proc.run(["git", "-C", repo, "worktree", "prune"])
+
+
+def run_branches(repo: str, run_name: str) -> list[str]:
+    """ランが作った手元のブランチ（概要ブランチとタスクのブランチ）。"""
+    got = git(
+        repo, "for-each-ref", "--format=%(refname:short)", f"refs/heads/stack/{run_name}--task-*"
+    )
+    return [line.strip() for line in got.out.splitlines() if line.strip()] if got.ok else []
+
+
+def unpushed_count(repo: str, branch: str) -> int:
+    """origin のどのブランチにも無いコミットの数。消すと失うコミットの数である。"""
+    got = git(repo, "rev-list", "--count", branch, "--not", "--remotes=origin")
+    try:
+        return int(got.out.strip()) if got.ok else -1
+    except ValueError:
+        return -1
+
+
+def delete_branch(repo: str, branch: str) -> proc.Run:
+    return git(repo, "branch", "-D", branch)
+
+
 # --- テストを read-only にする ----------------------------------------------
 
 

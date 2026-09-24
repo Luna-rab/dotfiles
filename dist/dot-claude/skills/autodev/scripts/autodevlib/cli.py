@@ -142,6 +142,52 @@ def cmd_clean(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_purge(args: argparse.Namespace) -> int:
+    """ランの手元の跡を全部消す。worktree・`stack/<ラン名>--task-*` のブランチ・ランディレクトリ。
+
+    **GitHub の PR とリモートのブランチには触らない。** 公開したものを消すと戻せないので、
+    残っている PR を出すだけにする。消す前に全部確かめ、1 つでも引っかかれば何も消さない。
+    """
+    run = paths.Run(args.name)
+    if not run.exists():
+        console.die(f"そのランが無い: {run.dir}")
+    st = run_store.load(run.state)
+    target = st.get("repo") or ""
+    branches = repo.run_branches(target, run.run_name) if target else []
+    if not args.force:
+        problems = []
+        if st.get("running"):
+            problems.append(f"ステージが走っている記録がある: {', '.join(st['running'])}")
+        for branch in branches:
+            lost = repo.unpushed_count(target, branch)
+            if lost != 0:
+                problems.append(f"{branch} に origin に無いコミットがある（{lost} 件）")
+        if problems:
+            for problem in problems:
+                console.info(problem)
+            console.die("何も消していない。それでも消すなら --force を付ける")
+
+    if os.path.isdir(run.tree) and target:
+        got = repo.remove_worktree(target, run.tree)
+        if not got.ok:
+            console.die(f"worktree を外せなかった: {got.err}")
+    if target:
+        repo.prune_worktrees(target)
+    for branch in branches:
+        got = repo.delete_branch(target, branch)
+        console.info(
+            f"ブランチを消した: {branch}" if got.ok else f"消せなかった: {branch}: {got.err}"
+        )
+    files.remove_tree(run.dir)
+    console.info(f"ランディレクトリを消した: {run.dir}")
+    prs = [
+        f"#{n}" for n in [st.get("overviewPr"), *(t.get("pr") for t in st.get("tasks") or [])] if n
+    ]
+    if prs:
+        console.info(f"GitHub の PR は残してある: {' '.join(prs)}")
+    return 0
+
+
 def _body(args: argparse.Namespace) -> str:
     if getattr(args, "body_file", None):
         source = args.body_file

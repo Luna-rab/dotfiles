@@ -17,6 +17,10 @@
 !/test
 !/test/**
 
+# CI。push と pull request のたびに上の検査を流す
+!/.github
+!/.github/**
+
 # 上の `!` で復活した許可を打ち消し、生成物だけ再び無視する。
 #
 # `python3 -m compileall` やスキルのスクリプト実行で

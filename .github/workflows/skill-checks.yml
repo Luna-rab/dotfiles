@@ -1,0 +1,51 @@
+# dist/dot-claude/skills/ 配下の壊れ（frontmatter の YAML 崩れ、リンク切れ、実行権限の欠落など）と、
+# リポジトリの Python コードの書式・型を、push と pull request のたびに検出する。
+#
+# 検査は 4 つ。
+#   1. ruff    書式と lint（設定は pyproject.toml の [tool.ruff]）
+#   2. ty      型（設定は pyproject.toml の [tool.ty]）
+#   3. pytest  dist/ のフックと autodev の動作（テストは test/）
+#   4. check-skills.py  スキルの構造。引数なし・リポジトリのルートから実行・
+#                       終了コード 0（合格）/ 1（不合格）という形を守って呼ぶ
+#
+# uv が 4 つとも面倒を見る。ruff・ty・pytest は pyproject.toml の dev グループから、
+# check-skills.py の PyYAML はスクリプト先頭の PEP 723 メタデータ（`# /// script`）から入る。
+# `pip install` を書かないのは、依存の宣言をリポジトリ側に 1 か所だけ持たせるためである。
+name: skill-checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv 自身と、uv が入れるパッケージをキャッシュする
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # uv.lock どおりに dev グループ（ruff・ty・pytest・pyyaml・tree-sitter-language-pack）を入れる
+      - name: Install dev tools
+        run: uv sync --locked
+
+      - name: ruff（lint）
+        run: uv run ruff check .
+
+      - name: ruff（書式）
+        run: uv run ruff format --check .
+
+      # ty は 0.0.x で仕様が動く。落ちたときに「型の問題」か「ty 側の変更」かを
+      # 見分けられるよう、他の検査と段を分けてある
+      - name: ty（型）
+        run: uv run ty check
+
+      - name: pytest（フックと autodev の動作）
+        run: uv run pytest
+
+      # shebang が `uv run --script` なので、直接起動すると PyYAML も uv が用意する
+      - name: check-skills（スキルの構造）
+        run: ./.claude/scripts/check-skills.py

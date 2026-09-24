@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""段が `autodev ask` を呼んだら、答えが置かれるまで段を止める PreToolUse フック。
+"""ステージが `autodev ask` を呼んだら、回答が置かれるまでステージを止める PreToolUse フック。
 
 **止め方は `defer` である。** プロセスは終了コード 0 で終わり、`result` イベントに
 `stop_reason: tool_deferred` と `deferred_tool_use` が載る。あとで
 `claude -p --resume <セッション id>` すると**同じツール呼び出しで PreToolUse が再発火**し、
-そのとき答えのファイルが在れば通る。プロンプトを渡し直す必要はない（実測）。
+そのとき回答のファイルが在れば通る。プロンプトを渡し直す必要はない（実測）。
 
-    1 回目   答えが無い      → defer。質問を `<run>/questions/<鍵>.json` に書く
-    2 回目   答えが在る      → allow。`autodev ask` が答えを標準出力に出す
+    1 回目   回答が無い      → defer。質問を `<ランディレクトリ>/questions/<質問 ID>.json` に書く
+    2 回目   回答が在る      → allow。`autodev ask` が回答を標準出力に出す
 
-**答えのファイルの実在だけを見る。** 中身を解釈しないので、何度再開しても同じ判断になる。
+**回答のファイルの実在だけを見る。** 中身を解釈しないので、何度再開しても同じ判断になる。
 
 `defer` が効くのは**そのターンのツール呼び出しが 1 つだけのとき**である。ほかのツールと
 一緒に呼ばれると通常の権限評価に落ち、`autodev ask` がそのまま走って終了コード 3 で
-「単独で呼べ」と返す（`autodevlib/cli.py` の `cmd_ask`）。段はそれを読んで呼び直せる。
+「単独で呼べ」と返す（`autodevlib/cli.py` の `cmd_ask`）。ステージはそれを読んで呼び直せる。
 
-要る環境変数は `AUTODEV_RUN_DIR`（driver が段ごとに渡す）だけである。
+要る環境変数は `AUTODEV_RUN_DIR`（driver がステージごとに渡す）だけである。
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ import re
 import shlex
 import sys
 
-#: `autodev ask --id <鍵>` の鍵。無ければ 1 つにまとめる
+#: `autodev ask --id <質問 ID>` の質問 ID。無ければ 1 つにまとめる
 KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 #: 入口のファイル名（`config/paths.py` の `launcher()` が返す末尾）。**ここが合わないと
-#: フックは何も止めず、段は `ask` の終了コード 3 を受けて `blocked` を返す**
+#: フックは何も止めず、ステージは `ask` の終了コード 3 を受けて `blocked` を返す**
 LAUNCHER_NAME = "autodev.py"
 
 
@@ -42,7 +42,7 @@ def decision(kind: str) -> str:
 
 
 def asked(command: str) -> tuple[str, str] | None:
-    """`autodev ask` の呼び出しなら（鍵, 質問）を返す。"""
+    """`autodev ask` の呼び出しなら（質問 ID, 質問）を返す。"""
     try:
         tokens = shlex.split(command, comments=False, posix=True)
     except ValueError:

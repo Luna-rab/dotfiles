@@ -27,7 +27,7 @@ DEFAULT_COLUMNS = 120
 
 
 def autodev_block(st: dict, now: dt.datetime) -> list[Text]:
-    """動いている run 1 つのタスクリスト。動いていなければ空。"""
+    """動いているラン 1 つのタスクリスト。動いていなければ空。"""
     stages = runs.live_stages(st, now)
     if not runs.is_active(st, stages, now):
         return []

@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-#: 契約・スキーマ・テンプレート・フックと `SKILL.md` の置き場
+#: 指示書・スキーマ・テンプレート・フックと `SKILL.md` の置き場
 SKILL_ROOT = REPO_ROOT / "dist" / "dot-claude" / "skills" / "autodev"
 #: 入口（`autodev.py`）と `autodevlib` の置き場
 SCRIPTS_ROOT = SKILL_ROOT / "scripts"

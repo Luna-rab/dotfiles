@@ -9,7 +9,7 @@
     },
     "tasks": {
       "type": "array",
-      "description": "下から順（tasks[0] が task1 になり、stacked PR の一番下に積まれる）",
+      "description": "下から順（tasks[0] が task1 になり、stacked PR の一番下にスタックに追加される）",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -35,7 +35,7 @@
     "protected": { "type": "array", "items": { "type": "string" } },
     "briefNotes": {
       "type": "string",
-      "description": "次の段が知らないと間違えること。brief.md の「気をつけること」に入る"
+      "description": "次のステージが知らないと間違えること。brief.md の「気をつけること」に入る"
     },
     "decisions": { "type": "array", "items": { "type": "string" } },
     "deferrals": { "type": "array", "items": { "type": "string" } },

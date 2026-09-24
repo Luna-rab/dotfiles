@@ -1,26 +1,26 @@
-"""段を 1 回走らせる。**driver とランナーの境目はこのファイル 1 本である。**
+"""ステージを 1 回走らせる。**driver とランナーの境目はこのファイル 1 本である。**
 
 `claude -p` を子プロセスとして起動し、`--output-format stream-json` の JSONL を
 **1 行ずつ読みながら**進める。別のランナーに替えるときに書き換えるのはここだけで、
 `Call` と `Result` の形を保てば driver には手が入らない。
 
-段の起動条件で効くもの（`claude -p` で実測した）。
+ステージの起動条件で効くもの（`claude -p` で実測した）。
 
     --allowedTools / --disallowedTools   ツールをセッションから消す
-    --append-system-prompt               不変条件を system 側に置く
-    --max-turns                          往復の上限。超えると終了コード 1 と
+    --append-system-prompt               必須ルールを system 側に置く
+    --max-turns                          ターンの上限。超えると終了コード 1 と
                                          `subtype: error_max_turns` が返る
-    --model / --effort                   段ごとにモデルと思考量を選ぶ
+    --model / --effort                   ステージごとにモデルと思考量を選ぶ
     --session-id / --resume              セッション id を呼ぶ側が決め、続きを回す
     --settings                           フックを外から渡す。**worktree に何も置かない**
     --json-schema                        結果の形を固定する。`StructuredOutput` ツールが
                                          増え、外れた出力はツールのエラーとして差し戻され、
                                          claude が自分で言い直す
     --permission-mode bypassPermissions  確認を挟まない。cwd の外も読み書きできる
-                                         （段は `<run>/` の下を読むので要る）
+                                         （ステージは `<ランディレクトリ>/` の下を読むので要る）
 
 **`--json-schema` は生成時の制約ではなく事後の検証である。** 言い直しは `--max-turns` の
-予算を食うので、結果を返す段の上限は多めに置く。そして**検証に失敗しても終了コードは 0、
+予算を食うので、結果を返すステージの上限は多めに置く。そして**検証に失敗しても終了コードは 0、
 `subtype` は `success` のまま `structured_output` が空になる経路がある**（実測）。だから
 `result` が在ることを別に確かめる。
 
@@ -41,7 +41,7 @@ usage も停止理由も残る。** `cancel_queued` は capability
 打ち切るかどうかを決めるのは `Call.watch`——**driver が渡すコードで、モデルは入らない。**
 
 **`--disallowedTools` で消せるのは名前のあるツールだけである。** Bash のリダイレクトで
-書く道は残るので、ソースが動いていないことは検査②（コミット数）と検査⑤（テストの差分）で
+書く道は残るので、ソースが動いていないことは完了チェック②（コミット数）と完了チェック⑤（テストの差分）で
 実物から見る。
 """
 
@@ -78,7 +78,7 @@ GRACE = 60.0
 
 @dataclass(frozen=True)
 class Call:
-    """段 1 回の起動条件。**driver が決めるのはここに入るものだけである。**"""
+    """ステージ 1 回の起動条件。**driver が決めるのはここに入るものだけである。**"""
 
     stage: str
     prompt: str
@@ -101,14 +101,14 @@ class Call:
     resume: bool = False
     env: dict[str, str | None] = field(default_factory=dict)
     timeout: int = 3600
-    #: イベント 1 つごとに呼ばれる。**文字列を返すとその理由で段を打ち切る。**
-    #: 例外を投げても段は止めない（監視の誤りで作業を落とさない）
+    #: イベント 1 つごとに呼ばれる。**文字列を返すとその理由でステージを打ち切る。**
+    #: 例外を投げてもステージは止めない（監視の誤りで作業を落とさない）
     watch: Callable[[dict[str, Any]], str | None] | None = None
 
 
 @dataclass
 class Result:
-    """段 1 回の結果。"""
+    """ステージ 1 回の結果。"""
 
     stage: str
     code: int
@@ -118,7 +118,7 @@ class Result:
     #: `result` イベントの `subtype`。正常終了は `success`
     reason: str | None
     log: str
-    #: `structured_output`。`json_schema` を渡していないか、段が返さなかったら None
+    #: `structured_output`。`json_schema` を渡していないか、ステージが返さなかったら None
     result: dict[str, Any] | None = None
     error: str | None = None
     events: int = 0
@@ -126,7 +126,7 @@ class Result:
     cost: float = 0.0
     #: driver が打ち切った理由。打ち切っていなければ None
     aborted: str | None = None
-    #: フックが `defer` を返して段が止まったときの `deferred_tool_use`。
+    #: フックが `defer` を返してステージが止まったときの `deferred_tool_use`。
     #: **`subtype` は `success` のままなので、止まったかどうかはここで見る。**
     deferred: dict[str, Any] | None = None
     capabilities: list[str] = field(default_factory=list)
@@ -134,7 +134,7 @@ class Result:
 
     @property
     def ok(self) -> bool:
-        """段が正常に終わったか。**結果の中身が妥当かはここでは見ない。**"""
+        """ステージが正常に終わったか。**結果の中身が妥当かはここでは見ない。**"""
         return (
             self.code == 0
             and self.reason == "success"
@@ -192,17 +192,17 @@ def user_message(prompt: str) -> str:
 
 
 def run(call: Call) -> Result:
-    """段を 1 回走らせて結果を返す。**例外を投げない**（呼び出し側が `ok` を見る）。"""
+    """ステージを 1 回走らせて結果を返す。**例外を投げない**（呼び出し側が `ok` を見る）。"""
     out = _drive(call)
     out.error = _fault(out)
-    # 答えを待って止まった段は、結果を返していなくても責めない
+    # 回答を待って止まったステージは、結果を返していなくても責めない
     if out.error or out.deferred is not None or not call.json_schema:
         return out
     if out.result is None:
         # **`subtype` が `success` でも結果が空のことがある**（実測）。Claude が
-        # 「このスキーマは満たせない」と散文で説明して正常終了する経路があるので、
+        # 「このスキーマは満たせない」と自由記述で説明して正常終了する経路があるので、
         # 終了コードと `subtype` だけでは失敗を見つけられない
-        out.error = f"段が結果を返さなかった（最後の応答: {out.text[:200]!r}）"
+        out.error = f"ステージが結果を返さなかった（最後の応答: {out.text[:200]!r}）"
     return out
 
 
@@ -298,7 +298,7 @@ class _Session:
 
 def _drive(call: Call) -> Result:
     session = _Session(call)
-    # **止まった段を再開するときはプロンプトを渡さない。** 渡すと新しいターンが始まって
+    # **止まったステージを再開するときはプロンプトを渡さない。** 渡すと新しいターンが始まって
     # しまう。止まったツール呼び出しはそのまま再開される（実測）
     if call.prompt:
         session.send_prompt()
@@ -352,7 +352,7 @@ def _event(line: str) -> dict[str, Any] | None:
 
 
 def _ask_watch(call: Call, event: dict[str, Any]) -> str | None:
-    """監視を呼ぶ。**監視の誤りで段を落とさない**ので、例外は飲む。"""
+    """監視を呼ぶ。**監視の誤りでステージを落とさない**ので、例外は飲む。"""
     if call.watch is None:
         return None
     try:
@@ -362,7 +362,7 @@ def _ask_watch(call: Call, event: dict[str, Any]) -> str | None:
 
 
 class _Collector:
-    """流れてきたイベントから、段 1 回の結果を組み立てる。"""
+    """流れてきたイベントから、ステージ 1 回の結果を組み立てる。"""
 
     def __init__(self, stage: str, log_path: str, session_id: str | None) -> None:
         self.stage = stage
@@ -431,12 +431,12 @@ class _Collector:
 
 
 def usage_line(got: Result) -> str:
-    """進行の表示に出す 1 行。**段ごとの固定費を目で追えるようにする。**"""
+    """進行の表示に出す 1 行。**ステージごとの固定費を目で追えるようにする。**"""
     usage = got.usage
     if not usage:
         return "usage なし"
     cached = usage.get("cache_read_input_tokens", 0) + usage.get("cache_creation_input_tokens", 0)
     return (
         f"in {usage.get('input_tokens', 0):,} / cache {cached:,}"
-        f" / out {usage.get('output_tokens', 0):,} / {got.turns} 往復 / ${got.cost:.3f}"
+        f" / out {usage.get('output_tokens', 0):,} / {got.turns} ターン / ${got.cost:.3f}"
     )

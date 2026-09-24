@@ -1,10 +1,10 @@
-"""autodev の run を見る画面（Textual）。2 秒ごとに読み直すだけで、何も書き込まない。
+"""autodev のランを見る画面（Textual）。2 秒ごとに読み直すだけで、何も書き込まない。
 
 | キー | すること |
 | --- | --- |
 | ↑ ↓ / ホイール | タスクを選ぶ（詳細とログのペインはホイールでスクロール） |
 | Tab | 表・詳細・ログの間でフォーカスを移す |
-| [ ] | run を切り替える |
+| [ ] | ランを切り替える |
 | l | ログのペインを出す・隠す |
 | q | 終了 |
 """
@@ -29,7 +29,7 @@ from hud.render import tasklist as tasklist_view
 from hud.render.theme import DIM, STATUS_LABEL, status_mark
 
 REFRESH_SECONDS = 2.0
-#: ログのペインに出す、段のログの末尾のイベント数
+#: ログのペインに出す、ステージのログの末尾のイベント数
 LOG_EVENTS = 60
 
 
@@ -48,9 +48,9 @@ class Watch(App):
         Binding("q", "quit", "終了"),
     ]
 
-    def __init__(self, work: str | None = None) -> None:
+    def __init__(self, run_name: str | None = None) -> None:
         super().__init__()
-        self.work = work
+        self.run_name = run_name
         self.selected: str | None = None
         self.states: list[dict] = []
         self.stages: list[runs.Stage] = []
@@ -75,17 +75,17 @@ class Watch(App):
 
     @property
     def current(self) -> dict | None:
-        return next((st for st in self.states if st.get("work") == self.work), None)
+        return next((st for st in self.states if st.get("name") == self.run_name), None)
 
     def reload(self) -> None:
         now = dt.datetime.now().astimezone()
         self.states = runs.order(autodev.read_states(), now)
         if self.current is None:
-            self.work = self.states[0].get("work") if self.states else None
+            self.run_name = self.states[0].get("name") if self.states else None
         st = self.current
         headline_widget = self.query_one("#headline", Static)
         if st is None:
-            headline_widget.update(Text("autodev の run が無い", style=DIM))
+            headline_widget.update(Text("autodev のランが無い", style=DIM))
             return
         self.stages = runs.live_stages(st, now)
         head = headline.build(st, self.stages, runs.is_active(st, self.stages, now))
@@ -122,11 +122,11 @@ class Watch(App):
         if task is None:
             pane.update(Text("（計画中。タスクはまだ無い）", style=DIM))
             return
-        work, task_id = str(st.get("work")), str(task.get("id"))
+        run_name, task_id = str(st.get("name")), str(task.get("id"))
         mine = [s for s in self.stages if s.task == task_id]
-        found = review.summarize(autodev.read_review(work, task_id))
+        found = review.summarize(autodev.read_review(run_name, task_id))
         pane.update(detail.task_detail(task, pipeline.steps(task, self.stages), mine, found))
-        self.show_log(autodev.log_path(work, task_id, [(s.name, s.round) for s in mine]))
+        self.show_log(autodev.log_path(run_name, task_id, [(s.name, s.round) for s in mine]))
 
     def show_log(self, path: str | None) -> None:
         """ログのペイン。同じファイルが伸びただけなら、書き直さずに足す。"""
@@ -151,8 +151,8 @@ class Watch(App):
     def action_switch_run(self, step: int) -> None:
         if not self.states:
             return
-        index = next((i for i, st in enumerate(self.states) if st.get("work") == self.work), 0)
-        self.work = self.states[(index + step) % len(self.states)].get("work")
+        index = next((i for i, st in enumerate(self.states) if st.get("name") == self.run_name), 0)
+        self.run_name = self.states[(index + step) % len(self.states)].get("name")
         self.selected = None
         self.reload()
 

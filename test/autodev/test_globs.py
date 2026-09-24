@@ -1,7 +1,7 @@
 """テストのパスの判定（`core/globs.py`）。
 
-**検査⑤とフック（`hooks/deny-writes.py`）が同じ判定を使う。** ここがずれると、フックが
-通した書き込みを検査が落とす（または逆に、実装段がテストを書き換えたまま通る）。
+**完了チェック⑤とフック（`hooks/deny-writes.py`）が同じ判定を使う。** ここがずれると、フックが
+通した書き込みを完了チェックが落とす（または逆に、実装ステージがテストを書き換えたまま通る）。
 """
 
 from __future__ import annotations
@@ -54,10 +54,10 @@ def test_末尾がスラッシュの指定はディレクトリで当てる():
 
 
 def test_リポジトリ直下のtestsも当てる():
-    """`**/tests/**` の `**/` は 0 段にも当たる。
+    """`**/tests/**` の `**/` は 0 ステージにも当たる。
 
-    `fnmatch` だけでは `**/tests/**` が「`tests` の前に 1 段以上ある」を要求するので、
-    直下の `tests/a.py` が漏れる。漏れると実装段がそこを書き換えても誰も止めない。
+    `fnmatch` だけでは `**/tests/**` が「`tests` の前に 1 ステージ以上ある」を要求するので、
+    直下の `tests/a.py` が漏れる。漏れると実装ステージがそこを書き換えても誰も止めない。
     """
     assert globs.matches("tests/a.py", "**/tests/**")
     assert globs.matches("a/b/tests/c.py", "**/tests/**")
@@ -101,7 +101,7 @@ def test_環境変数は改行区切りで読む():
 
 
 def test_環境変数が空なら既定に戻す():
-    """指定を渡し忘れた段でテストを無防備にしない。"""
+    """指定を渡し忘れたステージでテストを無防備にしない。"""
     assert globs.parse_env(None) == DEFAULTS
     assert globs.parse_env("") == DEFAULTS
     assert globs.parse_env("\n  \n") == DEFAULTS

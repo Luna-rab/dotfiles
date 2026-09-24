@@ -1,6 +1,6 @@
-"""6 検査の証拠を git とコマンドから集める。
+"""完了チェックの証拠を git とコマンドから集める。
 
-**合否の文言をここで組まない。** だから検査を試すときは `Evidence` を手で組んで
+**合否の文言をここで組まない。** だから完了チェックを試すときは `Evidence` を手で組んで
 `core/verdict.py` の `judge()` に渡せばよく、git も claude も要らない。
 
 `Evidence` と `VerifyResult` の形は `core/verdict.py` にある。判断する側が形を持つので、
@@ -34,7 +34,7 @@ def collect(
         branch=branch,
         commits=repo.commit_count(tree, parent, branch),
         tests_since=tests_since,
-        # 起点が無ければ⑤は判定できないので、差分も取らない
+        # 基準のコミットが無ければ⑤は判定できないので、差分も取らない
         changed_since_tests=(
             tuple(repo.changed_files(tree, tests_since, branch)) if tests_since else ()
         ),
@@ -47,7 +47,7 @@ def collect(
 
 
 def _reviewers_by_round(review: dict[str, Any] | None) -> dict[str, tuple[str, ...]]:
-    """ラウンドごとに走り終えたレビュアー。鍵はラウンドの名前。"""
+    """ラウンドごとに走り終えたレビューステージ。キーはラウンドの名前。"""
     if review is None:
         return {}
     labels = dict.fromkeys(str(run["round"]) for run in review.get("runs", []))

@@ -1,7 +1,7 @@
-"""完了の根拠を決める 6 検査（`core/verdict.py`）。
+"""完了の根拠を決める 完了チェック（`core/verdict.py`）。
 
-**ここが緩むと、段の自己申告がそのまま「完了」になる。** 逆に締まりすぎると、正しく
-終わった run が積まれない。どちらも人間が気づくまで分からないので、6 検査それぞれについて
+**ここが緩むと、ステージの報告がそのまま「完了」になる。** 逆に締まりすぎると、正しく
+終わったランがスタックに追加されない。どちらも人間が気づくまで分からないので、完了チェックそれぞれについて
 通る例と落ちる例を置く。
 
 **`detail` の文言も字面で確かめる。** 文言は PR とログに出る「なぜ落ちたか」の唯一の説明で、
@@ -21,10 +21,10 @@ PARENT = "main"
 BRANCH = "stack/demo--task-1"
 REVIEW_PATH = "/state/autodev/demo/tasks/task1/review.json"
 TEST_GLOBS = ["**/test_*.py", "**/tests/**"]
-#: 1 巡目で決着した standard のタスク。`judge()` の `rounds` にそのまま渡す
+#: 1 ラウンド目で解消した standard のタスク。`judge()` の `rounds` にそのまま渡す
 ROUNDS: list[tuple[str, list[str]]] = [("1", ["review:normal", "review:adversarial"])]
 
-#: 決着済みの review.json。open が 0 件なので検査③が通る
+#: 解消済みの review.json。open が 0 件なので完了チェック③が通る
 SETTLED: dict[str, Any] = {
     "nextId": 3,
     "items": {
@@ -39,7 +39,7 @@ SETTLED: dict[str, Any] = {
 
 
 def evidence(**over: Any) -> Evidence:
-    """①〜⑤が通る証拠。落としたい検査の分だけ差し替える。"""
+    """①〜⑤が通る証拠。落としたい完了チェックの分だけ差し替える。"""
     base: dict[str, Any] = {
         "stage_ok": True,
         "stage_detail": "",
@@ -68,7 +68,7 @@ def judge(
 
 
 def got(report: Report, name: str) -> tuple[bool, str]:
-    """検査 1 つの合否と文言。名前が変わればここで落ちる。"""
+    """完了チェック 1 つの合否と文言。名前が変わればここで落ちる。"""
     hit = [c for c in report.checks if c.name == name]
     assert len(hit) == 1, [c.name for c in report.checks]
     return hit[0].ok, hit[0].detail
@@ -77,18 +77,18 @@ def got(report: Report, name: str) -> tuple[bool, str]:
 # --- ①stage-finished --------------------------------------------------------
 
 
-def test_段が正常に終われば通る():
+def test_ステージが正常に終われば通る():
     ok, detail = got(judge(evidence()), "stage-finished")
     assert ok
-    assert detail == "段 は正常に終わった"
+    assert detail == "ステージ は正常に終わった"
 
 
-def test_段の文言があればそれをそのまま出す():
+def test_ステージの文言があればそれをそのまま出す():
     evi = evidence(stage_ok=True, stage_detail="impl は結果を返した")
     assert got(judge(evi), "stage-finished") == (True, "impl は結果を返した")
 
 
-def test_段が落ちれば落ちる():
+def test_ステージが落ちれば落ちる():
     evi = evidence(stage_ok=False, stage_detail="終了コード 1")
     assert got(judge(evi), "stage-finished") == (False, "終了コード 1")
 
@@ -109,7 +109,7 @@ def test_コミットが0件なら落ちる():
 
 
 def test_コミットを数えられなければ落ちる():
-    """`-1` は「起点が無い」など git が答えられなかった印。0 件と区別して出す。"""
+    """`-1` は「親ブランチが無い」など git が答えられなかった印。0 件と区別して出す。"""
     ok, detail = got(judge(evidence(commits=-1)), "commits")
     assert not ok
     assert detail == "main..stack/demo--task-1 を数えられなかった"
@@ -139,7 +139,7 @@ def test_openが残っていれば落ちる():
 
 
 def test_reviewjsonが無ければ落ちる():
-    """ファイルの実在が「レビューが走った」証拠である。無い run を通してはいけない。"""
+    """ファイルの実在が「レビューが走った」証拠である。無いランを通してはいけない。"""
     ok, detail = got(judge(evidence(review=None)), "reviews-settled")
     assert not ok
     assert detail == f"review.json が無い: {REVIEW_PATH}"
@@ -154,7 +154,7 @@ def test_期待した体数が走り終えていれば通る():
     assert detail == "走り終えたレビュー 2 回"
 
 
-def test_走っていないレビュアーがいれば落ちる():
+def test_走っていないレビューステージがいれば落ちる():
     evi = evidence(reviewers_by_round={"1": ("review:normal",)})
     ok, detail = got(judge(evi), "reviewer-count")
     assert not ok
@@ -162,7 +162,7 @@ def test_走っていないレビュアーがいれば落ちる():
 
 
 def test_standardで敵対的が1度も走っていなければ落ちる():
-    """2 巡目で決着したタスクはラウンド単位の体数が 1 で足りてしまう。タスク全体でも見る。"""
+    """2 ラウンド目で解消したタスクはラウンド単位の体数が 1 で足りてしまう。タスク全体でも見る。"""
     evi = evidence(
         reviewers_by_round={"2": ("review:normal",)},
         adversarial_ran=False,
@@ -192,48 +192,48 @@ def test_体数を数える前にreviewjsonの実在を見る():
 # --- ⑤tests-untouched -------------------------------------------------------
 
 
-def test_テスト作成段の後にテストが動いていなければ通る():
+def test_テスト作成ステージの後にテストが動いていなければ通る():
     evi = evidence(changed_since_tests=("src/a.py", "docs/b.md"))
     ok, detail = got(judge(evi), "tests-untouched")
     assert ok
-    assert detail == "テスト作成段の後の変更 2 件にテストは無い"
+    assert detail == "テスト作成ステージの後の変更 2 件にテストは無い"
 
 
-def test_テスト作成段の後にテストが動けば落ちる():
+def test_テスト作成ステージの後にテストが動けば落ちる():
     evi = evidence(changed_since_tests=("src/a.py", "tests/test_a.py"))
     ok, detail = got(judge(evi), "tests-untouched")
     assert not ok
-    assert detail == "テスト作成段の後にテストが動いた: tests/test_a.py"
+    assert detail == "テスト作成ステージの後にテストが動いた: tests/test_a.py"
 
 
-def test_テスト作成段のコミットが無ければ落ちる():
-    """比べる起点は `tests_since` で、`parent` ではない。
+def test_テスト作成ステージのコミットが無ければ落ちる():
+    """比べる基準は `tests_since` で、`parent` ではない。
 
-    `parent..branch` を起点にすると、テスト作成段が commit したテストが必ず差分に入るので、
-    実装段がテストに触っていない run でも落ちる。起点が無いときは判定できないので落とす。
+    `parent..branch` を基準にすると、テスト作成ステージが commit したテストが必ず差分に入るので、
+    実装ステージがテストに触っていないランでも落ちる。基準のコミットが無いときは判定できないので落とす。
     """
     ok, detail = got(judge(evidence(tests_since=None)), "tests-untouched")
     assert not ok
-    assert detail == "テスト作成段のコミットが記録されていない"
+    assert detail == "テスト作成ステージのコミットが記録されていない"
 
 
-def test_起点が無ければ差分を見ずに落ちる():
-    """`tests_since` が無い run は、差分にテストが入っていなくても通さない。"""
+def test_基準のコミットが無ければ差分を見ずに落ちる():
+    """`tests_since` が無いランは、差分にテストが入っていなくても通さない。"""
     evi = evidence(tests_since=None, changed_since_tests=())
     assert got(judge(evi), "tests-untouched")[0] is False
 
 
-# --- ⑥verify と 2 段呼び出し ------------------------------------------------
+# --- ⑥verify と 2 ステージ呼び出し ------------------------------------------------
 
 
-def test_1度目の判定では検査6をまだ流していない():
+def test_1度目の判定では完了チェック6をまだ流していない():
     report = judge(evidence())
     assert verdict.needs_verify(report) is True
     assert report.ok is False
     assert got(report, "verify") == (False, "⑥はまだ流していない")
 
 
-def test_2度目の判定で検査6が緑なら全部通る():
+def test_2度目の判定で完了チェック6が緑なら全部通る():
     evi = evidence(
         verify=(
             VerifyResult(command="uv run ruff check .", ok=True, code=0, out="", err=""),
@@ -246,7 +246,7 @@ def test_2度目の判定で検査6が緑なら全部通る():
     assert verdict.needs_verify(report) is False
 
 
-def test_検査6が落ちれば落ちたコマンドと末尾を出す():
+def test_完了チェック6が落ちれば落ちたコマンドと末尾を出す():
     evi = evidence(
         verify=(
             VerifyResult(command="uv run ruff check .", ok=True, code=0, out="", err=""),
@@ -266,7 +266,7 @@ def test_検査6が落ちれば落ちたコマンドと末尾を出す():
     )
 
 
-def test_検査6が落ちれば標準エラーの末尾12行だけを出す():
+def test_完了チェック6が落ちれば標準エラーの末尾12行だけを出す():
     """落ちた理由を人間が読むのはこの 12 行である。`out` ではなく `err` を出す。"""
     evi = evidence(
         verify=(
@@ -286,8 +286,8 @@ def test_検査6が落ちれば標準エラーの末尾12行だけを出す():
     assert "stdout は出さない" not in detail
 
 
-def test_検査1から5が落ちていれば検査6を流さない():
-    """⑥は時間がかかる。①〜⑤が落ちた run で流すのは無駄である。"""
+def test_完了チェック1から5が落ちていれば完了チェック6を流さない():
+    """⑥は時間がかかる。①〜⑤が落ちたランで流すのは無駄である。"""
     report = judge(evidence(commits=0))
     assert verdict.needs_verify(report) is False
     assert got(report, "verify") == (False, "①〜⑤が通っていないので流していない")
@@ -300,7 +300,7 @@ def test_検査1から5が落ちていれば検査6を流さない():
 def test_2度目を忘れると落ちたままになる():
     """`verify_ran` の既定が False なので、呼び忘れた側は `report.ok` が False で止まる。
 
-    ここが「検証コマンドが 1 つも設定されていない」に化けると、コマンドを設定した run で
+    ここが「検証コマンドが 1 つも設定されていない」に化けると、コマンドを設定したランで
     設定漏れを疑わせる。流し忘れと設定漏れは別の文言で出す。
     """
     evi = evidence(
@@ -322,7 +322,7 @@ def test_検証コマンドが0本なら落ちる():
 # --- 報告の形 ----------------------------------------------------------------
 
 
-def test_6検査が決まった順で並ぶ():
+def test_完了チェックが決まった順で並ぶ():
     """名前と順番は state.json とログに出る。増減したらここで落ちる。"""
     report = judge(evidence(), verify_ran=True)
     assert [c.name for c in report.checks] == [
@@ -335,7 +335,7 @@ def test_6検査が決まった順で並ぶ():
     ]
 
 
-def test_落ちた検査だけを取り出せる():
+def test_落ちた完了チェックだけを取り出せる():
     report = judge(evidence(commits=0, stage_ok=False, stage_detail="終了コード 1"))
     assert [c.name for c in report.failed] == ["stage-finished", "commits", "verify"]
 

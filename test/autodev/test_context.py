@@ -1,7 +1,7 @@
-"""段の開始と終了の記録（`app/context.py`）。
+"""ステージの開始と終了の記録（`app/context.py`）。
 
 statusline はタスクごとの `stages` を読んで「済・今・これから」を描く。ここが記録を落とすと、
-済んだ段が外から見えなくなる。
+済んだステージが外から見えなくなる。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ def ctx(tmp_path, monkeypatch) -> Ctx:
     return Ctx(run=run, st={"tasks": [{"id": "task1", "status": "running"}], "running": {}})
 
 
-def test_終えた段をタスクのstagesに成否つきで足す(tmp_path, monkeypatch):
+def test_終えたステージをタスクのstagesに成否つきで足す(tmp_path, monkeypatch):
     c = ctx(tmp_path, monkeypatch)
     c.begin("impl", "task1", "0")
     c.end("impl", ok=True)
@@ -34,7 +34,7 @@ def test_終えた段をタスクのstagesに成否つきで足す(tmp_path, mon
     ]
 
 
-def test_タスクに属さない段はstagesに足さない(tmp_path, monkeypatch):
+def test_タスクに属さないステージはstagesに足さない(tmp_path, monkeypatch):
     c = ctx(tmp_path, monkeypatch)
     c.begin("plan", "task0", "0")
     c.end("plan", ok=True)

@@ -1,4 +1,4 @@
-"""レビュー → 裁定 → 修正を決着するまで回す。
+"""レビュー → ジャッジ → 修正を解消するまで回す。
 
 上限と打ち切りの条件は `core/review_policy.py` にある。
 """
@@ -16,7 +16,7 @@ from .stage_call import call, record_judgements
 
 
 def review_round(ctx: Ctx, task: dict[str, Any], index: int, change_kind: str) -> list[str]:
-    """そのラウンドのレビュアーを起こす。1 巡目の 2 体は同時に走らせる。"""
+    """そのラウンドのレビューステージを起こす。1 ラウンド目の 2 体は同時に走らせる。"""
     expected = review_policy.expected_reviewers(task["tier"], change_kind, index)
     label = str(index)
     review_store.init(ctx.run.review(task["id"]))
@@ -36,11 +36,11 @@ def review_round(ctx: Ctx, task: dict[str, Any], index: int, change_kind: str) -
 def review_fix_loop(
     ctx: Ctx, task: dict[str, Any]
 ) -> tuple[bool, list[tuple[str, list[str]]], str]:
-    """決着するまで回す。打ち切りは 2 つ——ラウンド上限と無進捗。
+    """指摘が解消するまで回す。打ち切るのは 2 つの場合——ラウンドの上限に達したときと、
+    **前のラウンドより未解決の指摘の総数も must-fix の数も減っていない**とき。
 
-    無進捗は「**open の総数と open の must-fix が両方とも前ラウンド以上**」で見る。
-    must-fix だけだと should-fix を残したまま打ち切り、総数だけだとレビュアーが毎ラウンド
-    新しい nit を立てるので must-fix が減っていても打ち切られる。
+    must-fix だけで見ると should-fix を残したまま打ち切り、総数だけで見るとレビューステージが
+    毎ラウンド新しい nit を立てるので、must-fix が減っていても打ち切られる。
     """
     st = ctx.st
     rounds: list[tuple[str, list[str]]] = []
@@ -53,9 +53,9 @@ def review_fix_loop(
 
         judged = call(ctx, stages.TABLE["judge"], task, label)
         if not judged.ok:
-            return False, rounds, f"裁定段が失敗した: {judged.error}"
+            return False, rounds, f"ジャッジが失敗した: {judged.error}"
 
-        # **裁定の自己申告を信じない。** 数は review.json から数える
+        # **ジャッジの報告を信じない。** 数は review.json から数える
         data = review_store.read(ctx.run.review(task["id"]))
         tally = review_policy.tally(data) if data else {"open": -1, "openMustFix": -1}
         console.info(f"  r{label}: open {tally['open']}（must-fix {tally['openMustFix']}）")
@@ -68,9 +68,10 @@ def review_fix_loop(
             return False, rounds, reason
         prev_total, prev_must = tally["open"], tally["openMustFix"]
 
-        fixed = call(ctx, stages.TABLE["fix"], task, str(index + 1))
+        # 修正はそのラウンドのレビューで出た指摘を直すので、同じラウンドの番号で記録する
+        fixed = call(ctx, stages.TABLE["fix"], task, label)
         if not fixed.ok:
-            return False, rounds, f"修正段が失敗した: {fixed.error}"
+            return False, rounds, f"修正ステージが失敗した: {fixed.error}"
         result = fixed.result or {}
         run_store.set_task(st, task["id"], implSession=fixed.session_id)
         change_kind = str(result.get("changeKind") or "logic")

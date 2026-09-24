@@ -1,16 +1,16 @@
-"""段へ渡す文面の組み立て。
+"""ステージへ渡す文面の組み立て。
 
-段へ渡す文面は 2 つに分かれる。
+ステージへ渡す文面は 2 つに分かれる。
 
-- **system へ足すもの**（`system_append`）——破ると取り返しがつかない不変条件だけ。
-  利用者のメッセージに混ぜると、長い契約を読む途中で薄まる
-- **利用者のメッセージ**（`build_prompt`）——どこで走っているか、契約と前提の場所、
-  読み替え表、このタスクの値。**契約の本文は入れない**（段が自分で読む）
+- **system へ足すもの**（`system_append`）——破ると取り返しがつかない必須ルールだけ。
+  利用者のメッセージに混ぜると、長い指示書を読む途中で薄まる
+- **利用者のメッセージ**（`build_prompt`）——どこで走っているか、指示書とブリーフの場所、
+  プレースホルダ表、このタスクの値。**指示書の本文は入れない**（ステージが自分で読む）
 
-読み替え表を添えるのは、契約を読む前にプレースホルダの指す先を確定させるためである。
-表が無いと、段がプレースホルダのまま `autodev review` を叩く。
+プレースホルダ表を添えるのは、指示書を読む前にプレースホルダの指す先を確定させるためである。
+表が無いと、ステージがプレースホルダのまま `autodev review` を叩く。
 
-**テンプレートの本文・契約のパス・launcher のパスは呼び出し側が渡す。** ここはファイルを
+**テンプレートの本文・指示書のパス・launcher のパスは呼び出し側が渡す。** ここはファイルを
 読まないので、`config/paths.py` も `ports/templates.py` も import しない。
 """
 
@@ -22,9 +22,9 @@ from typing import Any
 # 受け取る `stage` は `config/stages.py` の `Stage` である。**ここは config を import
 # しない**ので、型は `Any` で受ける。読むのは `name` `role` `writes_result` の 3 つだけ。
 
-#: 役割ごとの不変条件。**契約の要約ではない。** 破ると取り返しがつかないものだけを置く
-#: （要約を置くと、契約と不変条件の 2 か所が出所になり、片方だけ直す事故が起きる）。
-INVARIANTS: dict[str, list[str]] = {
+#: 役割ごとの必須ルール。**指示書の要約ではない。** 破ると取り返しがつかないものだけを置く
+#: （要約を置くと、指示書と必須ルールの 2 か所が出所になり、片方だけ直す事故が起きる）。
+REQUIRED_RULES: dict[str, list[str]] = {
     "common": [
         "PR を作らない・更新しない。`gh` を 1 度も呼ばない（GitHub を触るのは driver だけ）。",
         "push しない。commit までで止める。",
@@ -52,13 +52,13 @@ INVARIANTS: dict[str, list[str]] = {
     ],
     "review": [
         "指摘は `<autodev> review new` で立てる。ファイルに直接書かない。",
-        "**status を動かさない**（動かせるのは裁定だけ。スクリプトが拒む）。",
+        "**status を動かさない**（動かせるのはジャッジだけ。スクリプトが拒む）。",
         "終わりに `<autodev> review done` を必ず呼ぶ。**指摘 0 件でも呼ぶ**"
-        "（呼ばないと「走っていない」と区別できず、検査④で落ちる）。",
+        "（呼ばないと「走っていない」と区別できず、完了チェック④で落ちる）。",
         "コードを書き換えない。",
     ],
     "judge": [
-        "open の全件に決着を付ける（直ったなら `closed`、直さないなら理由つきで `rejected`）。"
+        "未解決（`open`）の全件の状態を決める（直ったなら解決済み `closed`、直さないなら理由つきで却下 `rejected`）。"
         "中間の状態を残さない。",
         "`status` にはコメントを必ず添える（なぜ閉じたかが残らないと、次のラウンドも人間も追えない）。",
         "コードを書き換えない。レビューを新しく立てない。",
@@ -68,7 +68,7 @@ INVARIANTS: dict[str, list[str]] = {
     ],
 }
 
-#: 役割の鍵。`fix` は実装と同じ契約・同じ不変条件で走る
+#: 役割のキー。`fix` は実装と同じ指示書・同じ必須ルールで走る
 ROLE_KEY = {
     "plan": "plan",
     "testgen": "testgen",
@@ -83,21 +83,21 @@ ROLE_KEY = {
 
 
 def _invariants_for(stage: Any) -> list[str]:
-    out = list(INVARIANTS["common"])
+    out = list(REQUIRED_RULES["common"])
     if stage.writes_result:
-        out += INVARIANTS["result"]
-    return out + INVARIANTS[ROLE_KEY[stage.name]]
+        out += REQUIRED_RULES["result"]
+    return out + REQUIRED_RULES[ROLE_KEY[stage.name]]
 
 
 def system_append(stage: Any) -> str:
     """`--append-system-prompt` に渡す文面。**破ると取り返しがつかないものだけ。**
 
-    system 側に置くのは、段が長い契約とコードを読む間もここが薄まらないようにするためである。
-    プレースホルダ（`<ツリー>` など）の指す先は、利用者のメッセージの読み替え表にある。
+    system 側に置くのは、ステージが長い指示書とコードを読む間もここが薄まらないようにするためである。
+    プレースホルダ（`<ツリー>` など）の指す先は、利用者のメッセージのプレースホルダ表にある。
     """
     lines = [
-        f"あなたは autodev の **{stage.role}** の段である。進行を決めるのは driver で、"
-        "あなたは自分の段だけを務める。次の段を自分で呼ばない。",
+        f"あなたは autodev の **{stage.role}** のステージである。進行を決めるのは driver で、"
+        "あなたは自分のステージだけを務める。次のステージを自分で呼ばない。",
         "",
         "## 何があっても守ること",
         "",
@@ -107,17 +107,17 @@ def system_append(stage: Any) -> str:
 
 
 def _table(stage: Any, values: dict[str, Any], launcher_path: str) -> str:
-    """読み替え表。契約の中の表記が、この run で何を指すか。"""
+    """プレースホルダ表。指示書の中の表記が、このランで何を指すか。"""
     rows = [
-        ("<作業名>", values["work"]),
+        ("<ラン名>", values["run_name"]),
         ("<タスク>", values.get("task_id") or "(なし)"),
         ("<ラウンド>", values.get("round") or "0"),
         ("<役割>", stage.role),
         ("<ツリー>", values["tree"]),
-        ("<起点>", values.get("parent") or "(なし)"),
+        ("<親ブランチ>", values.get("parent") or "(なし)"),
         ("<ブランチ>", values.get("branch") or "(なし)"),
-        ("<前提>", values["brief"]),
-        ("<地図>", values["map"]),
+        ("<ブリーフ>", values["brief"]),
+        ("<コードマップ>", values["map"]),
         ("<レビュー>", values.get("review") or "(なし)"),
         ("<autodev>", launcher_path),
     ]
@@ -155,10 +155,10 @@ def build_prompt(
     contract_path: str,
     launcher_path: str,
 ) -> str:
-    """段に渡す利用者のメッセージ。**契約の本文と不変条件は入れない。**
+    """ステージに渡す利用者のメッセージ。**指示書の本文と必須ルールは入れない。**
 
     文面は `templates/prompt.md` にある。ここで組むのは、テンプレートに差す 3 つの塊
-    （読み替え表・このタスク・起動時の指示）だけである。
+    （プレースホルダ表・このタスク・起動時の指示）だけである。
 
     `template` はそのテンプレートの本文で、読むのは呼び出し側である。
     `safe_substitute` なので、**埋め忘れたマーカーはそのまま残る**（例外で落ちない）。
@@ -166,7 +166,7 @@ def build_prompt(
     instruction = (values.get("instruction") or "").strip()
     marks: dict[str, Any] = {
         "role": stage.role,
-        "work": values["work"],
+        "run_name": values["run_name"],
         "tree": values["tree"],
         "contract": contract_path,
         "brief": values["brief"],

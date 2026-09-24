@@ -1,4 +1,4 @@
-"""段の並び（`hud/core/pipeline.py`）とタスクの窓切り（`hud/core/tasklist.py`）。"""
+"""ステージの並び（`hud/core/pipeline.py`）とタスクの窓切り（`hud/core/tasklist.py`）。"""
 
 from __future__ import annotations
 
@@ -15,18 +15,18 @@ def plain(steps: list[pipeline.Step]) -> list[tuple[str, str]]:
     return [(s.label, s.mark.value) for s in steps]
 
 
-def test_済んだ段と走っている段とこれからの段を並べる():
+def test_済んだステージと走っているステージとこれからのステージを並べる():
     task = {"id": "task1", "stages": [{"name": "testgen", "round": "0", "ok": True}]}
     assert plain(pipeline.steps(task, [stage("impl", "0")])) == [
-        ("testgen", "done"),
-        ("impl", "current"),
-        ("review", "next"),
-        ("judge", "next"),
-        ("PR", "next"),
+        ("テスト作成", "done"),
+        ("実装", "current"),
+        ("レビュー", "next"),
+        ("ジャッジ", "next"),
+        ("PR 本文", "next"),
     ]
 
 
-def test_修正の巡目を添え古い段は省く():
+def test_修正のラウンドを添え古いステージは省く():
     task = {
         "id": "task1",
         "stages": [
@@ -34,24 +34,24 @@ def test_修正の巡目を添え古い段は省く():
             {"name": "impl", "round": "0", "ok": True},
             {"name": "review:normal", "round": "1", "ok": True},
             {"name": "judge", "round": "1", "ok": True},
-            {"name": "fix", "round": "2", "ok": False},
+            {"name": "fix", "round": "1", "ok": False},
         ],
     }
     got = pipeline.steps(task, [stage("review:normal", "2")])
-    assert [s.label for s in got] == ["…", "judge", "fix r2", "review r2", "judge", "PR"]
+    assert [s.label for s in got] == ["…", "ジャッジ", "修正", "レビュー r2", "ジャッジ", "PR 本文"]
     assert [s.mark for s in got][:4] == [Mark.ELIDED, Mark.DONE, Mark.FAILED, Mark.CURRENT]
 
 
 def test_レビュー2体の片方だけ終わったら走っている方にまとめる():
     task = {"id": "task1", "stages": [{"name": "review:normal", "round": "1", "ok": True}]}
     got = pipeline.steps(task, [stage("review:adversarial", "1")])
-    assert plain(got) == [("review", "current"), ("judge", "next"), ("PR", "next")]
+    assert plain(got) == [("レビュー", "current"), ("ジャッジ", "next"), ("PR 本文", "next")]
 
 
-def test_ほかのタスクで走っている段は含めない():
+def test_ほかのタスクで走っているステージは含めない():
     task = {"id": "task1", "stages": [{"name": "testgen", "round": "0", "ok": True}]}
     got = pipeline.steps(task, [stage("impl", "0", task="task2")])
-    assert plain(got)[:2] == [("testgen", "done"), ("impl", "next")]
+    assert plain(got)[:2] == [("テスト作成", "done"), ("実装", "next")]
 
 
 def test_タスクが多いと今のタスクの前後に窓を切る():

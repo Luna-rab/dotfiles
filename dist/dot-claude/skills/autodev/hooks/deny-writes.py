@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""段が書いてはいけないファイルへの書き込みを止める PreToolUse フック。
+"""ステージが書いてはいけないファイルへの書き込みを止める PreToolUse フック。
 
 **権限の確認を飛ばす設定でもフックは走る**（実測。`calc_test.py` の作成がこの形で拒否される
-ことを確かめた）。driver は `<run>/guard.json` にここを指す設定を書き、`claude --settings` で
+ことを確かめた）。driver は `<ランディレクトリ>/guard.json` にここを指す設定を書き、`claude --settings` で
 渡す。**worktree にはファイルを置かない**（置くと commit に混ざる危険がある）。
 
-止めるものは 2 つあり、どちらも**worktree の中だけ**を見る。段は結果の JSON を
-`<run>/` の下——worktree の外——へ書くので、そこは通す。
+止めるものは 2 つあり、どちらも**worktree の中だけ**を見る。ステージは結果の JSON を
+`<ランディレクトリ>/` の下——worktree の外——へ書くので、そこは通す。
 
-    AUTODEV_READ_ONLY=1   worktree の中への書き込みを全部止める（読むだけの段）
-    AUTODEV_TEST_GLOBS    テストのパス。ここへの書き込みを止める（実装段・修正段）
-    AUTODEV_ALLOW_TESTS=1 テストへの書き込みを許す（テスト作成段だけ）
+    AUTODEV_READ_ONLY=1   worktree の中への書き込みを全部止める（読むだけのステージ）
+    AUTODEV_TEST_GLOBS    テストのパス。ここへの書き込みを止める（実装ステージ・修正ステージ）
+    AUTODEV_ALLOW_TESTS=1 テストへの書き込みを許す（テスト作成ステージだけ）
 
 `--disallowedTools` ではなくフックで止めるのは、**結果の JSON を書くのに `Write` が要る**
-からである。ツールごと消すと、読むだけの段が自分の結果を書けなくなる。フックなら宛先で
+からである。ツールごと消すと、読むだけのステージが自分の結果を書けなくなる。フックなら宛先で
 分けられ、Bash のリダイレクトも同じ 1 か所で見られる。
 
 終了コード 2 で拒否し、標準エラーに書いた理由がモデルに渡る。
@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.join(_root, "scripts"))
 
 from autodevlib.core import globs  # noqa: E402  上の sys.path より後でしか import できない
 
-# Bash 越しの書き込みを拾う。完全な検出はできない（検査⑤の差分照合が最後の砦）が、
+# Bash 越しの書き込みを拾う。完全な検出はできない（完了チェック⑤の差分照合が最後の砦）が、
 # リダイレクトと定番のコマンドはここで止める。
 #
 # **正規表現でコマンド行をなめず、`shlex` でトークンに割る。** 引用の中の `>` と `rm` は
@@ -56,13 +56,13 @@ MUTATORS = frozenset({"tee", "mv", "cp", "rm", "truncate", "dd", "patch"})
 PATHLIKE = re.compile(r"[\w./\-]*[\w\-]+\.[A-Za-z0-9]+")
 
 TEST_DENIED = (
-    "テストファイルはこの段から変更できません: {path}\n"
-    "テストを書けるのはテスト作成段だけです。テストが仕様と矛盾していると判断したら、"
+    "テストファイルはこのステージから変更できません: {path}\n"
+    "テストを書けるのはテスト作成ステージだけです。テストが仕様と矛盾していると判断したら、"
     "直さずに結果の JSON の testConflict に書いて終えてください。"
 )
 TREE_DENIED = (
-    "この段は worktree の中を書き換えられません: {path}\n"
-    "読んで判定するだけの段です。結果は `StructuredOutput` ツールで返してください"
+    "このステージは worktree の中を書き換えられません: {path}\n"
+    "読んで判定するだけのステージです。結果は `StructuredOutput` ツールで返してください"
     "（ファイルに書く必要はありません）。"
 )
 

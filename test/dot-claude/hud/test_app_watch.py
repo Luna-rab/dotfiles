@@ -32,16 +32,16 @@ def test_実行中のタスクを選んで開き詳細とログを出し矢印�
 
 def test_runを切り替える(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
-    write_run(tmp_path, work="aaa-stopped", running={}, tasks=[])
-    write_run(tmp_path, work="zzz-running")
+    write_run(tmp_path, name="aaa-stopped", running={}, tasks=[])
+    write_run(tmp_path, name="zzz-running")
 
     async def drive() -> None:
         app = Watch()
         async with app.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
-            assert app.work == "zzz-running"
+            assert app.run_name == "zzz-running"
             await pilot.press("]")
             await pilot.pause()
-            assert app.work == "aaa-stopped"
+            assert app.run_name == "aaa-stopped"
 
     asyncio.run(drive())

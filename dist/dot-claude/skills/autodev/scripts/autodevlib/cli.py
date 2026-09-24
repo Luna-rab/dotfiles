@@ -1,7 +1,7 @@
 """サブコマンドの中身。`build_parser()` が `func` に差すのはここの関数である。
 
 **進行の判断は持たない。** 引数を読み、起動前の確認をし、`app` と `ports` を呼んで
-終了コードをそのまま返す。run 1 回をどう回すかは `app/drive.py`、段の順番と打ち切りは
+終了コードをそのまま返す。ラン 1 回をどう回すかは `app/drive.py`、ステージの順番と打ち切りは
 `app/` の各ファイルにある。
 """
 
@@ -26,11 +26,11 @@ from .ports import console, files, forge, proc, repo, review_store, run_store
 def preflight() -> list[str]:
     """足りないものを並べて返す。**1 つでもあれば走らない。**
 
-    途中で気づくと、worktree と土台 PR だけが残る中途半端な状態になる。
+    途中で気づくと、worktree と概要 PR だけが残る中途半端な状態になる。
     """
     problems: list[str] = []
     if not proc.run(["claude", "--version"]).ok:
-        problems.append("`claude` が PATH に無い（段を起動できない）")
+        problems.append("`claude` が PATH に無い（ステージを起動できない）")
     if not proc.run(["git", "--version"]).ok:
         problems.append("`git` が PATH に無い")
     reason = forge.ready()
@@ -60,18 +60,18 @@ def read_instruction(value: str | None) -> str:
 
 
 def start_run(args: argparse.Namespace, run: paths.Run) -> dict[str, Any]:
-    """新しい run の state を作る。**作業名の重複はここで弾く。**"""
+    """新しいランの state を作る。**ラン名の重複はここで弾く。**"""
     repo_path = resolve_repo(args.repo)
     base = args.base or repo.default_branch(repo_path)
     instruction = read_instruction(args.instruction)
     if not instruction:
         console.die("指示が要る")
     repo.fetch(repo_path)
-    if repo.remote_branch_exists(repo_path, f"stack/{args.work}--task-0"):
+    if repo.remote_branch_exists(repo_path, f"stack/{args.name}--task-0"):
         console.die(
-            f"作業名 {args.work} は既に使われている（origin に stack/{args.work}--task-0 がある）"
+            f"ラン名 {args.name} は既に使われている（origin に stack/{args.name}--task-0 がある）"
         )
-    st = run_store.new_state(args.work, instruction, repo_path, base)
+    st = run_store.new_state(args.name, instruction, repo_path, base)
     st["judgeToken"] = secrets.token_hex(16)
     run.ensure()
     return st
@@ -84,29 +84,29 @@ def cmd_run(args: argparse.Namespace) -> int:
             console.info(f"足りない: {problem}")
         console.die("起動前の確認に落ちたので走らない")
 
-    run = paths.Run(args.work)
+    run = paths.Run(args.name)
     if run.exists():
         st = run_store.load(run.state)
-        console.info(f"{args.work} を続きから始める（タスク {len(st['tasks'])} 件）")
+        console.info(f"{args.name} を続きから始める（タスク {len(st['tasks'])} 件）")
     else:
         st = start_run(args, run)
 
-    # 前の run が段の途中で落ちていると、走っていない段が残る
+    # 前のランがステージの途中で落ちていると、走っていないステージが残る
     st["running"] = {}
     return drive(Ctx(run=run, st=st))
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    run = paths.Run(args.work)
+    run = paths.Run(args.name)
     if not run.exists():
-        console.die(f"その run が無い: {run.dir}")
+        console.die(f"そのランが無い: {run.dir}")
     st = run_store.load(run.state)
     console.emit(
         {
-            "work": st["work"],
+            "name": st["name"],
             "outcome": task_order.outcome_of(st),
             "repo": st["repo"],
-            "stackPr": st.get("stackPr"),
+            "overviewPr": st.get("overviewPr"),
             "counts": task_order.counts(st),
             "tasks": [
                 {k: t.get(k) for k in ("id", "status", "pr", "tier", "subject", "reason")}
@@ -126,14 +126,14 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_list(_: argparse.Namespace) -> int:
     for name in paths.list_runs():
         st = run_store.load(paths.Run(name).state)
-        print(f"{name:<24} PR #{st.get('stackPr') or '-':<6} {task_order.counts(st)}")
+        print(f"{name:<24} PR #{st.get('overviewPr') or '-':<6} {task_order.counts(st)}")
     return 0
 
 
 def cmd_clean(args: argparse.Namespace) -> int:
-    run = paths.Run(args.work)
+    run = paths.Run(args.name)
     if not run.exists():
-        console.die(f"その run が無い: {run.dir}")
+        console.die(f"そのランが無い: {run.dir}")
     st = run_store.load(run.state)
     if os.path.isdir(run.tree):
         got = repo.remove_worktree(st["repo"], run.tree)
@@ -188,33 +188,33 @@ def _review_action(args: argparse.Namespace, path: str) -> dict[str, Any]:
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
-    """段が呼ぶ。答えが置かれていればそれを出す。
+    """ステージが呼ぶ。回答が置かれていればそれを出す。
 
     **普通はフックが `defer` を返すので、このコマンドは走らない。** 走るのは、ほかのツールと
     同じターンで呼ばれて `defer` が効かなかったときである。そのときは単独で呼び直させる。
     """
     root = os.environ.get("AUTODEV_RUN_DIR") or ""
     if not root:
-        return console.die("AUTODEV_RUN_DIR が無い（段の中から呼んでください）", code=3)
+        return console.die("AUTODEV_RUN_DIR が無い（ステージの中から呼んでください）", code=3)
     loaded = files.read_json(os.path.join(root, "answers", f"{args.id}.json"))
     if isinstance(loaded, dict):
         console.emit(loaded, pretty=True)
         return 0
     return console.die(
-        "答えがまだ無い。**このコマンドは 1 つのターンで単独に呼ぶこと**"
-        "（ほかのツールと一緒に呼ぶと、答えを待って止まれない）。",
+        "回答がまだ無い。**このコマンドは 1 つのターンで単独に呼ぶこと**"
+        "（ほかのツールと一緒に呼ぶと、回答を待って止まれない）。",
         code=3,
     )
 
 
 def cmd_answer(args: argparse.Namespace) -> int:
-    """呼んだ側が呼ぶ。答えを置くと、次の `autodev run` で段が続きから進む。"""
-    run = paths.Run(args.work)
+    """呼び出し元のエージェントが呼ぶ。回答を置くと、次の `autodev run` でステージが続きから進む。"""
+    run = paths.Run(args.name)
     if not run.exists():
-        console.die(f"その run が無い: {run.dir}")
+        console.die(f"そのランが無い: {run.dir}")
     body = _body(args).strip()
     if not body:
-        console.die("答えの本文が空")
+        console.die("回答の本文が空")
     files.write_json(run.answer(args.id), {"id": args.id, "answer": body})
     remaining = [q["id"] for q in unanswered(run) if q.get("id")]
     console.emit({"wrote": run.answer(args.id), "remaining": remaining}, pretty=True)
@@ -222,7 +222,7 @@ def cmd_answer(args: argparse.Namespace) -> int:
 
 
 def cmd_review(args: argparse.Namespace) -> int:
-    """段が呼ぶ。`--dir` はタスクのディレクトリ（読み替え表の `<レビュー>` の親）。"""
+    """ステージが呼ぶ。`--dir` はタスクのディレクトリ（プレースホルダ表の `<レビュー>` の親）。"""
     path = args.dir if args.dir.endswith(".json") else os.path.join(args.dir, "review.json")
     try:
         console.emit(_review_action(args, path), pretty=True)

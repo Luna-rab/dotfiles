@@ -2,7 +2,7 @@
 
 autodev は `core`（純粋）・`ports`（外との境目）・`config`（置き場と表）・`app`（流れ）に
 分かれている。**この分かれ方は import の向きだけで保たれている。** `core` が 1 行
-`subprocess` を import すると、`core/verdict.py` の 6 検査を git とコマンド無しでは
+`subprocess` を import すると、`core/verdict.py` の 完了チェックを git とコマンド無しでは
 試せなくなる。そのとき他の検査は全部通るので、試せなくなったことは誰にも見えない。
 
 依存は一方通行である。
@@ -36,7 +36,7 @@ FORBIDDEN_LAYERS: dict[str, tuple[str, ...]] = {
     "": ("core", "ports", "config", "app", "cli"),
     "core": ("ports", "config", "app", "cli"),
     "ports": ("app", "cli"),
-    # 置き場と段の表は読まれる側で、他の層を読まない
+    # 置き場とステージの表は読まれる側で、他の層を読まない
     "config": ("core", "ports", "app", "cli"),
     "app": ("cli",),
     # 入口は全部の層を呼べる。引数を読んで app へ渡し、`cmd_status` が core の
@@ -236,7 +236,7 @@ def test_appとcliのモジュールを集める():
 
 @pytest.mark.parametrize("module", CORE)
 def test_coreは外を叩くモジュールを持ち込まない(module: str):
-    """`core` がこれらを持つと、6 検査を git とコマンド無しで試せなくなる。"""
+    """`core` がこれらを持つと、完了チェックを git とコマンド無しで試せなくなる。"""
     roots = {target.split(".")[0] for target in imports_of(module)}
     bad = roots & BANNED_IMPORTS
     assert bad == set(), f"{module} が {', '.join(sorted(bad))} を import した"
@@ -368,7 +368,7 @@ def test_パスの文字列計算は許す():
 
 
 def test_相対importを絶対名に解く():
-    """向きの判定はここに乗る。1 段のずれで規則違反を見逃す。"""
+    """向きの判定はここに乗る。1 ステージのずれで規則違反を見逃す。"""
     node = ast.parse("from ..core.verdict import Evidence").body[0]
     assert isinstance(node, ast.ImportFrom)
     got = imported(f"{ROOT}.ports.evidence", node)

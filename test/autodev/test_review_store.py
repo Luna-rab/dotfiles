@@ -2,8 +2,8 @@
 
 `done()` は `round` を文字列で書き、`reviewers_seen()` は読むときに文字列へ直す。
 review.json は追跡しないファイルで手でも直せるので、どちらの側も型を仮定しない。
-**照合が外れると検査④が「r1: review:normal が走っていない」と言い、正しく決着した
-タスクが全部 blocked になる。** 落ちるのは run を 1 本通したときだけで、ほかの検査は
+**照合が外れると完了チェック④が「r1: review:normal が走っていない」と言い、正しく解消した
+タスクが全部 blocked になる。** 落ちるのはランを 1 本通したときだけで、ほかの検査は
 全部通る。
 """
 
@@ -39,7 +39,7 @@ def facts_from(review: dict[str, Any]) -> Evidence:
     )
 
 
-def test_数値のラウンドでも走り終えたレビュアーを拾う():
+def test_数値のラウンドでも走り終えたレビューステージを拾う():
     data = {"runs": [{"reviewer": "review:normal", "round": 1}]}
     assert review_store.reviewers_seen(data, "1") == ["review:normal"]
 
@@ -64,15 +64,15 @@ def test_ラウンドを渡さなければ全部数える():
     assert review_store.reviewers_seen(data) == ["review:normal", "review:adversarial"]
 
 
-def test_ラウンドの鍵は文字列にそろえる():
-    """鍵は `app/review_loop.py` が作る `str(index)` と引き当てる。"""
+def test_ラウンドのキーは文字列にそろえる():
+    """キーは `app/review_loop.py` が作る `str(index)` と引き当てる。"""
     assert evidence._reviewers_by_round({"runs": ROUND_1}) == {
         "1": ("review:normal", "review:adversarial")
     }
 
 
-def test_数値のラウンドでもレビュアーの体数が足りていると判定する():
-    """証拠を集める側と読む側でラウンドの型が揃っていることを、検査④の合否で固定する。"""
+def test_数値のラウンドでもレビューステージの体数が足りていると判定する():
+    """証拠を集める側と読む側でラウンドの型が揃っていることを、完了チェック④の合否で固定する。"""
     report = verdict.Report()
     verdict.check_reviewer_count(
         report,

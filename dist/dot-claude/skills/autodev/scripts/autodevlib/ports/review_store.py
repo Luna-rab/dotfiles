@@ -1,14 +1,14 @@
 """レビュー記録（review.json）の読み書き。
 
-段は JSON を直接書かず、`autodev review …` を通す。書式の書き間違い（rating の綴り、
+ステージは JSON を直接書かず、`autodev review …` を通す。書式の書き間違い（rating の綴り、
 許されない status 遷移、コメント無しの status 変更）をその場で拒むためである。
 **落ちた指摘が静かに消えると、次のラウンドで誰も気づけない。**
 
-**status を動かせるのは裁定段だけである。** 実装もレビュアーも動かせない——自分で閉じられると
-「open が 0 件」が自己承認になる。判定は役割の申告ではなく、**driver が裁定段の process にだけ
-渡す `AUTODEV_JUDGE_TOKEN`** で行う。他の段はこの環境変数を持たないので、名乗っても通らない。
+**status を動かせるのはジャッジだけである。** 実装もレビューステージも動かせない——自分で閉じられると
+「未解決が 0 件」が自己承認になる。判定は役割の名乗りではなく、**driver がジャッジの process にだけ
+渡す `AUTODEV_JUDGE_TOKEN`** で行う。他のステージはこの環境変数を持たないので、名乗っても通らない。
 
-1 巡目は通常レビューと敵対的レビューが同時に走るので、書き込みは flock で直列化する。
+1 ラウンド目は通常レビューと敵対的レビューが同時に走るので、書き込みは flock で直列化する。
 """
 
 from __future__ import annotations
@@ -23,13 +23,13 @@ from typing import Any
 
 from ..core import review_policy
 
-REVIEWERS: tuple[str, ...] = ("review:normal", "review:adversarial")
-COMMENTERS: tuple[str, ...] = (*REVIEWERS, "impl", "judge")
+REVIEW_STAGES: tuple[str, ...] = ("review:normal", "review:adversarial")
+COMMENTERS: tuple[str, ...] = (*REVIEW_STAGES, "impl", "judge")
 RATINGS: tuple[str, ...] = ("must-fix", "should-fix", "nit")
 STATUSES: tuple[str, ...] = ("open", "closed", "rejected")
 TRANSITIONS: dict[str, tuple[str, ...]] = {
     "open": ("closed", "rejected"),
-    # 直した箇所が次のラウンドで壊れていたら、裁定が開き直せる
+    # 直した箇所が次のラウンドで壊れていたら、ジャッジが開き直せる
     "closed": ("open",),
     "rejected": ("open",),
 }
@@ -37,7 +37,7 @@ JUDGE_TOKEN_ENV = "AUTODEV_JUDGE_TOKEN"
 
 
 class Refused(Exception):
-    """段の呼び方が規約に反している。理由をそのまま段へ返す。"""
+    """ステージの呼び方が規約に反している。理由をそのままステージへ返す。"""
 
 
 def now() -> str:
@@ -86,7 +86,7 @@ def read(path: str) -> dict[str, Any] | None:
 
 
 def init(path: str) -> bool:
-    """空で作る。既にあれば中身に触らない。レビュー段がラウンドの先頭で呼ぶ。"""
+    """空で作る。既にあれば中身に触らない。レビューステージがラウンドの先頭で呼ぶ。"""
     created = not os.path.exists(path)
     with opened(path):
         pass
@@ -94,8 +94,10 @@ def init(path: str) -> bool:
 
 
 def check_reviewer(value: str) -> str:
-    if value not in REVIEWERS:
-        raise Refused(f"reviewer は {' / '.join(REVIEWERS)} のいずれかにしてください: {value!r}")
+    if value not in REVIEW_STAGES:
+        raise Refused(
+            f"reviewer は {' / '.join(REVIEW_STAGES)} のいずれかにしてください: {value!r}"
+        )
     return value
 
 
@@ -112,10 +114,10 @@ def check_rating(value: str) -> str:
 
 
 def check_judge() -> None:
-    """裁定段だけが status を動かせる。名乗りではなく環境変数で判定する。"""
+    """ジャッジだけが status を動かせる。名乗りではなく環境変数で判定する。"""
     if not os.environ.get(JUDGE_TOKEN_ENV):
         raise Refused(
-            "status を動かせるのは裁定段だけです。"
+            "status を動かせるのはジャッジだけです。"
             "レビューは new と comment、実装は comment だけを使ってください"
         )
 
@@ -168,7 +170,7 @@ def comment(path: str, review_id: str, commenter: str, body: str) -> dict[str, i
 def set_status(path: str, review_id: str, to: str, body: str) -> dict[str, int]:
     """status を動かす。**コメントを必ず伴う。**
 
-    コメント無しで畳めると「なぜ閉じたか」が残らない。次のラウンドの裁定も、
+    コメント無しで畳めると「なぜ閉じたか」が残らない。次のラウンドのジャッジも、
     残件を読む人間も、判断の根拠を追えなくなる。
     """
     check_judge()
@@ -204,7 +206,7 @@ def items(data: dict[str, Any], only_open: bool = True) -> list[dict[str, Any]]:
 
 
 def done(path: str, reviewer: str, round_label: str, found: int) -> dict[str, Any]:
-    """レビュー段が**終わったことを申告する**。指摘 0 件でも必ず呼ぶ。
+    """レビューステージが**終わったことを報告する**。指摘 0 件でも必ず呼ぶ。
 
     指摘の有無から体数を数えると、「走ったが指摘 0 件」と「起動しなかった」を区別できない。
     だから走行そのものを記録に残す。
@@ -212,7 +214,7 @@ def done(path: str, reviewer: str, round_label: str, found: int) -> dict[str, An
     check_reviewer(reviewer)
     with opened(path) as data:
         # **ラウンドは文字列で書く。** 数値で入ると `reviewers_seen()` の照合が外れ、
-        # 検査④が「r1: review:normal が走っていない」と言って全タスクが blocked になる
+        # 完了チェック④が「r1: review:normal が走っていない」と言って全タスクが blocked になる
         data["runs"].append(
             {"reviewer": reviewer, "round": str(round_label), "at": now(), "found": found}
         )
@@ -220,14 +222,14 @@ def done(path: str, reviewer: str, round_label: str, found: int) -> dict[str, An
 
 
 def reviewers_seen(data: dict[str, Any], round_label: str | None = None) -> list[str]:
-    """そのラウンドで**走り終えた**レビュアーの種別。
+    """そのラウンドで**走り終えた**レビューステージの種別。
 
-    体数をコードに埋めず、ここから数える。後からレビュー段を足しても、期待する体数の
-    計算に手を入れなくて済む（`REVIEWERS` に 1 行足すだけになる）。
+    体数をコードに埋めず、ここから数える。後からレビューステージを足しても、期待する体数の
+    計算に手を入れなくて済む（`REVIEW_STAGES` に 1 行足すだけになる）。
 
     **`round` は文字列に直してから比べる。** `done()` は文字列で書くが、review.json は
     追跡しないファイルで手でも直せるので、読むときに型を仮定しない。数値の 1 と文字列の
-    "1" が混ざると照合が外れ、検査④が「r1: review:normal が走っていない」と言って
+    "1" が混ざると照合が外れ、完了チェック④が「r1: review:normal が走っていない」と言って
     全タスクが blocked になる。
     """
     seen: list[str] = []
@@ -243,6 +245,6 @@ def adversarial_ran(data: dict[str, Any]) -> bool:
     """このタスクで敵対的レビューが**1 度でも**走り終えたか。
 
     ラウンド単位の体数では「standard なのに敵対的が 1 度も走っていない」を表せない
-    （2 巡目で決着したタスクは期待も実測も 1 になる）。タスク全体で見る。
+    （2 ラウンド目で解消したタスクは期待も実測も 1 になる）。タスク全体で見る。
     """
     return any(run["reviewer"] == "review:adversarial" for run in data.get("runs", []))

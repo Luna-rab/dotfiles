@@ -1,4 +1,4 @@
-"""hud の検査で使う入力。Claude Code が渡す JSON と、autodev の run の置き場。"""
+"""hud の検査で使う入力。Claude Code が渡す JSON と、autodev の ランディレクトリ。"""
 
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ def session(now: float) -> dict:
 
 
 def state(**over) -> dict:
-    """段 review:adversarial が 4 分 12 秒走っている run。task2 が実行中。"""
+    """ステージ review:adversarial が 4 分 12 秒走っているラン。task2 が実行中。"""
     now = dt.datetime.now().astimezone()
     data = {
-        "work": "range-field",
-        "stackPr": 4,
+        "name": "range-field",
+        "overviewPr": 4,
         "updatedAt": now.isoformat(),
         "running": {
             "review:adversarial": {
@@ -61,9 +61,9 @@ def state(**over) -> dict:
 
 
 def write_run(root, **over) -> None:
-    """`root/<作業名>/` に state.json・review.json・段のログを置く。"""
+    """`root/<ラン名>/` に state.json・review.json・ステージのログを置く。"""
     st = state(**over)
-    run = root / st["work"]
+    run = root / st["name"]
     (run / "tasks" / "task2").mkdir(parents=True)
     (run / "logs" / "task2").mkdir(parents=True)
     (run / "state.json").write_text(json.dumps(st), encoding="utf-8")

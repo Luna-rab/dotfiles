@@ -1,4 +1,4 @@
-"""段のログ（`claude --output-format stream-json` の 1 行 1 イベント）から、何をしたかを拾う。"""
+"""ステージのログ（`claude --output-format stream-json` の 1 行 1 イベント）から、何をしたかを拾う。"""
 
 from __future__ import annotations
 

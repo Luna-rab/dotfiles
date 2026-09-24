@@ -1,8 +1,8 @@
 """autodev のタスクリスト。Claude Code のタスクリストのように、現在地・済んだもの・これからを出す。
 
-autodev range-field ▸ task2 impl r0 · 4m12s 26往復 Edit · 土台 PR #4
+autodev range-field ▸ task2 実装 r0 · 4m12s 26ターン Edit · 概要 PR #4
   ✔ task1 パーサの土台を作る      #5
-  ◼ task2 範囲指定を足す          testgen ✔ › impl ◼ › review › judge › PR
+  ◼ task2 範囲指定を足す          テスト作成 ✔ › 実装 ◼ › レビュー › ジャッジ › PR 本文
   ◻ task3 CLI に出す
 """
 
@@ -23,7 +23,7 @@ REASON_WIDTH = 24
 
 def headline(head: Headline) -> Text:
     line = Text("autodev ", style=DIM)
-    line.append(head.work, style=ACCENT)
+    line.append(head.run_name, style=ACCENT)
     line.append(" ▸ ", style=DIM)
     if head.state is State.WAITING:
         line.append(head.doing, style=YELLOW)
@@ -33,20 +33,20 @@ def headline(head: Headline) -> Text:
         if head.overdue:
             line.append("!", style=RED)
         if head.turns:
-            line.append(f" {head.turns}往復 {head.tool}".rstrip(), style=DIM)
+            line.append(f" {head.turns}ターン {head.tool}".rstrip(), style=DIM)
     elif head.state is State.STOPPED:
-        line.append(f"{head.doing} · 積んだ {head.stacked}/{head.total}", style=DIM)
+        line.append(f"{head.doing} · スタック済み {head.stacked}/{head.total}", style=DIM)
         if head.held:
-            line.append(f" · 保留 {head.held}", style=YELLOW)
+            line.append(f" · 要対応 {head.held}", style=YELLOW)
     else:
         line.append(head.doing, style=DIM)
-    if head.stack_pr and head.state is not State.STOPPED:
-        line.append(f" · 土台 PR #{head.stack_pr}", style=DIM)
+    if head.overview_pr and head.state is not State.STOPPED:
+        line.append(f" · 概要 PR #{head.overview_pr}", style=DIM)
     return line
 
 
 def pipeline(steps: list[Step]) -> Text:
-    """段の並びを 1 行にする（`testgen ✔ › impl ◼ › review › judge › PR`）。"""
+    """ステージの並びを 1 行にする（`テスト作成 ✔ › 実装 ◼ › レビュー › ジャッジ › PR 本文`）。"""
     out = Text()
     for i, step in enumerate(steps):
         if i:

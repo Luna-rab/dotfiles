@@ -23,7 +23,7 @@ BOLD = Style(bold=True)
 GAP = "   "
 #: 左の statusline と右のタスクリストの間
 SIDE = Text("  │  ", style=DIM)
-#: 段の並びの間
+#: ステージの並びの間
 ARROW = Text(" › ", style=DIM)
 
 #: タスクの状態ごとの記号・記号の色・件名の色。表に無い状態（pending）は ◻
@@ -35,10 +35,10 @@ STATUS_MARK: dict[str, tuple[str, Style, Style]] = {
 }
 PENDING_MARK = ("◻", DIM, Style())
 STATUS_LABEL = {
-    "stacked": "積んだ",
+    "stacked": "スタック済み",
     "running": "実行中",
     "pending": "未着手",
-    "blocked": "保留",
+    "blocked": "要確認",
     "failed": "失敗",
 }
 RATING_STYLE = {"must-fix": RED, "should-fix": YELLOW, "nit": DIM}

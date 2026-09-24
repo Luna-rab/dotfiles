@@ -3,9 +3,9 @@
 # requires-python = ">=3.10"
 # dependencies = ["textual>=0.80"]
 # ///
-"""autodev の run を別のタブで見る画面の入口。中身は `hud/app/watch.py`。
+"""autodev のランを別のタブで見る画面の入口。中身は `hud/app/watch.py`。
 
-~/.claude/scripts/autodev-watch.py [作業名]
+~/.claude/scripts/autodev-watch.py [ラン名]
 """
 
 import os

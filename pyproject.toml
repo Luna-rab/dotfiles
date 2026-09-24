@@ -1,8 +1,7 @@
 # このリポジトリの Python コードを検査するための設定。
 #
 # **配布には要らない。** ここに書いてあるのは開発と CI だけで使う道具（ruff・ty）の設定で、
-# dotfiles を入れた人がこれらを持っている必要はない。supervisor スキルの 4 スクリプトは
-# 標準ライブラリだけで動き、shebang も `#!/usr/bin/env python3` のままである。
+# dotfiles を入れた人がこれらを持っている必要はない。
 #
 # 使い方:
 #   uv run ruff check .          問題を挙げる
@@ -10,7 +9,8 @@
 #   uv run ruff format .         整形する
 #   uv run ty check              型を検査する
 #
-# uv は mise/config.toml に入れてあるので、install.sh を通したマシンには入っている。
+# uv は dist/dot-config/mise/config.toml に入れてあるので、install.sh を通したマシンには
+# 入っている。
 
 [project]
 name = "dotfiles"
@@ -21,24 +21,30 @@ dependencies = []
 
 [dependency-groups]
 # `uv run ruff` / `uv run ty` / `uv run pytest` が使う。実行時には要らない。
-# pyyaml と tree-sitter-language-pack が入っているのは、ty が check-skills.py の `import yaml` と
-# .claude/hooks/review-added-comments.py の `import tree_sitter_language_pack` を解決し、
-# pytest がフックを関数として呼べるようにするため。実行時の依存はスクリプト自身が
-# PEP 723（`# /// script`）で宣言している
-dev = ["ruff>=0.16", "ty>=0.0.72", "pytest>=8", "pyyaml>=6", "tree-sitter-language-pack>=0.13"]
+# pyyaml と tree-sitter-language-pack が入っているのは、ty が check-skills.py の
+# `import yaml` と dist/dot-claude/hooks/review-new-comments.py の
+# `import tree_sitter_language_pack` を解決し、pytest がフックを関数として呼べるように
+# するため。実行時の依存はスクリプト自身が PEP 723（`# /// script`）で宣言している
+dev = [
+  "ruff>=0.16",
+  "ty>=0.0.72",
+  "pytest>=8",
+  "pyyaml>=6",
+  "tree-sitter-language-pack>=0.13",
+]
 
 # パッケージとして配るものではないので、ビルドバックエンドを持たせない
 [tool.uv]
 package = false
 
 [tool.ruff]
-# supervisor のスクリプトが動く最低ラインに合わせる。ここを上げると、古い python3 しか
+# スキルのスクリプトが動く最低ラインに合わせる。ここを上げると、古い python3 しか
 # 入っていないマシンで動かない構文を ruff が許してしまう
 target-version = "py310"
 line-length = 100
 exclude = [
   # git worktree の実体。エージェントが作った他ブランチのチェックアウトが入っており、
-  # このリポジトリのソースではない（.claude/.gitignore でも追跡から外してある）
+  # このリポジトリのソースではない（.gitignore でも追跡から外してある）
   ".claude/worktrees",
 ]
 
@@ -71,15 +77,28 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # lib/__init__.py は re-export だけを行うので、未使用 import に見える
 "**/lib/__init__.py" = ["F401"]
+# 検査の関数名を日本語で書くので、識別子の非 ASCII を弾く PLC2401 を検査だけ外す。
+# 落ちたときに pytest が出す名前だけで「何が壊れたか」が読める
+# （`test_2度目を忘れると落ちたままになる`）
+"test/**" = ["PLC2401"]
 
 [tool.ty.environment]
 python-version = "3.10"
-# `from lib.shell import ...` を解決させる。lib/ は scripts/ を起点にした
-# パッケージで、スクリプトは scripts/ 直下から実行される
-extra-paths = [".claude/skills/supervisor/scripts"]
+# スクリプトが自分のディレクトリを起点に import するので、その起点を教える
+# （autodev は `from autodevlib import ...`）。
+extra-paths = [
+  "dist/dot-claude/skills/autodev/scripts",
+]
 
 [tool.ty.src]
-exclude = [".claude/worktrees"]
+# **`!dist` を外すと配布物が検査されない。** ty の既定の除外に `dist` が入っており、
+# この `exclude` は既定を置き換えず足すだけなので、`!` で打ち消さないと
+# 「All checks passed!」がスキルのスクリプトについて何も言わなくなる。
+exclude = [".claude/worktrees", "!dist"]
 
 [tool.pytest.ini_options]
-testpaths = [".claude/hooks/tests"]
+# 検査は `test/` にだけ置く。**`dist/` の中には置かない**——`dist/` は $HOME へ配るもので、
+# install.sh を通した人に検査は要らない。`test/` の下は対象を写した形にしてある
+# （`test/autodev/` が `dist/dot-claude/skills/autodev/`、`test/dot-claude/` が
+# `dist/dot-claude/`）
+testpaths = ["test"]

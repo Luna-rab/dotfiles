@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fitsOnePr", "tasks", "verify", "blocked"],
+  "properties": {
+    "fitsOnePr": {
+      "type": "boolean",
+      "description": "1 つの PR に収まるか"
+    },
+    "tasks": {
+      "type": "array",
+      "description": "下から順（tasks[0] が task1 になり、stacked PR の一番下に積まれる）",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "tier", "dod", "acceptance"],
+        "properties": {
+          "subject": { "type": "string" },
+          "tier": { "type": "string", "enum": ["light", "standard"] },
+          "dod": { "type": "string" },
+          "acceptance": { "type": "string" },
+          "scope": { "type": "string" },
+          "entrypoints": { "type": "string" },
+          "contracts": { "type": "string" },
+          "blockedBy": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "verify": {
+      "type": "array",
+      "description": "マージしてよいと言える全チェック。空で返してはいけない",
+      "items": { "type": "string" }
+    },
+    "testGlobs": { "type": "array", "items": { "type": "string" } },
+    "protected": { "type": "array", "items": { "type": "string" } },
+    "briefNotes": {
+      "type": "string",
+      "description": "次の段が知らないと間違えること。brief.md の「気をつけること」に入る"
+    },
+    "decisions": { "type": "array", "items": { "type": "string" } },
+    "deferrals": { "type": "array", "items": { "type": "string" } },
+    "blocked": {
+      "type": "boolean",
+      "description": "受入条件が一意に定まらないなら true"
+    },
+    "questions": { "type": "array", "items": { "type": "string" } }
+  }
+}

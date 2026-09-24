@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body"],
+  "properties": {
+    "body": {
+      "type": "string",
+      "description": "契約の節の並びに従った Markdown。stacked PR の案内は書かない（driver が足す）"
+    }
+  }
+}

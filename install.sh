@@ -3,6 +3,11 @@
 
 set -ue
 
+# dist/ の中身は $HOME の写しである。`dot-` で始まる名前が、$HOME では先頭にドットが付く
+# 名前になる（`dist/dot-zshrc` → `~/.zshrc`）。
+#
+# **配るものは dist/ に置く。** dist/ の外は見ないので、このリポジトリ自身の設定や
+# 検査の生成物が $HOME に混ざることはない。
 link_to_homedir() {
   command echo "backup old dotfiles..."
   if [ ! -d "$HOME/.dotbackup" ];then
@@ -10,31 +15,29 @@ link_to_homedir() {
     command mkdir "$HOME/.dotbackup"
   fi
 
-  local dotdir=$1
-  if [[ "$HOME" != "$dotdir" ]];then
-    for f in "$dotdir"/.??*; do
-      # .git で始まるファイル/ディレクトリはリンクしない
-      local fname=`basename "$f"`
-      [[ $fname == .git* ]] && continue
-      # .claude は link_claude_config() で個別に扱う（ランタイムデータを巻き込まないため）
-      [[ $fname == .claude ]] && continue
-      # 開発ツールの生成物はリンクしない。このリポジトリで `uv run ruff` / `uv run ty` /
-      # `uv run pytest` を実行すると .venv/（uv が作る仮想環境）、.ruff_cache/、.pytest_cache/
-      # がルート直下に生まれる。どれも .gitignore で追跡対象外なので clone した人の手元には
-      # 無いが、検査を回した後に install.sh を実行すると $HOME に symlink が張られてしまう。
-      [[ $fname == .venv || $fname == .ruff_cache || $fname == .pytest_cache ]] && continue
-      if [[ -L "$HOME/$fname" ]];then
-        command rm -f "$HOME/$fname"
-      fi
-      if [[ -e "$HOME/$fname" ]];then
-        command mv "$HOME/$fname" "$HOME/.dotbackup"
-      fi
-      command ln -snf "$f" "$HOME"
-      command echo "create symboliclink $f"
-    done
-  else
-    command echo "same install src dest"
-  fi
+  local distdir=$1
+  local f
+  for f in "$distdir"/dot-*; do
+    [[ -e "$f" ]] || continue
+    local name
+    name=$(command basename "$f")
+    # 配布先が $HOME の直下ではないもの（dot-config → ~/.config、dot-local → ~/.local）と、
+    # 項目ごとに置き方が違うもの（dot-claude は link_claude_config() を見る）は、
+    # それぞれ専用の関数が受け持つ。
+    #
+    # **dot-config の下は 1 ファイルずつ名指しで配る。** `dist/dot-config/gh/config.yml` を
+    # 足しても、それを配る関数が無ければ何も起きない（警告も出ない）。~/.config へ配る
+    # ファイルを増やすときは、link_mise_config() と同じ形の関数を書いて呼び出しに足す。
+    [[ $name == dot-claude || $name == dot-config || $name == dot-local ]] && continue
+    local dst="$HOME/.${name#dot-}"
+    if [[ -L "$dst" ]]; then
+      command rm -f "$dst"
+    elif [[ -e "$dst" ]]; then
+      command mv "$dst" "$HOME/.dotbackup"
+    fi
+    command ln -snf "$f" "$dst"
+    command echo "create symboliclink $f"
+  done
 }
 
 set_global_gitignore() {
@@ -45,13 +48,13 @@ set_global_gitignore() {
   if [[ -e "$HOME/.config/git/ignore" ]];then
     command mv "$HOME/.config/git/ignore" "$HOME/.config/git/ignore.backup"
   fi
-  local dotdir=$1
-  command cp "$dotdir/.gitignore_global" "$HOME/.config/git/ignore"
+  local distdir=$1
+  command cp "$distdir/dot-config/git/ignore" "$HOME/.config/git/ignore"
 }
 
 link_sheldon_config() {
-  local dotdir=$1
-  local src="$dotdir/sheldon/plugins.toml"
+  local distdir=$1
+  local src="$distdir/dot-config/sheldon/plugins.toml"
   local dst="$HOME/.config/sheldon/plugins.toml"
   [[ -e "$src" ]] || return 0
 
@@ -66,8 +69,6 @@ link_sheldon_config() {
   command echo "create symboliclink $src"
 }
 
-# mise（プログラミング言語やコマンドラインツールのバージョンを管理するツール）の
-# 設定ファイルを ~/.config/mise/config.toml に symlink する。
 # ここに書いてあるツールは、このあと install_mise_tools() が入れる。
 #
 # symlink にできるのは、`mise use -g <tool>@latest` が symlink を消して新しい
@@ -75,8 +76,8 @@ link_sheldon_config() {
 # 2026.8.2 で確認）。つまりコマンドで追加したツールも dotfiles リポジトリの
 # git diff に出る。
 link_mise_config() {
-  local dotdir=$1
-  local src="$dotdir/mise/config.toml"
+  local distdir=$1
+  local src="$distdir/dot-config/mise/config.toml"
   local dst="$HOME/.config/mise/config.toml"
   [[ -e "$src" ]] || return 0
 
@@ -91,9 +92,55 @@ link_mise_config() {
   command echo "create symboliclink $src"
 }
 
+# dist/dot-local/bin/ 配下のファイルを ~/.local/bin に 1 つずつ symlink する。
+# ~/.local/bin は PATH の順序で /usr/local/bin より先に来る（.profile が PATH の先頭に足す）。
+link_local_bin() {
+  local distdir=$1
+  local srcdir="$distdir/dot-local/bin"
+  local dstdir="$HOME/.local/bin"
+
+  # dist/dot-local/bin/ ごと消したときも、残った symlink を片付ける
+  prune_dead_links "$dstdir"
+  prune_dead_links "$HOME/.local/share"
+  [[ -d "$srcdir" ]] || return 0
+
+  command echo "setup ~/.local/bin ..."
+  command mkdir -p "$dstdir"
+
+  local src
+  for src in "$srcdir"/*; do
+    [[ -f "$src" ]] || continue
+    local name
+    name=$(command basename "$src")
+    local dst="$dstdir/$name"
+    if [[ -L "$dst" ]]; then
+      command rm -f "$dst"
+    elif [[ -e "$dst" ]]; then
+      command mv "$dst" "$HOME/.dotbackup"
+    fi
+    command ln -snf "$src" "$dst"
+    command echo "create symboliclink $src"
+  done
+}
+
+# **PATH の上に行き先の無い symlink が残ると `command not found` になり、消えたのか
+# 壊れたのか区別が付かない。**
+prune_dead_links() {
+  local dstdir=$1
+  [[ -d "$dstdir" ]] || return 0
+
+  local link
+  for link in "$dstdir"/*; do
+    if [[ -L "$link" && ! -e "$link" ]]; then
+      command rm -f "$link"
+      command echo "remove dangling symboliclink $link"
+    fi
+  done
+}
+
 link_claude_config() {
-  local dotdir=$1
-  local src="$dotdir/.claude"
+  local distdir=$1
+  local src="$distdir/dot-claude"
   local dst="$HOME/.claude"
   [[ -d "$src" ]] || return 0
 
@@ -103,7 +150,7 @@ link_claude_config() {
 
   # ディレクトリは symlink（リポジトリの編集が即反映される）
   local d
-  for d in skills commands agents rules scripts hooks; do
+  for d in commands agents rules scripts hooks; do
     [[ -d "$src/$d" ]] || continue
     if [[ -L "$dst/$d" ]]; then
       command rm -f "$dst/$d"
@@ -114,7 +161,6 @@ link_claude_config() {
     command echo "create symboliclink $src/$d"
   done
 
-  # ファイルも symlink（存在するもののみ）
   local file
   for file in CLAUDE.md keybindings.json; do
     [[ -e "$src/$file" ]] || continue
@@ -127,26 +173,36 @@ link_claude_config() {
     command echo "create symboliclink $src/$file"
   done
 
+  link_claude_skills "$src" "$dst"
   merge_claude_settings "$src" "$dst"
-  install_claude_plugins "$src"
   warm_claude_hooks "$src"
 }
 
-# .claude/hooks/ のスクリプトが宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
+# dist/dot-claude/hooks/ のスクリプトが宣言する依存（PEP 723 の `# /// script`）を先に取り寄せる。
 # フックは Claude Code が応答を終えるたびに起動されるので、初回の起動で uv が
-# パッケージをダウンロードし始めると、その間ユーザーは待たされる。
+# tree-sitter-language-pack をダウンロードし始めると、その間ユーザーは待たされる
+# （settings.json の timeout 15 秒も超える）。取り寄せてあれば 1 回 0.06 秒で終わる。
 # uv が無ければ（mise の導入に失敗しているなど）警告だけ出して先へ進む。
+#
+# **install_mise_tools() が入れた uv は、この時点ではまだ PATH に無い。** PATH に載せるのは
+# .zshrc の `mise activate` で、install.sh はそれを通らないため。
 warm_claude_hooks() {
   local src=$1
   [[ -d "$src/hooks" ]] || return 0
+  local mise_bin="$HOME/.local/bin/mise"
+  local uv_dir="" uv_path=""
   if ! command -v uv >/dev/null 2>&1; then
-    command echo "WARNING: uv not found. skip warming up $src/hooks (first Stop hook run will download deps)"
-    return 0
+    if [[ -x "$mise_bin" ]] && uv_path=$("$mise_bin" which uv 2>/dev/null); then
+      uv_dir=$(command dirname "$uv_path")
+    else
+      command echo "WARNING: uv not found. skip warming up $src/hooks (first Stop hook run will download deps)"
+      return 0
+    fi
   fi
   local hook
   for hook in "$src"/hooks/*.py; do
     [[ -x "$hook" ]] || continue
-    if "$hook" --warm; then
+    if PATH="${uv_dir:+$uv_dir:}$PATH" "$hook" --warm; then
       command echo "warm up $hook"
     else
       command echo "WARNING: failed to warm up $hook"
@@ -154,26 +210,59 @@ warm_claude_hooks() {
   done
 }
 
-# ~/.claude/settings.json への dotfiles 設定のマージ。
-#
-# dotfiles の .claude/settings.json (= マージ素材) を、実体の
-# ~/.claude/settings.json に deep-merge する。重なったキーの扱い:
-#   - オブジェクト同士は再帰的に合流する
-#   - 配列同士は和集合にする（既存の要素と順序を残し、素材にだけある要素を後ろに足す）。
-#     permissions.allow のようにユーザーが手元で積み上げたリストを全置換で消さないため
-#   - それ以外（文字列・数値・真偽値）は dotfiles 側の値で上書きする。
-#     dotfiles に宣言した設定を再実行のたびに効かせるため
-#
-# 既存の settings.json が JSON として読めないときはマージせず、警告を出して
-# ファイルに触らない（jq の失敗を成功と報告しない）。
-#
-# symlink にしないのは、実体が他ツールによって書き換えられる場合に
-# その変更が dotfiles リポジトリへ漏れるのを避けるため。
+# ~/.claude/skills をディレクトリごと symlink にしてはいけない。ここは第三者スキルの
+# インストーラ（`npx skills add <owner>/<repo> -g`）が実体をコピーする先でもあり、
+# symlink にしているとそのコピーが dotfiles リポジトリの中に落ちる（archify を入れた実測で
+# 214 ファイル / 8.5MB が git status に並ぶ）。
+# Claude Code はスキル 1 つ単位の symlink も辿る（v2.1.273 で確認）。
+link_claude_skills() {
+  local src=$1
+  local dst=$2
+  local srcdir="$src/skills"
+  local dstdir="$dst/skills"
+  [[ -d "$srcdir" ]] || return 0
+
+  if [[ -L "$dstdir" ]]; then
+    command rm -f "$dstdir"
+  elif [[ -e "$dstdir" && ! -d "$dstdir" ]]; then
+    command mv "$dstdir" "$HOME/.dotbackup"
+  fi
+  command mkdir -p "$dstdir"
+
+  local s
+  for s in "$srcdir"/*/; do
+    [[ -d "$s" ]] || continue
+    local name
+    name=$(command basename "$s")
+    local link="$dstdir/$name"
+    if [[ -L "$link" ]]; then
+      command rm -f "$link"
+    elif [[ -e "$link" ]]; then
+      command mv "$link" "$HOME/.dotbackup"
+    fi
+    command ln -snf "$srcdir/$name" "$link"
+    command echo "create symboliclink $srcdir/$name"
+  done
+
+  # リポジトリから消したスキルの symlink が残ると、Claude Code が行き先の無い symlink を読む
+  local link
+  for link in "$dstdir"/*; do
+    if [[ -L "$link" && ! -e "$link" ]]; then
+      command rm -f "$link"
+      command echo "remove dangling symboliclink $link"
+    fi
+  done
+}
+
+# ~/.claude/settings.json は symlink にしない。Claude Code 自身がこのファイルを
+# 書き換えるため（`/plugin` が extraKnownMarketplaces と enabledPlugins を足す、
+# `/config` が effortLevel などを書く）で、symlink だとその書き込みが dotfiles
+# リポジトリへ漏れる。
 merge_claude_settings() {
   local src=$1
   local dst=$2
-  local fragment="$src/settings.json"   # dotfiles が注入するキー
-  local target="$dst/settings.json"     # 実体
+  local fragment="$src/settings.json"
+  local target="$dst/settings.json"
 
   [[ -e "$fragment" ]] || return 0
 
@@ -182,41 +271,20 @@ merge_claude_settings() {
     return 0
   fi
 
-  # オブジェクトは再帰、配列は和集合（既存の順序を保つ）、それ以外は素材側で上書き。
-  # 引数は $a / $b で値に束縛する。a / b のままだとフィルタとして遅延評価され、
-  # reduce の中で累積値に対して再評価されて "Cannot index object with number" で落ちる
-  local merge_filter='
-    def merge($a; $b):
-      if ($a | type) == "object" and ($b | type) == "object" then
-        reduce (($a | keys) + ($b | keys) | unique[]) as $k ({};
-          .[$k] = (if ($a | has($k)) and ($b | has($k)) then merge($a[$k]; $b[$k])
-                   elif ($b | has($k)) then $b[$k]
-                   else $a[$k] end))
-      elif ($a | type) == "array" and ($b | type) == "array" then $a + ($b - $a)
-      else $b end;
-    merge(.[0]; .[1])'
-
   if [[ -e "$target" ]]; then
-    # 既存設定を壊した場合に備えてバックアップ
     command cp "$target" "$HOME/.dotbackup/settings.json.$(date +%s 2>/dev/null || echo bak)" 2>/dev/null || true
-    if command jq -s "$merge_filter" "$target" "$fragment" > "$target.tmp"; then
-      command mv "$target.tmp" "$target"
-      command echo "merge $fragment into $target (objects merged, arrays unioned, scalars overwritten by dotfiles)"
-    else
-      command rm -f "$target.tmp"
-      command echo "WARNING: failed to merge $fragment into $target (existing file is not valid JSON?)."
-      command echo "         $target is left untouched. fix it and run './install.sh' again"
-    fi
+    # '*' は再帰マージなので permissions などネストしたキーも安全に合流する
+    command jq -s '.[0] * .[1]' "$target" "$fragment" > "$target.tmp" \
+      && command mv "$target.tmp" "$target"
+    command echo "merge $fragment into $target (deep merge; local-only keys preserved)"
   else
-    # 実体が無い場合は素材をそのまま配置
     command jq '.' "$fragment" > "$target"
-    command echo "generate $target from $fragment (no existing settings yet)"
+    command echo "generate $target from $fragment"
   fi
 }
 
-# mise 本体と、mise/config.toml に書いたツールを入れる。link_mise_config() より後に呼ぶ。
-# ~/.config/mise/config.toml の symlink ができていないと、mise は入れる対象を
-# 読み取れない。
+# link_mise_config() より後に呼ぶ。~/.config/mise/config.toml の symlink ができていないと、
+# mise は入れる対象を読み取れない。
 #
 # devcontainer（VS Code が開発用に作るコンテナ）は毎回まっさらなコンテナから
 # 始まるので、ホストに入れたツールをコンテナは引き継がない。VS Code はコンテナを
@@ -253,30 +321,20 @@ install_mise_tools() {
   else
     command echo "WARNING: failed to install some mise tools. run './install.sh' again"
   fi
-
-  # mise が生成する shim（ツール本体へ橋渡しする実行ファイル）を PATH に載せる。
-  # この install.sh の以降の処理が jq を呼べるようにするため
-  # （merge_claude_settings() が jq を使う）。zsh は .zshrc の `mise activate` で
-  # 載せるが、この bash スクリプトはそれを通らない。
-  export PATH="$HOME/.local/share/mise/shims:$PATH"
 }
 
-# gh（GitHub 公式のコマンドラインツール）の拡張 gh-stack を入れる。
-#
 # gh-stack は stacked PR（1 つの大きな変更を、互いに積み重なる小さな PR に分けて
 # レビューに出す進め方）を操作する GitHub 公式の拡張で、`gh stack init` /
 # `gh stack add` / `gh stack rebase` / `gh stack push` / `gh stack link` /
-# `gh stack merge` を提供する。`.claude/skills/supervisor` がこの拡張に乗っていて、
-# 入っていないとタスクのブランチを stacked PR へ積めない（起動前の確認で止まる）。
+# `gh stack merge` を提供する。`dist/dot-claude/skills/autodev` がこの拡張に乗っていて、
+# 入っていないとタスクのブランチを stacked PR へつなげない。
 #
-# gh 本体は mise/config.toml では管理していない（システム側に入っている前提）ので、
+# gh 本体は dist/dot-config/mise/config.toml では管理していない（システム側に入っている前提）ので、
 # 無いときは WARNING を出して飛ばす——install.sh 全体を止めると、symlink の作成まで
 # 巻き添えにしてしまう。
 #
 # 既に入っているときは何もしない。`gh extension upgrade` を毎回走らせないのは、
-# gh-stack が v0.1.0 で、非互換な変更が supervisor の手順を壊しうるためである
-# （実測でも README の記述と挙動が 1 つ食い違っている。詳細は
-# .claude/skills/supervisor/design-notes.md の「gh stack v0.1.0 で確かめたこと」）。
+# gh-stack が v0.1.0 で、非互換な変更が autodev の手順を壊しうるためである。
 # 上げたいときはユーザーが `gh extension upgrade gh-stack` を叩く。
 install_gh_extensions() {
   if ! command -v gh >/dev/null 2>&1; then
@@ -299,99 +357,97 @@ install_gh_extensions() {
   fi
 }
 
-# dotfiles の .claude/settings.json に宣言したマーケットプレイスとプラグインを
-# 実際に取得する。
+# archify は図を作る第三者のスキル（https://github.com/tt-a1i/archify）。
+# link_claude_skills() が ~/.claude/skills を実ディレクトリにした後に呼ぶ必要がある。
 #
-# marketplace（プラグインの配布カタログ）と plugin の状態は 2 つに分かれている。
+# 作者が案内している `npx skills add tt-a1i/archify -g` は使わない。あれは default ブランチの
+# HEAD を丸ごとコピーするので、(1) 入るものが実行日で変わり devcontainer を作り直すたびに
+# 別のバージョンになる、(2) 開発版（実測では 2.17.0-dev.1）が入る、(3) テスト一式まで付いて
+# 214 ファイル / 8.5MB になる。release 添付の配布用 zip は 76 ファイル / 5.9MB。
 #
-#   宣言: ~/.claude/settings.json の extraKnownMarketplaces と enabledPlugins。
-#         「どのカタログを使い、どのプラグインを有効にするか」を書いたもの。
-#   実体: ~/.claude/plugins/ 配下のカタログの clone とプラグイン本体。
-#         マシンごとのランタイムデータなので dotfiles では管理しない。
-#
-# 宣言を settings.json に置いただけでは、新しいマシンに実体は入らない
-# （空の設定ディレクトリで検証済み。`claude plugin marketplace list` は
-# "No marketplaces configured" を返す）。実体を取得するのは `claude plugin`
-# コマンドなので、ここで宣言を読んで実行する。
-#
-# どちらのコマンドも、既に入っていれば "already installed" と表示して正常終了する
-# （冪等）ため、install.sh を何度実行しても問題ない。
-#
-# dotfiles の宣言から消したプラグインは自動では削除しない。ローカルで /plugin から
-# 試しに入れたものを install.sh が勝手に消さないため。実際に消すときは
-# `claude plugin uninstall <plugin>@<marketplace> --scope user` を手で実行する。
-install_claude_plugins() {
-  local src=$1
-  local fragment="$src/settings.json"
-  [[ -e "$fragment" ]] || return 0
+# 上げ方: https://tt-a1i.github.io/archify/skill-updates/archify/stable.json が公開している
+# version と artifact.sha256 を下の 2 行に写して ./install.sh を実行する。
+install_archify_skill() {
+  local version="2.16.0"
+  local sha256="4c59fa6557a2385beaaef8c7219cc414573acc9f0c30a932d5053b0b20689a46"
 
-  if ! command -v claude >/dev/null 2>&1; then
-    command echo "WARNING: claude not found. skip installing plugins declared in $fragment"
-    return 0
-  fi
-  if ! command -v jq >/dev/null 2>&1; then
-    command echo "WARNING: jq not found. skip installing plugins declared in $fragment"
+  local skillsdir="$HOME/.claude/skills"
+  local dstdir="$skillsdir/archify"
+
+  # ここが symlink のときに展開すると、行き先（dotfiles リポジトリ）を書き換えてしまう
+  if [[ -L "$skillsdir" ]]; then
+    command echo "WARNING: $skillsdir is a symlink. skip installing the archify skill"
     return 0
   fi
 
-  # extraKnownMarketplaces の各エントリを `claude plugin marketplace add` の引数に変換する。
-  # 引数の形は source の種類ごとに違う:
-  #   github           -> owner/repo（ref があれば owner/repo#ref）
-  #   git              -> リポジトリ URL（ref があれば URL#ref）
-  #   url              -> marketplace.json の URL
-  #   directory / file -> ローカルパス
-  # npm など引数に変換できない種類は空文字にして、下のループで警告して読み飛ばす。
-  local marketplaces
-  marketplaces=$(command jq -r '
-    (.extraKnownMarketplaces // {}) | to_entries[]
-    | .key as $name
-    | (.value.source // {}) as $s
-    | (
-        if   $s.source == "github"    then $s.repo + (if $s.ref then "#" + $s.ref else "" end)
-        elif $s.source == "git"       then $s.url  + (if $s.ref then "#" + $s.ref else "" end)
-        elif $s.source == "url"       then $s.url
-        elif $s.source == "directory" then $s.path
-        elif $s.source == "file"      then $s.path
-        else "" end
-      ) as $arg
-    | $name + "\t" + $arg
-  ' "$fragment")
+  # devcontainer を作り直すたびに落とし直さない
+  if [[ -f "$dstdir/skill-release.json" ]] \
+    && command grep -q "\"version\": \"$version\"" "$dstdir/skill-release.json"; then
+    command echo "archify skill $version already installed"
+    return 0
+  fi
 
-  local name arg
-  while IFS=$'\t' read -r name arg; do
-    [[ -n "$name" ]] || continue
-    if [[ -z "$arg" ]]; then
-      command echo "WARNING: skip marketplace '$name': unsupported source type in $fragment"
-      continue
-    fi
-    command echo "add marketplace $name ($arg) ..."
-    command claude plugin marketplace add "$arg" --scope user \
-      || command echo "WARNING: failed to add marketplace '$name' ($arg)"
-  done <<< "$marketplaces"
+  local unpack
+  if command -v unzip >/dev/null 2>&1; then
+    unpack=unzip
+  elif command -v python3 >/dev/null 2>&1; then
+    unpack=python3
+  else
+    command echo "WARNING: neither unzip nor python3 found. skip installing the archify skill"
+    return 0
+  fi
+  if ! command -v curl >/dev/null 2>&1 || ! command -v sha256sum >/dev/null 2>&1; then
+    command echo "WARNING: curl or sha256sum not found. skip installing the archify skill"
+    return 0
+  fi
 
-  # enabledPlugins は "<plugin>@<marketplace>" をキーに持つ。値が false のものは
-  # 明示的に無効化されているので取得しない。
-  local plugins
-  plugins=$(command jq -r '
-    (.enabledPlugins // {}) | to_entries[] | select(.value != false) | .key
-  ' "$fragment")
+  local tmpdir
+  tmpdir=$(command mktemp -d)
+  local zip="$tmpdir/archify.zip"
+  local url="https://github.com/tt-a1i/archify/releases/download/v$version/archify.zip"
 
-  local plugin
-  while read -r plugin; do
-    [[ -n "$plugin" ]] || continue
-    command echo "install plugin $plugin ..."
-    command claude plugin install "$plugin" --scope user \
-      || command echo "WARNING: failed to install plugin '$plugin'"
-  done <<< "$plugins"
+  command echo "install the archify skill $version ..."
+  if ! command curl -fsSL -o "$zip" "$url"; then
+    command echo "WARNING: failed to download $url. skip installing the archify skill"
+    command rm -rf "$tmpdir"
+    return 0
+  fi
+
+  # スキルは Claude が読んで従う指示と、`node bin/archify.mjs` で実行するコードを含む。
+  # 落ちてきたものが release 時点のものと同じだと確かめてから展開する。
+  local actual
+  actual=$(command sha256sum "$zip" | command cut -d' ' -f1)
+  if [[ "$actual" != "$sha256" ]]; then
+    command echo "WARNING: sha256 mismatch for archify $version. skip installing it"
+    command echo "         expected $sha256"
+    command echo "         actual   $actual"
+    command rm -rf "$tmpdir"
+    return 0
+  fi
+
+  # zip の中身は archify/ から始まる
+  if [[ "$unpack" == unzip ]]; then
+    command unzip -q "$zip" -d "$tmpdir/out"
+  else
+    command python3 -m zipfile -e "$zip" "$tmpdir/out"
+  fi
+
+  command rm -rf "$dstdir"
+  command mv "$tmpdir/out/archify" "$dstdir"
+  command rm -rf "$tmpdir"
+  command echo "archify skill $version installed to $dstdir"
 }
 
 dotdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-link_to_homedir "$dotdir"
-set_global_gitignore "$dotdir"
-link_sheldon_config "$dotdir"
-link_mise_config "$dotdir"
+distdir="$dotdir/dist"
+link_to_homedir "$distdir"
+set_global_gitignore "$distdir"
+link_sheldon_config "$distdir"
+link_mise_config "$distdir"
 install_mise_tools
 install_gh_extensions
-link_claude_config "$dotdir"
+link_local_bin "$distdir"
+link_claude_config "$distdir"
+install_archify_skill
 command echo "Install completed!!!!"
 command echo "run 'exec zsh' to start a shell with the installed tools on PATH"

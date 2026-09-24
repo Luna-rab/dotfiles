@@ -1,57 +1,55 @@
-# 最初にすべての階層のファイルを無視
-# 階層は必要なだけ追加する
+# `/*` と `/.**` で全部無視してから、追跡するものを `!` で戻す方式。
+# 新しく追跡したいファイルは、ここに `!` で足さないと git に入らない。
 ### all ignore ###
 /*
 /.**
 
 ### not ignore ###
-!/.zshrc
-!/.gitignore_global
-!/.gitconfig_shared
+# $HOME へ配るもの
+!/dist
+!/dist/**
 
-# sheldon (zsh plugin manager) config
-!/sheldon
-!/sheldon/**
-
-# mise (tool version manager) config
-!/mise
-!/mise/**
-
-# Claude Code config (portable). 実体のローカル設定はコミットしない
+# このリポジトリで作業するときだけ使う Claude Code の設定と道具。配らない
 !/.claude
 !/.claude/**
 
-# 上の `!/.claude/**` で復活した許可を打ち消し、生成物だけ再び無視する。
-#
-# `python3 -m compileall` や supervisor スキルのスクリプト実行で
-# .claude/skills/supervisor/scripts/{,lib/}__pycache__/ に .pyc が生まれるが、
-# ソースから作り直せるので追跡しない。
-/.claude/**/__pycache__/
-/.claude/**/*.pyc
-# Claude Code が作る作業ツリー（git worktree の実体）。リポジトリの複製なので
-# コミットしない。supervisor スキルが 1 タスクごとにここへ作る。
-/.claude/worktrees/
+# 検査。**配らない**（`dist/` の外に置いてあるのがその印である）
+!/test
+!/test/**
 
-# GitHub Actions のワークフロー
+# CI。push と pull request のたびに上の検査を流す
 !/.github
 !/.github/**
 
-# supervisor スキルの台帳とベース資料（docs/supervisor/）
-!/docs
-!/docs/**
+# 上の `!` で復活した許可を打ち消し、生成物だけ再び無視する。
+#
+# `python3 -m compileall` やスキルのスクリプト実行で
+# scripts/ の下の __pycache__/ に .pyc が生まれるが、ソースから作り直せるので追跡しない。
+/dist/**/__pycache__/
+/dist/**/*.pyc
+/.claude/**/__pycache__/
+/.claude/**/*.pyc
+/test/**/__pycache__/
+/test/**/*.pyc
+# Claude Code が作る作業ツリー（git worktree の実体）。リポジトリの複製なので
+# コミットしない。
+/.claude/worktrees/
 
-# ruff（lint と書式）と ty（型）の設定と、その依存の固定。この .gitignore は
-# 「まず `/*` で全部無視して `!` で戻す」方式なので、明示しないと追跡されない。
+# ruff（lint と書式）と ty（型）の設定と、その依存の固定。
 # 中身は開発と手元の検査だけで使うもので、dotfiles を入れた人には要らない
-# （supervisor スキルのスクリプトは標準ライブラリだけで動く）。
+# （スキルのスクリプトは標準ライブラリだけで動く）。
 !/pyproject.toml
 !/uv.lock
 
-# ruff がキャッシュを置く。ソースの副産物なので追跡しない
+# ruff と pytest がキャッシュを置く。ソースの副産物なので追跡しない
 /.ruff_cache/
-/.claude/**/.ruff_cache/
-# pytest がキャッシュを置く。同じく副産物
 /.pytest_cache/
+/dist/**/.ruff_cache/
+/dist/**/.pytest_cache/
+/.claude/**/.ruff_cache/
+/.claude/**/.pytest_cache/
+/test/**/.ruff_cache/
+/test/**/.pytest_cache/
 
 !install.sh
 !/README.md

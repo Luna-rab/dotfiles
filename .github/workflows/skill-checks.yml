@@ -1,10 +1,10 @@
-# .claude/skills/ 配下の壊れ（frontmatter の YAML 崩れ、リンク切れ、実行権限の欠落など）と、
+# dist/dot-claude/skills/ 配下の壊れ（frontmatter の YAML 崩れ、リンク切れ、実行権限の欠落など）と、
 # リポジトリの Python コードの書式・型を、push と pull request のたびに検出する。
 #
 # 検査は 4 つ。
 #   1. ruff    書式と lint（設定は pyproject.toml の [tool.ruff]）
 #   2. ty      型（設定は pyproject.toml の [tool.ty]）
-#   3. pytest  .claude/hooks/ のフックの動作（テストは .claude/hooks/tests/）
+#   3. pytest  dist/ のフックと autodev の動作（テストは test/）
 #   4. check-skills.py  スキルの構造。引数なし・リポジトリのルートから実行・
 #                       終了コード 0（合格）/ 1（不合格）という形を守って呼ぶ
 #
@@ -43,7 +43,7 @@ jobs:
       - name: ty（型）
         run: uv run ty check
 
-      - name: pytest（フックの動作）
+      - name: pytest（フックと autodev の動作）
         run: uv run pytest
 
       # shebang が `uv run --script` なので、直接起動すると PyYAML も uv が用意する

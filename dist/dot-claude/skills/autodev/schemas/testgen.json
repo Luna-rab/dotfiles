@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["testFiles", "failing", "blocked"],
+  "properties": {
+    "testFiles": {
+      "type": "array",
+      "description": "書いたテストファイル",
+      "items": { "type": "string" }
+    },
+    "commands": {
+      "type": "array",
+      "description": "そのテストだけを流すコマンド",
+      "items": { "type": "string" }
+    },
+    "failing": {
+      "type": "integer",
+      "description": "いま落ちているテストの数。実装前なので 1 以上のはず"
+    },
+    "blocked": {
+      "type": "boolean",
+      "description": "受入条件が曖昧でテストを書けないなら true。推測でテストを書かない"
+    },
+    "questions": { "type": "array", "items": { "type": "string" } },
+    "notes": { "type": "string" }
+  }
+}

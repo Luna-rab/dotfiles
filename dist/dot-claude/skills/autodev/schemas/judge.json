@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["closed", "rejected"],
+  "properties": {
+    "closed": { "type": "integer" },
+    "rejected": { "type": "integer" },
+    "checked": {
+      "type": "array",
+      "description": "何で確かめたか（差分のどこ・どのコマンド）",
+      "items": { "type": "string" }
+    },
+    "notes": { "type": "string" }
+  }
+}

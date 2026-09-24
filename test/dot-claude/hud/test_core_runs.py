@@ -15,7 +15,8 @@ def ago(**kw) -> str:
 
 
 def test_走っているステージを経過秒数つきで取り出す():
-    stages = runs.live_stages(state(), NOW)
+    # state() は呼んだ時点の時刻で組むので、モジュール読み込み時の NOW ではなく今の時刻と比べる
+    stages = runs.live_stages(state(), dt.datetime.now().astimezone())
     assert [(s.name, s.task, s.round, s.turns, s.tool) for s in stages] == [
         ("review:adversarial", "task2", "1", 26, "Read")
     ]

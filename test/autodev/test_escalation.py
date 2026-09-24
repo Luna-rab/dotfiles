@@ -166,7 +166,6 @@ def test_修正を2回受けても直らず分類も無ければ再計画に回�
         review_loop.review_fix_loop(ctx, task)
     assert raised.value.items == ["r1"]
     assert [n for n in script.names() if n.startswith("fix")] == ["fix@1", "fix@2"]
-    # 3 ラウンド目のジャッジには、停滞している指摘を渡してある
     judge_extras = [extra for name, _, extra in script.calls if name == "judge"]
     assert judge_extras[0] == ""
     assert "停滞している指摘" in judge_extras[2] and "r1" in judge_extras[2]

@@ -24,6 +24,7 @@ def test_ランからステージまでEnterで入りEscで戻る(tmp_path, monk
             # ランの詳細: ゴールと進み具合
             assert "範囲を指定して切り出す。" in screen_text(app)
             assert "1/4 スタック済み" in screen_text(app)
+            assert "深く" in screen_text(app)
 
             await pilot.press("enter")
             await pilot.pause()

@@ -45,7 +45,7 @@ def test_スタックに追加し終わったタスクは飛ばす():
     assert got["id"] == "task3"
 
 
-def test_進行中のタスクをそのまま返す():
+def test_実行中のタスクをそのまま返す():
     """途中で落ちたランを再開すると、`running` の 1 本から続ける。"""
     got = task_order.next_pending(state("stacked", "running"))
     assert got is not None

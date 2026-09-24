@@ -6,16 +6,25 @@
 
 from __future__ import annotations
 
+import unicodedata
+
+from ..core.markdown import STATUS_LABEL
 from ..ports import console, forge
 from .context import EXIT_HELD, EXIT_OK, Ctx
 from .publish import refresh_overview_pr, summarize
+
+
+def pad(text: str, width: int) -> str:
+    """端末の表示幅で右を埋める。全角は 2 桁なので `str.ljust` では列がそろわない。"""
+    cells = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+    return text + " " * max(width - cells, 0)
 
 
 def finish(ctx: Ctx) -> int:
     run, st = ctx.run, ctx.st
     # **人間が最初に読む文章を、実際にスタックに追加した結果から書き直す。** 計画の直後に書いたものは
     # 予定なので、blocked で終わったタスクやスコープ外が反映されていない
-    summarize(ctx)
+    summarize(ctx, "1")
     refresh_overview_pr(ctx)
     stacked = [i for i in st["tasks"] if i["status"] == "stacked"]
     held = [i for i in st["tasks"] if i["status"] in ("blocked", "failed")]
@@ -30,7 +39,8 @@ def finish(ctx: Ctx) -> int:
     print(f"ラン名: {st['name']}  概要 PR: #{st['overviewPr']}")
     for item in st["tasks"]:
         pr = f"#{item['pr']}" if item.get("pr") else "—"
-        print(f"  {item['id']:<8} {item['status']:<8} {pr:<6} {item['subject']}")
+        label = pad(STATUS_LABEL.get(item["status"], item["status"]), 12)
+        print(f"  {item['id']:<8} {label} {pr:<6} {item['subject']}")
         if item.get("reason"):
             print(f"           理由: {item['reason']}")
     print()

@@ -89,13 +89,14 @@ def refresh_overview_pr(ctx: Ctx) -> None:
     forge.pr_edit(run.tree, st["overviewPr"], body_file=run.overview_pr_body)
 
 
-def summarize(ctx: Ctx) -> None:
-    """まとめステージに概要 PR の自由記述を書かせる。**呼ぶのは計画の直後と仕上げの 2 回だけ。**
+def summarize(ctx: Ctx, round_label: str) -> None:
+    """まとめステージに概要 PR の自由記述を書かせる。**呼ぶのは計画の直後（r0）と仕上げ（r1）の 2 回だけ。**
 
+    ラウンドを分けないと、2 回目のログと指示の記録が 1 回目のものを上書きする。
     進行表は state.json から毎回組み立てるので、ここで書かせるのは「この作業で何が
     変わるか」の文章に限る。
     """
-    got = call(ctx, stages.TABLE["summary"], None, "0")
+    got = call(ctx, stages.TABLE["summary"], None, round_label)
     prose = str((got.result or {}).get("prose") or "").strip() if got.ok else ""
     if prose:
         templates.write_prose(ctx.run, "overview", prose)

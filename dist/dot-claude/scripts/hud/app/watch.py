@@ -53,7 +53,9 @@ class Watch(App):
     #stage { padding: 0 1; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("right", "enter", "深く", show=False),
+        # OptionList も enter を持ち、フッターに出さない設定になっている。priority で先に受け取らないと
+        # フッターに「深く」が出ない
+        Binding("enter,right", "enter", "深く", key_display="enter", priority=True),
         Binding("escape,left,backspace", "leave", "浅く"),
         Binding("q", "quit", "終了"),
     ]

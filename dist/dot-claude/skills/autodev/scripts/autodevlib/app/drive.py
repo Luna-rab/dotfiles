@@ -40,7 +40,7 @@ def drive(ctx: Ctx) -> int:
         plan(ctx, config)
         ctx.save()
         # 概要 PR を作る前に自由記述を用意する（本文の「何をする作業か」に入る）
-        summarize(ctx)
+        summarize(ctx, "0")
 
     ensure_overview_pr(ctx)
     ctx.save()

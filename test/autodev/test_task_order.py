@@ -61,6 +61,12 @@ def test_失敗があれば後続を回さない():
     assert task_order.next_pending(state("stacked", "failed", "pending")) is None
 
 
+def test_取り下げたタスクは飛ばす():
+    got = task_order.next_pending(state("stacked", "dropped", "pending"))
+    assert got is not None
+    assert got["id"] == "task3"
+
+
 def test_全部スタックに追加し終わっていればNoneを返す():
     assert task_order.next_pending(state("stacked", "stacked")) is None
 
@@ -119,6 +125,61 @@ def test_全部スタックに追加し終わればstacked():
     assert task_order.outcome_of(state("stacked", "stacked")) == "stacked"
 
 
+def test_取り下げたタスクが残っていても残りが全部スタック済みならstacked():
+    assert task_order.outcome_of(state("stacked", "dropped", "stacked")) == "stacked"
+
+
+# --- 再計画 ------------------------------------------------------------------
+
+
+def planned(*statuses: str) -> dict[str, Any]:
+    data: dict[str, Any] = {"tasks": []}
+    task_order.add_tasks(data, "demo", [{"subject": f"件名 {i}"} for i in range(len(statuses))])
+    for task, status in zip(data["tasks"], statuses, strict=True):
+        task["status"] = status
+    return data
+
+
+def test_残すタスクは書き換えた項目だけ変わり経緯を引き継がない():
+    """範囲が変わったので、前の範囲で停滞を数えたジャッジと回数を持ち越さない。"""
+    data = planned("stacked", "running", "pending")
+    current = data["tasks"][1]
+    current.update(judgeSession="s1", fixAttempts={"r1": 2}, acceptance="元の受入条件")
+    result = {"keepCurrent": True, "current": {"scope": "広げた範囲", "branch": "x"}, "tasks": []}
+    task_order.apply_replan(data, "demo", "task2", result)
+    assert current["scope"] == "広げた範囲"
+    assert current["acceptance"] == "元の受入条件"
+    assert current["branch"] == "stack/demo--task-2"
+    assert (current["judgeSession"], current["fixAttempts"]) == (None, {})
+
+
+def test_未着手のタスクを丸ごと差し替え新しい番号を振る():
+    """取り下げたタスクのブランチは残るので、使ったことのある番号を振り直さない。"""
+    data = planned("stacked", "running", "pending", "pending")
+    result = {
+        "keepCurrent": False,
+        "notes": "前提が崩れた",
+        "tasks": [{"subject": "割り直した A"}, {"subject": "割り直した B", "carry": ["r3"]}],
+    }
+    moves = task_order.apply_replan(data, "demo", "task2", result)
+    assert [(t["id"], t["status"]) for t in data["tasks"]] == [
+        ("task1", "stacked"),
+        ("task2", "dropped"),
+        ("task5", "pending"),
+        ("task6", "pending"),
+    ]
+    assert data["tasks"][1]["reason"] == "前提が崩れた"
+    assert data["tasks"][3]["branch"] == "stack/demo--task-6"
+    assert moves == [("r3", "task6")]
+
+
+def test_移した指摘を受入条件に足す文():
+    items = [{"id": "r3", "rating": "should-fix", "location": "a.py:3", "review": "境界で落ちる"}]
+    note = task_order.carry_note("task2", items)
+    assert "task2 から移した指摘" in note
+    assert "r3（should-fix、a.py:3）: 境界で落ちる" in note
+
+
 # --- タスクの組み立て --------------------------------------------------------
 
 
@@ -169,6 +230,7 @@ def test_状態ごとの数を全状態ぶん返す():
         "pending": 1,
         "running": 0,
         "stacked": 2,
+        "dropped": 0,
         "blocked": 1,
         "failed": 0,
     }

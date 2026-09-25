@@ -82,3 +82,49 @@ def test_数値のラウンドでもレビューステージの体数が足り�
     )
     assert report.ok, report.lines()
     assert report.checks[0].detail == "走り終えたレビュー 2 回"
+
+
+# --- driver だけが呼ぶ操作 ----------------------------------------------------
+
+
+def stored(path: str) -> dict[str, Any]:
+    data = review_store.read(path)
+    assert data is not None, path
+    return data
+
+
+def test_落ちた完了チェックをmustfixの指摘にする(tmp_path, monkeypatch):
+    monkeypatch.delenv(review_store.JUDGE_TOKEN_ENV, raising=False)
+    path = str(tmp_path / "review.json")
+    review_id = review_store.add_gate_failure(path, "verify", "落ちた: pytest", "2")
+    item = stored(path)["items"][review_id]
+    assert (item["status"], item["rating"], item["location"]) == (
+        "open",
+        "must-fix",
+        "完了チェック verify",
+    )
+
+
+def test_移した指摘は移した先で未解決として立て直す(tmp_path, monkeypatch):
+    """ジャッジトークンが無くても動く。driver が in-process で呼ぶので、ステージからは届かない。"""
+    monkeypatch.delenv(review_store.JUDGE_TOKEN_ENV, raising=False)
+    source, target = str(tmp_path / "t2.json"), str(tmp_path / "t5.json")
+    review_id, _ = review_store.add(
+        source,
+        reviewer="review:normal",
+        rating="should-fix",
+        location="a.py:3",
+        body="境界",
+        round_label="1",
+    )
+    moved = review_store.move(source, review_id, "task5", "範囲の外")
+    new_id = review_store.add_carried(target, moved, "task2")
+
+    left = stored(source)["items"][review_id]
+    assert (left["status"], left["movedTo"]) == ("moved", "task5")
+    carried = stored(target)["items"][new_id]
+    assert (carried["status"], carried["rating"], carried["movedFrom"]) == (
+        "open",
+        "should-fix",
+        f"task2/{review_id}",
+    )

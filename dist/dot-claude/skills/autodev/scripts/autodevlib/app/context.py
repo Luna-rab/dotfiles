@@ -19,6 +19,28 @@ EXIT_HELD = 3
 EXIT_WAITING = 4
 
 
+class Waiting(Exception):
+    """人の回答が要る。`drive()` が受け取り、質問を出して回答待ちで終わる。
+
+    回答が置かれたら、タスクは `phase` から続く。どこで止まってもやり直しにはならない。
+    """
+
+    def __init__(self, task_id: str, questions: list[dict[str, str]]) -> None:
+        super().__init__(task_id)
+        self.task_id = task_id
+        self.questions = questions
+
+
+class NeedsReplan(Exception):
+    """タスクの割り方を直さないと進めない。`drive()` が受け取り、再計画ステージを呼ぶ。"""
+
+    def __init__(self, task_id: str, reason: str, items: list[str]) -> None:
+        super().__init__(task_id)
+        self.task_id = task_id
+        self.reason = reason
+        self.items = items
+
+
 @dataclass
 class Ctx:
     """1 つのランの間ずっと変わらないもの。ステージの呼び出しはすべてこれを持ち回る。"""

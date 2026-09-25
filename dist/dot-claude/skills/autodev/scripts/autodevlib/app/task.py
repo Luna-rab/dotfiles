@@ -1,5 +1,13 @@
 """タスク 1 本を回す。テスト作成 → 実装 → レビュー → 完了チェック → PR。
 
+**進み具合は `task["phase"]` に残す。** 回答待ちで終わっても、driver が落ちても、呼び直せば
+その phase から続く（テスト作成からやり直さない）。
+
+    tests  → build  → review ⇄ gate → スタックに追加
+
+**完了チェックが落ちたら、落ちた項目を must-fix の指摘にしてレビューのループへ戻す。**
+タスクを要確認で止めない。
+
 **⑥は①〜⑤が通ってから流す。** `judge()` を 2 度呼ぶのはそのためである（時間のかかる
 検証コマンドを、落ちると分かっているランで流さない）。
 """
@@ -9,120 +17,32 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from ..config import stages
 from ..core import task_order, verdict
-from ..ports import console, evidence, files, repo, run_store, runner
-from .context import Ctx
+from ..ports import console, evidence, files, repo, review_store, run_store
+from .build import build, make_tests
+from .context import Ctx, Waiting
 from .publish import publish
 from .review_loop import review_fix_loop
-from .stage_call import call, record_judgements
+
+#: 修正ステージがコードを直せば解ける完了チェック。①はレビューのループを抜けた時点で必ず通り、
+#: ④はレビューステージが走り終えないときに落ちる（直すのはコードではない）
+FIXABLE = ("commits", "reviews-settled", "tests-untouched", "verify")
 
 
-def make_tests(ctx: Ctx, task: dict[str, Any], extra: str = "", label: str = "0") -> bool:
-    """テスト作成ステージ。**このステージだけテストへ書ける**（driver が `AUTODEV_ALLOW_TESTS` を渡す）。"""
-    got = call(ctx, stages.TABLE["testgen"], task, label, extra=extra)
-    if not got.ok:
-        run_store.set_task(
-            ctx.st, task["id"], status="failed", reason=f"テスト作成ステージ: {got.error}"
-        )
-        return False
-    result = got.result or {}
-    if result.get("blocked"):
-        questions = "; ".join(result.get("questions", []))
-        run_store.set_task(
-            ctx.st, task["id"], status="blocked", reason=f"受入条件が曖昧: {questions}"
-        )
-        return False
-    # **テストを書いた時点のコミットを控える。** 完了チェック⑤はここから先でテストが動いていないかを
-    # 見る（テスト作成ステージはタスクのブランチに commit するので、parent から見ると必ず差分が出る）
-    run_store.set_task(ctx.st, task["id"], testsAt=repo.head_sha(ctx.run.tree))
-    return True
+def advance(ctx: Ctx, task: dict[str, Any], phase: str) -> None:
+    task["phase"] = phase
+    ctx.save()
 
 
-def implement(ctx: Ctx, task: dict[str, Any], label: str) -> runner.Result:
-    """実装ステージ。テストファイルは read-only にして走らせ、終わったら必ず戻す。
-
-    フックはランの頭で書いた `guard.json` を全ステージに渡してあるので、ここで出し入れするのは
-    ファイルの書き込み権だけである（フックの裏をかかれても書けないようにする二重の栓）。
-    """
-    repo.lock_tests(ctx.run.tree, ctx.st["testGlobs"])
-    try:
-        return call(ctx, stages.TABLE["impl"], task, label)
-    finally:
-        repo.unlock_tests(ctx.run.tree, ctx.st["testGlobs"])
-
-
-def build(ctx: Ctx, task: dict[str, Any]) -> bool:
-    """実装させる。テストの矛盾が報告されたら、テスト作成ステージを呼び直してから実装に戻る。"""
-    st = ctx.st
-    # テスト作成と実装はラウンド 0（レビュー前）。呼び直した 2 回目は 0-2 にして、ログを上書きしない
-    got = implement(ctx, task, "0")
-    if not got.ok:
-        run_store.set_task(st, task["id"], status="failed", reason=f"実装ステージ: {got.error}")
-        return False
-    run_store.set_task(st, task["id"], implSession=got.session_id)
-    result = got.result or {}
-
-    conflict = result.get("testConflict")
-    # 無いときに `null` ではなく文字列の "null" を返すステージがある。報告として扱うとテスト作成ステージを無駄に呼び直す
-    if isinstance(conflict, str) and conflict.strip().lower() in ("", "null", "none"):
-        conflict = None
-    if conflict:
-        # **テストを直せるのはテスト作成ステージだけである。** 実装ステージに直させると、テストを
-        # 通すためにテストを緩める経路ができる
-        console.info(f"テストの矛盾が報告された: {str(conflict)[:200]}")
-        extra = (
-            "## 実装ステージからの報告\n\n"
-            f"{conflict}\n\n"
-            "この報告を受入条件と照らして検証し、**正しければテストを直す**。"
-            "誤っていれば直さず、理由を結果の `notes` に書く。"
-        )
-        if not make_tests(ctx, task, extra=extra, label="0-2"):
-            return False
-        got = implement(ctx, task, "0-2")
-        if not got.ok:
-            run_store.set_task(
-                st, task["id"], status="failed", reason=f"実装ステージ（呼び直し）: {got.error}"
-            )
-            return False
-        run_store.set_task(st, task["id"], implSession=got.session_id)
-        result = got.result or {}
-
-    if result.get("blocked"):
-        questions = "; ".join(result.get("questions", []))
-        run_store.set_task(
-            st, task["id"], status="blocked", reason=f"実装ステージが blocked: {questions}"
-        )
-        return False
-    record_judgements(st, result)
-    return True
-
-
-def run_task(ctx: Ctx, task: dict[str, Any]) -> bool:
-    """タスク 1 本を回す。戻り値は「スタックに追加できたか」。"""
+def gate(ctx: Ctx, task: dict[str, Any]) -> verdict.Report:
+    """完了チェック①〜⑥。結果は `result-gate-<ラウンド>.json` に残す。"""
     run, st = ctx.run, ctx.st
-    parent = task_order.parent_of(st, task)
-    run_store.set_task(st, task["id"], status="running", parent=parent)
-    console.info(f"--- {task['id']}（{task['subject']}）を {parent} の上で始める")
-
-    switched = repo.start_task_branch(run.tree, task["branch"], parent)
-    if not switched.ok:
-        run_store.set_task(
-            st, task["id"], status="failed", reason=f"ブランチを作れなかった: {switched.err}"
-        )
-        return False
-
-    if not make_tests(ctx, task):
-        return False
-    if not build(ctx, task):
-        return False
-
-    settled, rounds, reason = review_fix_loop(ctx, task)
+    rounds = [(str(label), list(expected)) for label, expected in task.get("reviewRounds") or []]
     facts = evidence.collect(
-        stage_ok=settled,
-        stage_detail=reason or "レビューが全件解消した",
+        stage_ok=True,
+        stage_detail="レビューが全件解消した",
         tree=run.tree,
-        parent=parent,
+        parent=task["parent"],
         branch=task["branch"],
         review_path=run.review(task["id"]),
         tests_since=task.get("testsAt"),
@@ -135,16 +55,68 @@ def run_task(ctx: Ctx, task: dict[str, Any]) -> bool:
         )
     for line in report.lines():
         console.info(f"  {line}")
-    files.write_json(run.result(task["id"], "gate", "0"), verdict.as_dict(report))
+    files.write_json(
+        run.result(task["id"], "gate", str(task.get("rounds") or 0)), verdict.as_dict(report)
+    )
+    return report
 
-    if not report.ok:
-        run_store.set_task(
-            st,
-            task["id"],
-            status="blocked",
-            reason="; ".join(f"{c.name}: {c.detail}" for c in report.failed),
+
+def run_task(ctx: Ctx, task: dict[str, Any]) -> None:
+    """タスク 1 本をスタックに追加するまで回す。進めなくなったら `Waiting` か `NeedsReplan` を投げる。"""
+    run, st = ctx.run, ctx.st
+    if task["status"] != "running":
+        run_store.set_task(st, task["id"], status="running", parent=task_order.parent_of(st, task))
+        console.info(f"--- {task['id']}（{task['subject']}）を {task['parent']} の上で始める")
+    else:
+        console.info(
+            f"--- {task['id']}（{task['subject']}）を {task.get('phase') or 'tests'} から続ける"
         )
-        return False
+
+    switched = repo.start_task_branch(run.tree, task["branch"], task["parent"])
+    if not switched.ok:
+        raise Waiting(
+            task["id"],
+            [
+                {
+                    "id": f"{task['id']}-branch",
+                    "question": f"ブランチ {task['branch']} に切り替えられなかった: {switched.err}。"
+                    "worktree の状態を直したら、続けてよいと回答してください。",
+                }
+            ],
+        )
+
+    phase = task.get("phase") or "tests"
+    if phase == "tests":
+        make_tests(ctx, task, "0")
+        advance(ctx, task, phase := "build")
+    if phase == "build":
+        build(ctx, task)
+        advance(ctx, task, phase := "review")
+    while True:
+        if phase == "review":
+            review_fix_loop(ctx, task)
+            advance(ctx, task, phase := "gate")
+        report = gate(ctx, task)
+        if report.ok:
+            break
+        failed = [c for c in report.failed if c.detail != verdict.VERIFY_SKIPPED]
+        fixable = [c for c in failed if c.name in FIXABLE]
+        if not fixable:
+            raise Waiting(
+                task["id"],
+                [
+                    {
+                        "id": f"{task['id']}-gate",
+                        "question": "完了チェックがコードの直しでは解けない理由で落ちた: "
+                        + "; ".join(f"{c.name}: {c.detail}" for c in failed)
+                        + "。原因を取り除いたら、続けてよいと回答してください。",
+                    }
+                ],
+            )
+        label = str(task.get("rounds") or 0)
+        for check in fixable:
+            review_store.add_gate_failure(run.review(task["id"]), check.name, check.detail, label)
+        console.info(f"  完了チェックの失敗 {len(fixable)} 件を指摘にして、修正に戻る")
+        advance(ctx, task, phase := "review")
 
     publish(ctx, task)
-    return True

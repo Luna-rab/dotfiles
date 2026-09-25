@@ -38,9 +38,15 @@ REQUIRED_RULES: dict[str, list[str]] = {
         "コードを書き換えない。読むだけで、commit も作らない。",
         "受入条件が一意に定まらないなら、推測で進めず `blocked: true` と疑問点を返す。",
     ],
+    "replan": [
+        "コードを書き換えない。読むだけで、commit も作らない。",
+        "スタック済みのタスクは変えない。変えてよいのは止まったタスクと未着手のタスクだけ。",
+        "指摘を移すなら、移す先は同じランの中のタスクに限る（ランの外へ後回しにしない）。",
+    ],
     "testgen": [
         "テストだけを書く。実装のコードに触らない。",
-        "書いたテストを commit する（`<ブランチ>` の上に 1 コミット以上）。",
+        "書いたテストを commit する（`<ブランチ>` の上に 1 コミット以上）。テストの誤りの報告を"
+        "検証して誤りと判断したときだけは、テストを変えず commit もしない。",
         "受入条件から書く。実装しやすさに合わせてテストを緩めない。",
     ],
     "impl": [
@@ -58,8 +64,8 @@ REQUIRED_RULES: dict[str, list[str]] = {
         "コードを書き換えない。",
     ],
     "judge": [
-        "未解決（`open`）の全件の状態を決める（直ったなら解決済み `closed`、直さないなら理由つきで却下 `rejected`）。"
-        "中間の状態を残さない。",
+        "未解決（`open`）の全件の状態を決める（直ったなら解決済み `closed`。"
+        "却下 `rejected` は、根拠を示せる誤った指摘と nit にだけ使う）。中間の状態を残さない。",
         "`status` にはコメントを必ず添える（なぜ閉じたかが残らないと、次のラウンドも人間も追えない）。",
         "コードを書き換えない。レビューを新しく立てない。",
     ],
@@ -71,6 +77,7 @@ REQUIRED_RULES: dict[str, list[str]] = {
 #: 役割のキー。`fix` は実装と同じ指示書・同じ必須ルールで走る
 ROLE_KEY = {
     "plan": "plan",
+    "replan": "replan",
     "testgen": "testgen",
     "impl": "impl",
     "fix": "impl",
@@ -144,6 +151,10 @@ def _task_block(values: dict[str, Any]) -> str:
     ):
         if values.get(key):
             lines.append(f"- {label}: {values[key]}")
+    notes = values.get("notes") or []
+    if notes:
+        lines += ["", "### 人が決めたこと（受入条件と同じ重さで守る）", ""]
+        lines += [f"- {note}" for note in notes]
     return "\n".join(lines) + "\n\n"
 
 

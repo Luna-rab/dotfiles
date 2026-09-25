@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["keepCurrent", "tasks", "notes", "blocked"],
+  "properties": {
+    "keepCurrent": {
+      "type": "boolean",
+      "description": "止まったタスクを残して続けるなら true。取り下げて割り直すなら false"
+    },
+    "current": {
+      "type": "object",
+      "description": "止まったタスクを残すとき、書き換える項目だけを入れる",
+      "additionalProperties": false,
+      "properties": {
+        "subject": { "type": "string" },
+        "dod": { "type": "string" },
+        "acceptance": { "type": "string" },
+        "scope": { "type": "string" },
+        "entrypoints": { "type": "string" },
+        "contracts": { "type": "string" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "description": "止まったタスクの後ろで回す未着手のタスクを、並べ直した全部。今の未着手のタスクはこれで丸ごと置き換わる",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "tier", "dod", "acceptance"],
+        "properties": {
+          "subject": { "type": "string" },
+          "tier": { "type": "string", "enum": ["light", "standard"] },
+          "dod": { "type": "string" },
+          "acceptance": { "type": "string" },
+          "scope": { "type": "string" },
+          "entrypoints": { "type": "string" },
+          "contracts": { "type": "string" },
+          "blockedBy": { "type": "array", "items": { "type": "string" } },
+          "carry": {
+            "type": "array",
+            "description": "止まったタスクから、このタスクへ移す指摘の id（r3 など）",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "notes": { "type": "string", "description": "何をなぜ変えたか。判断ログに残る" },
+    "decisions": { "type": "array", "items": { "type": "string" } },
+    "blocked": {
+      "type": "boolean",
+      "description": "割り方を変えても進めず、人が決める必要があるなら true"
+    },
+    "questions": { "type": "array", "items": { "type": "string" } }
+  }
+}

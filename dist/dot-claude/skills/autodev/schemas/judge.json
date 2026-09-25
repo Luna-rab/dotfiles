@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["closed", "rejected"],
+  "required": ["closed", "rejected", "escalation"],
   "properties": {
     "closed": { "type": "integer" },
     "rejected": { "type": "integer" },
@@ -10,6 +10,26 @@
       "description": "何で確かめたか（差分のどこ・どのコマンド）",
       "items": { "type": "string" }
     },
-    "notes": { "type": "string" }
+    "notes": { "type": "string" },
+    "escalation": {
+      "type": ["object", "null"],
+      "description": "直らない指摘の原因。分類しないときは null",
+      "additionalProperties": false,
+      "required": ["cause", "items", "reason"],
+      "properties": {
+        "cause": { "type": "string", "enum": ["tests", "approach", "scope", "ambiguous"] },
+        "items": {
+          "type": "array",
+          "description": "原因を分類した指摘の id（r3 など）",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "description": "cause が ambiguous のとき、人に聞くこと（選択肢の形で）",
+          "items": { "type": "string" }
+        }
+      }
+    }
   }
 }

@@ -43,7 +43,8 @@ class Headline:
 
 
 def build(st: dict, stages: list[Stage], active: bool) -> Headline:
-    items = tasks(st)
+    # 再計画で取り下げたタスクはスタックに追加しないので、進み具合の分母に入れない
+    items = [t for t in tasks(st) if t.get("status") != "dropped"]
     stopped = Headline(
         run_name=name_of(st),
         state=State.STOPPED,

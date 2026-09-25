@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from typing import Any
@@ -15,7 +16,7 @@ from ..config import paths, stages
 from ..core import events
 from ..core import prompt as prompt_lib
 from ..ports import console, files, review_store, run_store, runner, templates
-from .context import Ctx
+from .context import Ctx, Waiting
 
 #: フックに何回止められたらステージを打ち切るか。指示書を読み違えているステージは、そのまま続けても
 #: 直らないので、ターンの上限まで使い切る前に止める
@@ -55,6 +56,7 @@ def stage_values(
                 "branch": task["branch"],
                 "parent": task.get("parent"),
                 "review": run.review(task["id"]),
+                "notes": task.get("notes") or [],
             }
         )
     return values
@@ -85,17 +87,28 @@ def stage_env(ctx: Ctx, stage: stages.Stage) -> dict[str, str | None]:
 
 
 def stage_session(task: dict[str, Any] | None, stage: stages.Stage) -> tuple[str | None, bool]:
-    """そのセッションを続けるか、新しく立てるか。
-
-    **実装と修正だけ続ける。** レビューは毎ラウンドまっさらにする（前のラウンドで自分が
-    書いた言い分が残っていると、同じ差分を読み直す意味が薄れる）。
+    """そのセッションを続けるか、新しく立てるか。続けるのは `stage.session` を持つステージだけ。
 
     id は**呼ぶ側が決める**（`claude --session-id`）。出力から拾わなくてよくなる。
     """
-    if not (task and stage.resumable):
+    if not (task and stage.session):
         return None, False
-    existing = task.get("implSession")
+    existing = task.get(stage.session)
     return (existing, True) if existing else (str(uuid.uuid4()), False)
+
+
+def log_label(run: Any, task_id: str, stage: stages.Stage, round_label: str) -> str:
+    """ログ・指示・結果のファイル名に使うラウンド。**既にあれば `-2` `-3` と足して上書きしない。**
+
+    同じラウンドで同じステージを 2 度呼ぶことがある（エラーの呼び直し、テストの直しの後の修正）。
+    ステージに渡す `<ラウンド>` は変えない——レビューの走行記録が合わなくなり、完了チェック④が落ちる。
+    """
+    name = stage.name.replace(":", "-")
+    label, count = round_label, 1
+    while os.path.exists(run.log(task_id, name, label)):
+        count += 1
+        label = f"{round_label}-{count}"
+    return label
 
 
 def stage_schema(stage: stages.Stage) -> str | None:
@@ -176,18 +189,20 @@ def call(
         )
 
     system_append = prompt_lib.system_append(stage)
+    name = stage.name.replace(":", "-")
+    label = log_label(run, task_id, stage, round_label)
     if not resume_from:
         # 再開ではプロンプトを渡さないので、最初に渡した指示の記録を残しておく。
         # 必須ルールはどのステージもほぼ同じなので後ろに置き、ステージごとに違うプロンプトを先に読ませる
         files.write_text(
-            run.prompt(task_id, stage.name.replace(":", "-"), round_label),
+            run.prompt(task_id, name, label),
             f"# プロンプト\n\n{prompt}\n\n"
             f"# 必須ルール（system prompt に足したもの）\n\n{system_append}\n",
         )
     console.info(
-        f"{stage.role}ステージ（{task_id} / r{round_label}）を{'再開' if resume_from else '起動'}"
+        f"{stage.role}ステージ（{task_id} / r{label}）を{'再開' if resume_from else '起動'}"
     )
-    ctx.begin(stage.name, task_id, round_label)
+    ctx.begin(stage.name, task_id, label)
     ok = False
     try:
         got = runner.run(
@@ -196,7 +211,7 @@ def call(
                 prompt=prompt,
                 system_append=system_append,
                 cwd=run.tree,
-                log_path=run.log(task_id, stage.name.replace(":", "-"), round_label),
+                log_path=run.log(task_id, name, label),
                 json_schema=stage_schema(stage),
                 model=stage.model,
                 effort=stage.effort,
@@ -214,7 +229,9 @@ def call(
         ctx.end(stage.name, ok=ok)
     if got.result is not None:
         # **記録は driver が書く。** ステージに書かせないので、在ることと形が保証される
-        files.write_json(run.result(task_id, stage.name.replace(":", "-"), round_label), got.result)
+        files.write_json(run.result(task_id, name, label), got.result)
+    if task is not None and stage.session and got.session_id:
+        task[stage.session] = got.session_id
 
     console.info(f"  → {'ok' if got.ok else 'NG'} / {runner.usage_line(got)}")
     for warning in got.warnings:
@@ -222,6 +239,38 @@ def call(
     if not got.ok and got.error:
         console.info(f"  → {got.error.splitlines()[0][:200]}")
     return got
+
+
+def call_or_wait(
+    ctx: Ctx,
+    stage: stages.Stage,
+    task: dict[str, Any],
+    round_label: str,
+    *,
+    extra: str = "",
+) -> runner.Result:
+    """タスクのステージを呼ぶ。**エラーで終わったら 1 回だけ呼び直し、それでも落ちたら人に聞く。**
+
+    エラーの多くは一時的なもの（ネットワーク、レート制限）である。2 回続けて落ちるなら、
+    ステージの外に原因があるので人が見る。回答が置かれたら、タスクは同じ `phase` から続く。
+    """
+    got = call(ctx, stage, task, round_label, extra=extra)
+    if got.ok:
+        return got
+    console.info(f"{stage.role}ステージがエラーで終わったので、1 回だけ呼び直す")
+    got = call(ctx, stage, task, round_label, extra=extra)
+    if got.ok:
+        return got
+    raise Waiting(
+        task["id"],
+        [
+            {
+                "id": f"{task['id']}-{stage.name.replace(':', '-')}-error",
+                "question": f"{stage.role}ステージが 2 回続けてエラーで終わった: {got.error}"
+                f"（ログ: {got.log}）。原因を取り除いたら、続けてよいと回答してください。",
+            }
+        ],
+    )
 
 
 def record_judgements(st: dict[str, Any], result: dict[str, Any]) -> None:

@@ -125,8 +125,9 @@ driver はステージを起動するとき `ANTHROPIC_API_KEY` などを外す�
 サブスクリプションではなく従量課金に切り替わる。無人のマシンでは
 `CLAUDE_CODE_OAUTH_TOKEN` を置く。
 
-設計と落とし穴は
-[dist/dot-claude/skills/autodev/README.md](dist/dot-claude/skills/autodev/README.md) に書いた。
+何をするかの概観は
+[dist/dot-claude/skills/autodev/README.md](dist/dot-claude/skills/autodev/README.md)、
+設計と落とし穴は [DESIGN.md](dist/dot-claude/skills/autodev/DESIGN.md) に書いた。
 
 ### archify（図を作るスキル）
 

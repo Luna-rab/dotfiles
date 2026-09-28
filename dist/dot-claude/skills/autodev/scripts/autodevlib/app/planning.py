@@ -12,9 +12,10 @@ from typing import Any, NoReturn
 from ..config import paths, stages
 from ..core import task_order
 from ..ports import console, files, run_store, runner, templates
+from . import design
 from .context import EXIT_PLAN_BLOCKED, EXIT_WAITING, Ctx, Waiting
-from .inputs import save_config, write_brief
-from .stage_call import call, record_judgements
+from .inputs import load_config, save_config, write_brief
+from .stage_call import DESIGN_ID, call, record_judgements
 
 
 def unanswered(run: paths.Run) -> list[dict[str, Any]]:
@@ -83,15 +84,20 @@ def take_answers(ctx: Ctx) -> None:
         for item in waiting:
             print(f"- [{item.get('id')}] {item.get('question')}")
         raise SystemExit(EXIT_WAITING)
-    task = run_store.task(st, str(deferred["task"]))
+    owner = str(deferred["task"])
+    # 設計の確かめで聞いたことは、タスクではなく設計のステージに渡す
+    holder = design.state(st) if owner == DESIGN_ID else run_store.task(st, owner)
     for key in ctx.run.question_keys():
         asked = files.read_json(ctx.run.question(key))
         answered = files.read_json(ctx.run.answer(key))
         question = asked.get("question", "") if isinstance(asked, dict) else ""
         answer = answered.get("answer", "") if isinstance(answered, dict) else ""
         note = f"{question} → {answer}"
-        task.setdefault("notes", []).append(note)
-        run_store.add_decision(st, "decision", f"人の判断（{task['id']}）: {note}")
+        holder.setdefault("notes", []).append(note)
+        run_store.add_decision(st, "decision", f"人の判断（{owner}）: {note}")
+        if key.endswith("-replan-limit"):
+            # 数え直さないと、回答しても次の再計画で同じ質問に戻り、再計画ステージが回答を読めない
+            st["replansSinceStack"] = 0
     clear_questions(ctx)
     ctx.save()
 
@@ -109,6 +115,8 @@ def clear_questions(ctx: Ctx) -> None:
 
 
 def plan(ctx: Ctx, config: dict[str, Any]) -> None:
+    """計画ステージを呼び、結果を**提案**として持つ。state.json に写すのは設計の指摘が
+    0 件になってから（`apply_plan()`）。"""
     st = ctx.st
     known = "## 既に分かっている設定\n\n" + (
         "\n".join(f"- 検証コマンド: `{c}`" for c in config["verify"])
@@ -127,7 +135,24 @@ def plan(ctx: Ctx, config: dict[str, Any]) -> None:
         got = call(ctx, stages.TABLE["plan"], None, "0", resume_from=str(deferred["session"]))
     else:
         got = call(ctx, stages.TABLE["plan"], None, "0", extra=known)
+    take_result(ctx, got, config)
 
+
+def revise(ctx: Ctx, extra: str) -> None:
+    """設計の指摘を、計画ステージに同じセッションの続きで直させ、提案し直す。
+
+    **同じセッションを続ける**のは、読んだコードを読み直させないため（1 回の計画で入力が
+    20 万トークンを超える）。タスクはまだ 1 本も始まっていないので、割り方ごと置き換えてよい。
+    """
+    proposal = design.pending(ctx.st) or {}
+    got = call(
+        ctx, stages.TABLE["plan"], None, "0", extra=extra, continue_from=proposal.get("session")
+    )
+    take_result(ctx, got, load_config(ctx.st["repo"], ctx.run))
+
+
+def take_result(ctx: Ctx, got: runner.Result, config: dict[str, Any]) -> None:
+    """計画ステージの結果を確かめて、提案として持つ。進めない結果なら終わる。"""
     if got.deferred is not None:
         park(ctx, "plan", got)
     clear_questions(ctx)
@@ -135,26 +160,41 @@ def plan(ctx: Ctx, config: dict[str, Any]) -> None:
         console.die(f"計画ステージが失敗した: {got.error}（ログ: {got.log}）")
 
     result = got.result or {}
+    if result.get("blocked") and design.pending(ctx.st) is not None:
+        # 設計の指摘を直している途中。指示を書き直して呼び直すと続きを失うので、人に聞いて続ける
+        asked = [str(q) for q in result.get("questions") or []] or [
+            "計画ステージが設計の指摘を直せなかった（疑問点の記録なし）"
+        ]
+        raise Waiting(
+            DESIGN_ID,
+            [{"id": f"{DESIGN_ID}-plan-q{n}", "question": q} for n, q in enumerate(asked, 1)],
+        )
     if result.get("blocked"):
         # **呼び直すかどうかは呼び出し元のエージェントが決める。** driver は疑問点を出して終わる
         console.info("計画ステージが blocked を返した。次の点を決めてから呼び直してください。")
         print("\n".join(f"- {q}" for q in result.get("questions", [])) or "(疑問点の記録なし)")
         raise SystemExit(EXIT_PLAN_BLOCKED)
-
-    tasks = result.get("tasks") or []
-    if not tasks:
+    if not result.get("tasks"):
         console.die("計画ステージがタスクを 1 件も返さなかった")
+    # 設計レビューを回す前に落とす。検証コマンドが無いと、確かめた割り方でも完了を判定できない
+    if not (result.get("verify") or config["verify"]):
+        console.die(
+            "検証コマンドが確定しなかった。完了チェック⑥を流せないので走らない"
+            f"（`{ctx.run.config}` に手で書いて起動し直すこともできる）"
+        )
+    previous = design.pending(ctx.st) or {}
+    design.propose(ctx, "plan", got.session_id or previous.get("session"), result)
 
+
+def apply_plan(ctx: Ctx, config: dict[str, Any], result: dict[str, Any]) -> None:
+    """確かめ終えた計画ステージの結果を state.json に写し、ブリーフを書き出す。**1 回だけ呼ぶ。**"""
+    st = ctx.st
+    tasks = result.get("tasks") or []
     config = {
         "verify": result.get("verify") or config["verify"],
         "testGlobs": result.get("testGlobs") or config["testGlobs"],
         "protected": result.get("protected") or config["protected"],
     }
-    if not config["verify"]:
-        console.die(
-            "検証コマンドが確定しなかった。完了チェック⑥を流せないので走らない"
-            f"（`{ctx.run.config}` に手で書いて起動し直すこともできる）"
-        )
     save_config(st["repo"], ctx.run, config)
     st["testGlobs"] = config["testGlobs"]
     st["verify"] = config["verify"]

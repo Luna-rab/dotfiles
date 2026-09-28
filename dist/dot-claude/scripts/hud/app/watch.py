@@ -196,7 +196,9 @@ class Watch(App):
 
     def info(self, st: dict, key: str) -> Text | Group:
         if self.level is Level.RUNS:
-            return detail.run_detail(self.head_of(st), st, autodev.read_overview(key))
+            return detail.run_detail(
+                self.head_of(st), st, runs.overview_head(autodev.read_overview(key))
+            )
         if self.level is Level.STAGES:
             return Text("まだ走っていない", style=DIM)
         if key == stagelist.RUN_TASK:

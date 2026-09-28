@@ -3,14 +3,18 @@
 文面は `templates/*.md` にあり、`${名前}` のマーカーを driver が埋める。マーカーの埋め方は
 2 種類だけである。
 
-- **数と状態は state.json から毎回組み立てる**（`${tasks}` `${held}` `${decisions}`）。
-  agent には書かせない——書かせると出所が state.json と本文の 2 つになり、
-  「state.json では blocked なのに本文では進行中」がありえる。
-- **自由記述は agent が書いたものを差す**（`${prose}` `${notes}`）。値は `<ランディレクトリ>/prose/*.md` に
-  置き、書き出すたびに読み直す。agent を呼ぶのは 1 回で、そのあと何回書き出しても同じ文が入る。
+- **数と状態は state.json / config.json から毎回組み立てる**（brief の `${verify}` `${test_globs}`）。
+  agent には書かせない——書かせると出所が 2 つになり、片方が古くなる。
+- **自由記述は agent が書いたものを差す**（`${notes}`、タスク PR の `${prose}`）。値は
+  `<ランディレクトリ>/prose/*.md` に置き、書き出すたびに読み直す。agent を呼ぶのは 1 回で、
+  そのあと何回書き出しても同じ文が入る。
 
 `string.Template` の `safe_substitute` を使うので、**埋め忘れたマーカーはそのまま残る**
 （例外で落ちない）。テンプレートに `$` をそのまま出したいときは `$$` と書く。
+
+概要 PR の本文（`prose/overview.md`）は `fill` に通さない。まとめステージが書いた本文の `$$` が
+`$` になるので、`<!-- autodev:tasks -->` などのマーカーを `core/markdown.py` の `fill_markers` が
+決まった文字列として探して置き換える。`fill` で埋めるのは末尾の署名（`overview-pr-body`）だけである。
 """
 
 from __future__ import annotations

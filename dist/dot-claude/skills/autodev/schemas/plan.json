@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["fitsOnePr", "tasks", "verify", "blocked"],
+  "required": ["fitsOnePr", "tasks", "design", "verify", "blocked"],
   "properties": {
     "fitsOnePr": {
       "type": "boolean",
@@ -25,6 +25,10 @@
           "blockedBy": { "type": "array", "items": { "type": "string" } }
         }
       }
+    },
+    "design": {
+      "type": "string",
+      "description": "設計ファイルの全文（Markdown）。テストから呼ぶ公開インターフェース、どのタスクが作りどのタスクが使うか、層をまたぐならデータの流れ"
     },
     "verify": {
       "type": "array",

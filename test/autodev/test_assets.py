@@ -75,6 +75,7 @@ def test_結果を返すステージのスキーマがjsonとして読める(nam
 def test_結果を返すステージの一覧が変わっていない():
     """ステージを足してスキーマを置き忘れると、そのステージだけが結果を返せない。"""
     assert WITH_SCHEMA == [
+        "design-judge",
         "fix",
         "impl",
         "judge",

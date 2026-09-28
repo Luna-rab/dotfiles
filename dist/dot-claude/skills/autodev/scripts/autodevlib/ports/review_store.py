@@ -23,8 +23,9 @@ from typing import Any
 
 from ..core import review_policy
 
-REVIEW_STAGES: tuple[str, ...] = ("review:normal", "review:adversarial")
-COMMENTERS: tuple[str, ...] = (*REVIEW_STAGES, "impl", "judge")
+REVIEW_STAGES: tuple[str, ...] = ("review:normal", "review:adversarial", "design-review")
+#: `plan` と `replan` は、設計の指摘を直したステージが何をどう直したかを残すのに使う
+COMMENTERS: tuple[str, ...] = (*REVIEW_STAGES, "impl", "plan", "replan", "judge")
 RATINGS: tuple[str, ...] = ("must-fix", "should-fix", "nit")
 STATUSES: tuple[str, ...] = ("open", "closed", "rejected")
 TRANSITIONS: dict[str, tuple[str, ...]] = {

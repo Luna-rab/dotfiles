@@ -41,10 +41,13 @@ REQUIRED_RULES: dict[str, list[str]] = {
     "replan": [
         "コードを書き換えない。読むだけで、commit も作らない。",
         "スタック済みのタスクは変えない。変えてよいのは止まったタスクと未着手のタスクだけ。",
+        "`design` には設計ファイルの全文を書く（変えない部分も書き写す。前の版は丸ごと置き換わる）。",
         "指摘を移すなら、移す先は同じランの中のタスクに限る（ランの外へ後回しにしない）。",
     ],
     "testgen": [
-        "テストだけを書く。実装のコードに触らない。",
+        "テストと、`<設計>` にあるシグネチャのスタブ（中身は未実装を示す例外だけ）だけを書く。"
+        "実装のロジックを書かない。",
+        "`<設計>` に無い形を呼ばない。要るなら、テストを書かずに結果の `designGap` に書いて終える。",
         "書いたテストを commit する（`<ブランチ>` の上に 1 コミット以上）。テストの誤りの報告を"
         "検証して誤りと判断したときだけは、テストを変えず commit もしない。",
         "受入条件から書く。実装しやすさに合わせてテストを緩めない。",
@@ -52,6 +55,8 @@ REQUIRED_RULES: dict[str, list[str]] = {
     "impl": [
         "**テストファイルを変更しない。** フックが止める。テストが仕様と矛盾していると"
         "判断したら、直さずに結果の `testConflict` に理由を書いて終える。",
+        "`<設計>` の公開インターフェースを黙って変えない。変える必要があれば、"
+        "変えずに結果の `interfaceChange` に理由を書いて終える。",
         "範囲を広げない。ついでの整理をしない。",
         "変更を commit する（`<ブランチ>` の上に 1 コミット以上）。",
         "長時間のジョブを起動して待たない。待つ前に commit する。",
@@ -83,7 +88,9 @@ ROLE_KEY = {
     "fix": "impl",
     "review:normal": "review",
     "review:adversarial": "review",
+    "design-review": "review",
     "judge": "judge",
+    "design-judge": "judge",
     "pr-body": "pr-body",
     "summary": "pr-body",
 }
@@ -128,6 +135,17 @@ def _table(stage: Any, values: dict[str, Any], launcher_path: str) -> str:
         ("<レビュー>", values.get("review") or "(なし)"),
         ("<autodev>", launcher_path),
     ]
+    # `<設計>` は `reads_design` のステージにだけ渡る（敵対的レビューには渡さない）。
+    # 設計の過去の版は、前の版に戻ったかを見比べる設計のジャッジにだけ渡る
+    if values.get("design") is not None:
+        rows.append(("<設計>", values["design"] or "(まだ無い)"))
+    if values.get("design_history") is not None:
+        rows.append(("<設計の履歴>", values["design_history"]))
+    # この 2 行はまとめステージにだけ渡る。`cat <タスク PR 本文>` に渡せるよう空白で区切る
+    if values.get("tree_base") is not None:
+        rows.append(("<ツリー の base>", values["tree_base"]))
+    if values.get("task_pr_bodies") is not None:
+        rows.append(("<タスク PR 本文>", " ".join(values["task_pr_bodies"]) or "(まだ無い)"))
     lines = ["| 表記 | 値 |", "| --- | --- |"]
     lines += [f"| `{key}` | `{value}` |" for key, value in rows]
     return "\n".join(lines)

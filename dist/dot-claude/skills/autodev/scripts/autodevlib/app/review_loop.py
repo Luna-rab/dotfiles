@@ -35,18 +35,37 @@ def review_round(ctx: Ctx, task: dict[str, Any], index: int, change_kind: str) -
     label = str(index)
     review_store.init(ctx.run.review(task["id"]))
 
+    def extra(name: str) -> str:
+        # 敵対的レビューには渡さない（前提知識ゼロで差分だけを読む）
+        return stub_note(task) if name == "review:normal" else ""
+
     if len(expected) == 1:
         for name in expected:
-            call_or_wait(ctx, stages.TABLE[name], task, label)
+            call_or_wait(ctx, stages.TABLE[name], task, label, extra=extra(name))
         return expected
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(expected)) as pool:
         futures = [
-            pool.submit(call_or_wait, ctx, stages.TABLE[name], task, label) for name in expected
+            pool.submit(call_or_wait, ctx, stages.TABLE[name], task, label, extra=extra(name))
+            for name in expected
         ]
         for future in futures:
             future.result()
     return expected
+
+
+def stub_note(task: dict[str, Any]) -> str:
+    """通常レビューに渡す、テスト作成ステージがテスト以外に触ったファイル。スタブかを確かめさせる。"""
+    stubs = task.get("stubFiles") or []
+    if not stubs:
+        return ""
+    listed = "\n".join(f"- `{path}`" for path in stubs)
+    return (
+        "## テスト作成ステージがテスト以外に触ったファイル\n\n"
+        f"{listed}\n\n"
+        "ここはスタブ（`<設計>` にあるシグネチャで、中身は未実装を示す例外だけ）のはずである。"
+        "`git log -p <親ブランチ>..<ブランチ> -- <ファイル>` でテスト作成ステージのコミットを読み、確かめる。"
+    )
 
 
 def stale_note(stale_ids: list[str]) -> str:

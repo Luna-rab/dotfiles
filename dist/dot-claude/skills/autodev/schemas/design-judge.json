@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["closed", "rejected", "escalation"],
+  "properties": {
+    "closed": { "type": "integer" },
+    "rejected": { "type": "integer" },
+    "checked": {
+      "type": "array",
+      "description": "何で確かめたか（設計のどこ・コードのどこ）",
+      "items": { "type": "string" }
+    },
+    "notes": { "type": "string" },
+    "escalation": {
+      "type": ["object", "null"],
+      "description": "人に聞く理由。分類しないときは null",
+      "additionalProperties": false,
+      "required": ["cause", "items", "reason"],
+      "properties": {
+        "cause": { "type": "string", "enum": ["reverted", "ambiguous"] },
+        "items": {
+          "type": "array",
+          "description": "原因を分類した指摘の id（r3 など）",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" },
+        "revertedTo": {
+          "type": ["integer", "null"],
+          "description": "cause が reverted のとき、戻った先の版の番号"
+        },
+        "questions": {
+          "type": "array",
+          "description": "人に聞くこと（選択肢の形で）",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

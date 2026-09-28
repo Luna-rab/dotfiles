@@ -23,6 +23,9 @@ from .context import Ctx, Waiting
 BLOCK_LIMIT = 10
 #: 進行を state.json に書き出す間隔（秒）
 PROGRESS_EVERY = 5.0
+#: 設計レビューと設計のジャッジの記録を置くキー（`tasks/design/review.json`・`logs/design/`）。
+#: 回答待ちの質問もこのキーで出る
+DESIGN_ID = "design"
 
 
 def stage_values(
@@ -59,6 +62,18 @@ def stage_values(
                 "notes": task.get("notes") or [],
             }
         )
+    if stage.reads_design:
+        # 設計ファイルが無いのは、この仕組みより前に始めたランである
+        values["design"] = run.design if os.path.exists(run.design) else ""
+    if stage.owner == DESIGN_ID:
+        values["review"] = run.review(DESIGN_ID)
+    if stage.name == "design-judge":
+        values["design_history"] = run.design_history
+    if stage.name == "summary":
+        values["tree_base"] = st.get("base")
+        values["task_pr_bodies"] = [
+            run.task_pr_body(item["id"]) for item in st["tasks"] if item["status"] == "stacked"
+        ]
     return values
 
 
@@ -90,11 +105,30 @@ def stage_session(task: dict[str, Any] | None, stage: stages.Stage) -> tuple[str
     """そのセッションを続けるか、新しく立てるか。続けるのは `stage.session` を持つステージだけ。
 
     id は**呼ぶ側が決める**（`claude --session-id`）。出力から拾わなくてよくなる。
+    `task` はセッションの id を持つ辞書で、設計のジャッジでは state.json の `design` である。
     """
     if not (task and stage.session):
         return None, False
     existing = task.get(stage.session)
     return (existing, True) if existing else (str(uuid.uuid4()), False)
+
+
+def session_holder(
+    ctx: Ctx, stage: stages.Stage, task: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """セッションの id を持つ辞書。タスクのステージはタスク、設計のステージは state.json の `design`。"""
+    if task is not None:
+        return task
+    if stage.owner == DESIGN_ID:
+        return ctx.st.setdefault(DESIGN_ID, {})
+    return None
+
+
+def owner_id(stage: stages.Stage, task: dict[str, Any] | None) -> str:
+    """ログ・結果・回答待ちの質問を置くキー。"""
+    if task is not None:
+        return str(task["id"])
+    return stage.owner or "task0"
 
 
 def log_label(run: Any, task_id: str, stage: stages.Stage, round_label: str) -> str:
@@ -166,20 +200,28 @@ def call(
     *,
     extra: str = "",
     resume_from: str | None = None,
+    continue_from: str | None = None,
 ) -> runner.Result:
     """ステージを 1 回呼ぶ。**結果がスキーマに合わなければ、そのステージは失敗である。**
 
     `resume_from` を渡すと、回答を待って止まったステージをそのセッションから再開する。
     **そのときプロンプトは渡さない**——渡すと新しいターンが始まり、止まったツール呼び出しが
     再開されない。
+
+    `continue_from` を渡すと、そのセッションの続きとして新しいプロンプトを渡す。設計の指摘を、
+    設計を書いた計画・再計画ステージに直させるときに使う（読んだコードを読み直させない）。
     """
     run = ctx.run
     values = stage_values(ctx, stage, task, round_label, extra)
-    task_id = task["id"] if task else "task0"
+    task_id = owner_id(stage, task)
+    holder = session_holder(ctx, stage, task)
     if resume_from:
         session, resume, prompt = resume_from, True, ""
     else:
-        session, resume = stage_session(task, stage)
+        if continue_from:
+            session, resume = continue_from, True
+        else:
+            session, resume = stage_session(holder, stage)
         prompt = prompt_lib.build_prompt(
             stage,
             values,
@@ -230,8 +272,8 @@ def call(
     if got.result is not None:
         # **記録は driver が書く。** ステージに書かせないので、在ることと形が保証される
         files.write_json(run.result(task_id, name, label), got.result)
-    if task is not None and stage.session and got.session_id:
-        task[stage.session] = got.session_id
+    if holder is not None and stage.session and got.session_id:
+        holder[stage.session] = got.session_id
 
     console.info(f"  → {'ok' if got.ok else 'NG'} / {runner.usage_line(got)}")
     for warning in got.warnings:
@@ -244,28 +286,31 @@ def call(
 def call_or_wait(
     ctx: Ctx,
     stage: stages.Stage,
-    task: dict[str, Any],
+    task: dict[str, Any] | None,
     round_label: str,
     *,
     extra: str = "",
+    continue_from: str | None = None,
 ) -> runner.Result:
-    """タスクのステージを呼ぶ。**エラーで終わったら 1 回だけ呼び直し、それでも落ちたら人に聞く。**
+    """ステージを呼ぶ。**エラーで終わったら 1 回だけ呼び直し、それでも落ちたら人に聞く。**
 
     エラーの多くは一時的なもの（ネットワーク、レート制限）である。2 回続けて落ちるなら、
     ステージの外に原因があるので人が見る。回答が置かれたら、タスクは同じ `phase` から続く。
+    タスクを持たないステージ（設計レビューなど）は、`owner` のキーで質問を出す。
     """
-    got = call(ctx, stage, task, round_label, extra=extra)
+    got = call(ctx, stage, task, round_label, extra=extra, continue_from=continue_from)
     if got.ok:
         return got
     console.info(f"{stage.role}ステージがエラーで終わったので、1 回だけ呼び直す")
-    got = call(ctx, stage, task, round_label, extra=extra)
+    got = call(ctx, stage, task, round_label, extra=extra, continue_from=continue_from)
     if got.ok:
         return got
+    key = owner_id(stage, task)
     raise Waiting(
-        task["id"],
+        key,
         [
             {
-                "id": f"{task['id']}-{stage.name.replace(':', '-')}-error",
+                "id": f"{key}-{stage.name.replace(':', '-')}-error",
                 "question": f"{stage.role}ステージが 2 回続けてエラーで終わった: {got.error}"
                 f"（ログ: {got.log}）。原因を取り除いたら、続けてよいと回答してください。",
             }

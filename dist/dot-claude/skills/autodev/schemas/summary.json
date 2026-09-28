@@ -1,11 +1,11 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["prose"],
+  "required": ["body"],
   "properties": {
-    "prose": {
+    "body": {
       "type": "string",
-      "description": "見出しを付けない 2〜5 段落。表・箇条書きの進行状況は書かない（driver が組む）"
+      "description": "概要 PR の本文全体。<!-- autodev:tasks --> などのマーカーは driver が state.json の中身に置き換える。末尾の署名は書かない"
     }
   }
 }

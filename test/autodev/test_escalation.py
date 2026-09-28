@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 from autodev import main
-from autodevlib.app import planning, replan, review_loop, stage_call
+from autodevlib.app import build, design, drive, planning, replan, review_loop, stage_call
 from autodevlib.app import task as task_mod
 from autodevlib.app.context import Ctx, NeedsReplan, Waiting
 from autodevlib.config import paths, stages
 from autodevlib.core import task_order, verdict
-from autodevlib.ports import files, proc, repo, review_store, runner
+from autodevlib.ports import evidence, files, proc, repo, review_store, runner
 
 #: ステージ 1 回ぶんの台本。review.json を書き換えて、ステージの結果を返す。None ならエラーで終わる
 Step = Callable[[Ctx, dict[str, Any]], dict[str, Any] | None]
@@ -29,7 +29,9 @@ class Script:
         self.steps = steps
         self.calls: list[tuple[str, str, str]] = []
 
-    def __call__(self, ctx, stage, task, round_label, *, extra="", resume_from=None):
+    def __call__(
+        self, ctx, stage, task, round_label, *, extra="", resume_from=None, continue_from=None
+    ):
         self.calls.append((stage.name, round_label, extra))
         queue = self.steps.get(stage.name) or []
         result = queue.pop(0)(ctx, task) if queue else {}
@@ -279,24 +281,32 @@ def test_同じラウンドで2度呼んだらログの名前をずらす(ctx):
 # --- 再計画 ------------------------------------------------------------------
 
 
-def test_再計画で指摘を後ろのタスクへ移す(ctx, monkeypatch):
-    raise_finding(ctx, ctx.st["tasks"][0])
-    plan = {
+def replanned(tier: str = "light") -> dict[str, Any]:
+    """再計画ステージの結果。止まった task1 を残し、r1 を新しいタスクへ移す。"""
+    return {
         "keepCurrent": True,
         "tasks": [
             {
                 "subject": "CLI",
-                "tier": "standard",
+                "tier": tier,
                 "dod": "",
                 "acceptance": "表示する",
                 "carry": ["r1"],
             }
         ],
+        "design": "## 公開インターフェース\n\n- cli(argv) -> int",
         "notes": "r1 は CLI の関心事",
         "blocked": False,
     }
-    use(monkeypatch, Script({"replan": [lambda c, t: plan]}))
+
+
+def test_再計画で指摘を後ろのタスクへ移す(ctx, monkeypatch):
+    raise_finding(ctx, ctx.st["tasks"][0])
+    use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
     replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    # 写すのは設計の確かめを通ってから（止まった task1 も新しいタスクも light なので飛ばす）
+    assert [t["id"] for t in ctx.st["tasks"]] == ["task1", "task2"]
+    drive.settle_proposal(ctx, {})
 
     ids = [t["id"] for t in ctx.st["tasks"]]
     assert ids == ["task1", "task3"]
@@ -306,16 +316,286 @@ def test_再計画で指摘を後ろのタスクへ移す(ctx, monkeypatch):
     carried = review_store.items(stored(ctx, "task3"))
     assert [(i["status"], i["movedFrom"]) for i in carried] == [("open", "task1/r1")]
     assert "task1 から移した指摘" in ctx.st["tasks"][1]["acceptance"]
-    assert "再計画した（1 回目）" in ctx.st["decisions"][-1]["body"]
+    assert "再計画した（1 回目、設計 v1）" in ctx.st["decisions"][-1]["body"]
+    assert "cli(argv)" in files.read_text(ctx.run.design)
 
 
-def test_再計画が上限に達したら人に聞く(ctx, monkeypatch):
+def test_再計画は設計レビューが済むまで写さない(ctx, monkeypatch):
+    raise_finding(ctx, ctx.st["tasks"][0])
+    script = use(monkeypatch, Script({"replan": [lambda c, t: replanned(tier="standard")]}))
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    # 設計レビューが `review done` を呼ばずに終わったので、人に聞いて止まる
+    with pytest.raises(Waiting):
+        drive.settle_proposal(ctx, {})
+    assert "design-review@1" in script.names()
+    assert [t["id"] for t in ctx.st["tasks"]] == ["task1", "task2"]
+    assert stored(ctx, "task1")["items"]["r1"]["status"] == "open"
+    review_extra = next(extra for name, _, extra in script.calls if name == "design-review")
+    assert "再計画の前提" in review_extra and "範囲の外" in review_extra
+
+
+def test_再計画の直しは止まったタスクと理由を引き継いで提案し直す(ctx, monkeypatch):
+    fixed = replanned(tier="standard")
+    fixed["design"] = "## 公開インターフェース\n\n- cli(argv) -> str"
+    script = use(
+        monkeypatch,
+        Script({"replan": [lambda c, t: replanned(tier="standard"), lambda c, t: fixed]}),
+    )
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    replan.revise(ctx, "## 設計レビューの指摘を直す")
+    proposal = ctx.st["design"]["proposal"]
+    assert (proposal["version"], proposal["taskId"], proposal["reason"]) == (2, "task1", "範囲の外")
+    assert "再計画の前提" in proposal["context"]
+    assert script.calls[1][2] == "## 設計レビューの指摘を直す"
+    # 止まった数は、直しでは増やさない
+    assert ctx.st["replansSinceStack"] == 1
+
+
+def test_スタックに追加しないまま再計画を続けたら人に聞く(ctx, monkeypatch):
     script = use(monkeypatch, Script({}))
-    ctx.st["replans"] = replan.MAX_REPLANS
+    ctx.st["replansSinceStack"] = replan.REPLANS_WITHOUT_PROGRESS
     with pytest.raises(Waiting) as raised:
         replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
     assert raised.value.questions[0]["id"] == "task1-replan-limit"
     assert script.calls == []
+
+
+def test_ラン全体の再計画の回数では止めない(ctx, monkeypatch):
+    use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
+    ctx.st["replans"] = 5
+    ctx.st["replansSinceStack"] = 0
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    assert ctx.st["replansSinceStack"] == 1
+
+
+def test_再計画の上限に回答したら数え直して再計画ステージに回答を渡す(ctx, monkeypatch):
+    ctx.st["replansSinceStack"] = replan.REPLANS_WITHOUT_PROGRESS
+    use(monkeypatch, Script({}))
+    with pytest.raises(Waiting) as raised:
+        replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    with pytest.raises(SystemExit):
+        planning.ask_human(ctx, raised.value)
+    files.write_json(
+        ctx.run.answer("task1-replan-limit"), {"answer": "parser.py も範囲に入れてよい"}
+    )
+    planning.take_answers(ctx)
+    assert ctx.st["replansSinceStack"] == 0
+    assert "parser.py も範囲に入れてよい" in ctx.st["tasks"][0]["notes"][-1]
+
+    script = use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    assert script.names() == ["replan@0"]
+
+
+def test_写す途中で落ちても同じ再計画を二度写さない(ctx, monkeypatch):
+    """review.json への移管は先に書かれる。state.json を保存する前に落ちたら、呼び直しで同じ移管を通る。"""
+    raise_finding(ctx, ctx.st["tasks"][0])
+    use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    before = ctx.st.copy()
+    before["tasks"] = [dict(t) for t in ctx.st["tasks"]]
+    replan.apply(ctx, design.pending(ctx.st) or {})
+    # state.json を保存する前に落ちたことにして、写す前の state で呼び直す
+    ctx.st.clear()
+    ctx.st.update(before)
+    replan.apply(ctx, design.pending(ctx.st) or {})
+    assert [t["id"] for t in ctx.st["tasks"]] == ["task1", "task3"]
+    carried = review_store.items(stored(ctx, "task3"))
+    assert [i["movedFrom"] for i in carried] == ["task1/r1"]
+
+
+def test_無い指摘を移すとした再計画はその指摘だけ飛ばす(ctx, monkeypatch):
+    use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    drive.settle_proposal(ctx, {})
+    assert [t["id"] for t in ctx.st["tasks"]] == ["task1", "task3"]
+    assert review_store.read(ctx.run.review("task3")) is None
+
+
+# --- テスト作成 --------------------------------------------------------------
+
+
+def verify_results(*outcomes: bool) -> Callable[..., tuple[verdict.VerifyResult, ...]]:
+    """偽の `run_verify`。呼ばれるたびに、検証コマンド一式が通ったか（True）落ちたかを返す。"""
+    queue = list(outcomes)
+
+    def run_verify(tree: str, commands: list[str], timeout: int = 3600):
+        ok = queue.pop(0)
+        return (
+            verdict.VerifyResult(command=commands[0], ok=ok, code=0 if ok else 1, out="", err=""),
+        )
+
+    return run_verify
+
+
+@pytest.fixture
+def fresh(ctx, monkeypatch) -> dict[str, Any]:
+    """まだテストを書いていないタスク。検証コマンドがあり、変わったファイルは無い。"""
+    ctx.st["verify"] = ["uv run pytest -q"]
+    ctx.st["testGlobs"] = ["**/test_*.py"]
+    monkeypatch.setattr(repo, "changed_files", lambda *a: [])
+    task = ctx.st["tasks"][0]
+    task.update(phase="tests", testsAt=None)
+    return task
+
+
+def test_設計に無い形が要るならテストを書かせず再計画に回す(ctx, fresh, monkeypatch):
+    gap = {"testFiles": [], "failing": 0, "blocked": False, "designGap": "「無い」の返し方が無い"}
+    use(monkeypatch, Script({"testgen": [lambda c, t: gap]}))
+    with pytest.raises(NeedsReplan) as raised:
+        build.make_tests(ctx, fresh, "0")
+    assert (raised.value.kind, raised.value.reason) == ("design-gap", "「無い」の返し方が無い")
+    assert fresh["testsAt"] is None
+
+
+def test_設計の抜けが文字列のnullなら報告として扱わない(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False))
+    use(monkeypatch, Script({"testgen": [lambda c, t: {"designGap": "null"}]}))
+    build.make_tests(ctx, fresh, "0")
+    assert fresh["testsAt"]
+
+
+def test_実装の前に検証コマンドが落ちればそのまま進む(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False))
+    script = use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "0")
+    assert script.names() == ["testgen@0"]
+
+
+def test_実装の前なのに通ったら1回だけ書き直させる(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(True, False))
+    script = use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "0")
+    assert script.names() == ["testgen@0", "testgen@0"]
+    assert "実装の前なのにテストが通った" in script.calls[1][2]
+
+
+def test_書き直しても通るなら人に聞く(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(True, True))
+    use(monkeypatch, Script({}))
+    with pytest.raises(Waiting) as raised:
+        build.make_tests(ctx, fresh, "0")
+    assert raised.value.questions[0]["id"] == "task1-tests-green"
+
+
+def test_実装の前から通る件に回答したら回答に沿って1回だけ書き直させて進む(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(True, True))
+    use(monkeypatch, Script({}))
+    with pytest.raises(Waiting):
+        build.make_tests(ctx, fresh, "0")
+    # 呼び直し。確かめ直すと「このまま進めてよい」という回答でも同じ質問に戻る（台本が尽きて落ちる）
+    script = use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "0")
+    assert script.names() == ["testgen@0"]
+    assert "実装の前からテストが通る件の回答" in script.calls[0][2]
+    assert "redCheck" not in fresh
+
+
+def test_確かめの途中で落ちたらテストを書き直さずに確かめだけやり直す(ctx, fresh, monkeypatch):
+    fresh.update(testsAt="sha-tests", redCheck="running")
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False))
+    script = use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "0")
+    assert script.calls == []
+    assert "redCheck" not in fresh
+
+
+def test_報告を受けた設計の直しはタスクがlightでも設計レビューを通す(ctx, monkeypatch):
+    use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
+    replan.replan(ctx, NeedsReplan("task1", "「無い」の形が無い", [], kind="design-gap"))
+    assert ctx.st["design"]["proposal"]["skipReview"] is False
+
+
+def test_2回目からのテスト作成では落ちることを確かめない(ctx, fresh, monkeypatch):
+    """実装がすでにあるので、直したテストは通ってよい。"""
+    fresh["testsAt"] = "sha-tests"
+    monkeypatch.setattr(evidence, "run_verify", verify_results())
+    use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "1")
+
+
+def test_テスト以外に触ったファイルを控えて通常レビューにだけ渡す(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False))
+    monkeypatch.setattr(repo, "changed_files", lambda *a: ["src/cache.py", "tests/test_cache.py"])
+    use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "0")
+    assert fresh["stubFiles"] == ["src/cache.py"]
+
+    fresh["tier"] = "standard"
+    script = use(monkeypatch, Script({"judge": [set_all("closed")]}))
+    review_loop.review_fix_loop(ctx, fresh)
+    extras = {name: extra for name, _, extra in script.calls}
+    assert "`src/cache.py`" in extras["review:normal"]
+    assert extras["review:adversarial"] == ""
+
+
+# --- 設計の形の変更 ----------------------------------------------------------
+
+
+def test_修正ステージが設計の形を変えたいと報告したら報告の時点で再計画に回す(ctx, monkeypatch):
+    change = {"changeKind": "logic", "interfaceChange": "get は Miss を返す必要がある"}
+    use(
+        monkeypatch,
+        Script(
+            {
+                "review:normal": [raise_finding],
+                "judge": [keep_open()],
+                "fix": [lambda c, t: change],
+            }
+        ),
+    )
+    with pytest.raises(NeedsReplan) as raised:
+        review_loop.review_fix_loop(ctx, ctx.st["tasks"][0])
+    assert (raised.value.kind, raised.value.reason) == (
+        "interface-change",
+        "get は Miss を返す必要がある",
+    )
+
+
+def test_設計が変わったらテスト作成からやり直し説明をテストと実装に渡す(ctx, monkeypatch):
+    task = ctx.st["tasks"][0]
+    task.update(testsAt="sha-tests", phase="review", parent="stack/demo--task-0")
+    raise_finding(ctx, task)
+
+    def design_review_done(c: Ctx, t: Any) -> dict[str, Any]:
+        review_store.done(c.run.review("design"), "design-review", "1", 0)
+        return {}
+
+    # 報告を受けた設計の直しなので、light のタスクでも設計レビューを通る
+    script = use(
+        monkeypatch,
+        Script({"replan": [lambda c, t: replanned()], "design-review": [design_review_done]}),
+    )
+    replan.replan(ctx, NeedsReplan("task1", "get は Miss を返す", [], kind="interface-change"))
+    drive.settle_proposal(ctx, {})
+    assert "design-review@1" in script.names()
+    assert task["phase"] == "tests"
+    assert "設計が変わった" in task["resumeNote"]
+
+    monkeypatch.setattr(repo, "start_task_branch", lambda *a: proc.Run(0, "", ""))
+    monkeypatch.setattr(repo, "changed_files", lambda *a: [])
+    monkeypatch.setattr(task_mod, "review_fix_loop", lambda c, t: None)
+    monkeypatch.setattr(task_mod, "gate", lambda c, t: report())
+    monkeypatch.setattr(task_mod, "publish", lambda c, t: None)
+    # テストはすでにあるので、落ちることは確かめない（呼ばれると台本が尽きて落ちる）
+    ctx.st["verify"] = ["uv run pytest -q"]
+    monkeypatch.setattr(evidence, "run_verify", verify_results())
+    script = use(monkeypatch, Script({}))
+    task_mod.run_task(ctx, task)
+    extras = {name: extra for name, _, extra in script.calls}
+    assert "get は Miss を返す" in extras["testgen"]
+    assert "get は Miss を返す" in extras["impl"]
+    assert "resumeNote" not in task
+
+
+def test_範囲の直しではテストからやり直さない(ctx, monkeypatch):
+    task = ctx.st["tasks"][0]
+    raise_finding(ctx, task)
+    use(monkeypatch, Script({"replan": [lambda c, t: replanned()]}))
+    replan.replan(ctx, NeedsReplan("task1", "範囲の外", ["r1"]))
+    drive.settle_proposal(ctx, {})
+    assert task["phase"] == "review"
+    assert "resumeNote" not in task
 
 
 # --- 回答待ち ----------------------------------------------------------------

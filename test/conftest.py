@@ -18,6 +18,6 @@ SCRIPTS_ROOT = SKILL_ROOT / "scripts"
 CLAUDE_HOOKS = REPO_ROOT / "dist" / "dot-claude" / "hooks"
 CLAUDE_SCRIPTS = REPO_ROOT / "dist" / "dot-claude" / "scripts"
 
-for root in (SCRIPTS_ROOT, CLAUDE_SCRIPTS):
+for root in (SCRIPTS_ROOT, CLAUDE_SCRIPTS, CLAUDE_HOOKS):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))

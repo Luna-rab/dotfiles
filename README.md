@@ -7,6 +7,9 @@
     cd $HOME/dotfiles
     ````
 
+    clone 先はどこでもよい。`install.sh` は自分の置かれた場所から `dist/` を探す
+    （`install.sh:467`）。
+
 2. install
 
     `install.sh` が `dist/` の設定ファイルを symlink し、

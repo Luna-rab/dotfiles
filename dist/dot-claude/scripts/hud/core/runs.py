@@ -94,6 +94,22 @@ def name_of(st: dict) -> str:
     return str(st.get("name") or st.get("work") or "?")
 
 
+def overview_head(body: str | None) -> str:
+    """概要 PR の本文（`prose/overview.md`）のうち、上の区画（最初の `---` より前）だけを返す。
+
+    下の区画はマーカーと起動時の指示で、HUD は同じものを state.json から出している。
+    先頭の stacked PR の案内（引用）と HTML コメントも除く。
+    """
+    lines: list[str] = []
+    for line in (body or "").splitlines():
+        if line.strip() == "---":
+            break
+        if line.startswith(">") or line.strip().startswith("<!--"):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def short(seconds: float) -> str:
     """経過時間の表記。1 分未満は秒、1 時間未満は分と秒、それ以上は時と分。"""
     total = int(seconds)

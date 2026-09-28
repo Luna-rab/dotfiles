@@ -61,3 +61,17 @@ def test_回答を待つステージは質問IDを並べる():
 def test_止まったランはスタック済みの数と要対応の数を持つ():
     head = headline.build(state(running={}), [], active=False)
     assert (head.state, head.stacked, head.total, head.held) == (headline.State.STOPPED, 1, 4, 1)
+
+
+def test_概要PRの本文は上の区画だけを出す():
+    body = (
+        "> stacked PR の概要 PR。\n> 下から順にマージする。\n\n"
+        "## 概要\n\n範囲を指定して切り出せる。\n<!-- 説明 -->\n\n"
+        "---\n\n## autodev の記録\n\n<!-- autodev:tasks -->\n"
+    )
+    assert runs.overview_head(body) == "## 概要\n\n範囲を指定して切り出せる。"
+
+
+def test_区切りの無い古い本文はそのまま出す():
+    assert runs.overview_head("範囲を指定して切り出す。") == "範囲を指定して切り出す。"
+    assert runs.overview_head(None) == ""

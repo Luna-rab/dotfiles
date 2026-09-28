@@ -59,6 +59,15 @@ def add_tasks(data: dict[str, Any], run_name: str, planned: list[dict[str, Any]]
         data["tasks"].append(new_task(index, run_name, src))
 
 
+def all_light(tasks: list[dict[str, Any]]) -> bool:
+    """タスクがすべて `light` か。**そうなら設計レビューを飛ばす。**
+
+    `light` のタスクは新しい公開インターフェースを作らないので、テストに縛られる設計が
+    ほとんど無い。tier の無いタスクは `standard` として扱う（`new_task()` と同じ）。
+    """
+    return bool(tasks) and all(t.get("tier") == "light" for t in tasks)
+
+
 def _number(task_id: str) -> int:
     return int(task_id.removeprefix("task") or 0)
 

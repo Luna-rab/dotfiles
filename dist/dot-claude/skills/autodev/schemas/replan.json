@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["keepCurrent", "tasks", "notes", "blocked"],
+  "required": ["keepCurrent", "tasks", "design", "notes", "blocked"],
   "properties": {
     "keepCurrent": {
       "type": "boolean",
@@ -43,6 +43,10 @@
           }
         }
       }
+    },
+    "design": {
+      "type": "string",
+      "description": "直した設計ファイルの全文（Markdown）。変えない部分も書き写す"
     },
     "notes": { "type": "string", "description": "何をなぜ変えたか。判断ログに残る" },
     "decisions": { "type": "array", "items": { "type": "string" } },

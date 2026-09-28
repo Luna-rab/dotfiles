@@ -8,11 +8,13 @@
       config.json         リポジトリ固有の設定（検証コマンド・テストのパス・変更禁止パス）
       brief.md            ステージが読むブリーフ（検証コマンド・変更禁止パス・ブランチ規約）
       map.md              ステージが読むコードベースの入口
+      design.md           設計ファイル（いまの版）。計画・再計画ステージが書いたものを driver が書き出す
+      design/v<版>.md     設計ファイルの過去の版。設計のジャッジが前の版に戻ったかを見比べる
       overview-pr-body.md    概要 PR の本文（driver が書き出す）
       guard.json          書き込みを止めるフックの設定。`claude --settings` で渡す
       tree/               worktree。git と gh stack を叩くのはここだけ
       tasks/task<番号>/
-        review.json       レビュー記録
+        review.json       レビュー記録（設計の指摘は tasks/design/review.json）
         result-<ステージ>-<ラウンド>.json  ステージが返す構造化結果
         pr-body.md        タスク PR の本文
       logs/<ステージ>-<ラウンド>.jsonl     claude の出力そのまま
@@ -124,6 +126,19 @@ class Run:
     @property
     def map(self) -> str:
         return self.path("map.md")
+
+    @property
+    def design(self) -> str:
+        """設計ファイルのいまの版。ステージが `<設計>` で読む。"""
+        return self.path("design.md")
+
+    @property
+    def design_history(self) -> str:
+        """設計ファイルの過去の版の置き場。**書き出した版は消さない。**"""
+        return self.path("design")
+
+    def design_version(self, version: int) -> str:
+        return os.path.join(self.design_history, f"v{version}.md")
 
     @property
     def overview_pr_body(self) -> str:

@@ -221,6 +221,19 @@ def test_完了チェック5の基準とレビューの記録を空で置く():
     assert task["reviewersSeen"] == []
 
 
+def test_タスクがすべてlightのときだけ設計レビューを飛ばす():
+    assert task_order.all_light([{"tier": "light"}, {"tier": "light"}])
+    assert not task_order.all_light([{"tier": "light"}, {"tier": "standard"}])
+
+
+def test_tierの無いタスクはstandardとして設計レビューを飛ばさない():
+    assert not task_order.all_light([{"tier": "light"}, {}])
+
+
+def test_タスクが無ければ設計レビューを飛ばさない():
+    assert not task_order.all_light([])
+
+
 # --- 数 ----------------------------------------------------------------------
 
 

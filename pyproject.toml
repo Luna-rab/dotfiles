@@ -94,6 +94,7 @@ python-version = "3.10"
 extra-paths = [
   "dist/dot-claude/skills/autodev/scripts",
   "dist/dot-claude/scripts",
+  "dist/dot-claude/hooks",
 ]
 
 [tool.ty.src]

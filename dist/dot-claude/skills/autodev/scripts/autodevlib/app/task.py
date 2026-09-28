@@ -86,11 +86,14 @@ def run_task(ctx: Ctx, task: dict[str, Any]) -> None:
         )
 
     phase = task.get("phase") or "tests"
+    # 再計画で設計が変わったときの説明。テスト作成と実装の両方に渡し、実装が済んだら捨てる
+    note = str(task.get("resumeNote") or "")
     if phase == "tests":
-        make_tests(ctx, task, "0")
+        make_tests(ctx, task, "0", extra=note)
         advance(ctx, task, phase := "build")
     if phase == "build":
-        build(ctx, task)
+        build(ctx, task, extra=note)
+        task.pop("resumeNote", None)
         advance(ctx, task, phase := "review")
     while True:
         if phase == "review":

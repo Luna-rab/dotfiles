@@ -32,13 +32,19 @@ class Waiting(Exception):
 
 
 class NeedsReplan(Exception):
-    """タスクの割り方を直さないと進めない。`drive()` が受け取り、再計画ステージを呼ぶ。"""
+    """タスクの割り方か設計を直さないと進めない。`drive()` が受け取り、再計画ステージを呼ぶ。
 
-    def __init__(self, task_id: str, reason: str, items: list[str]) -> None:
+    `kind` は何が再計画を求めたか。`scope` はジャッジが「範囲の外に手を入れないと直せない」と
+    分類したとき、`design-gap` はテスト作成ステージが「設計ファイルに無い形が要る」と報告したとき、
+    `interface-change` は実装・修正ステージが「設計ファイルの形を変える必要がある」と報告したとき。
+    """
+
+    def __init__(self, task_id: str, reason: str, items: list[str], kind: str = "scope") -> None:
         super().__init__(task_id)
         self.task_id = task_id
         self.reason = reason
         self.items = items
+        self.kind = kind
 
 
 @dataclass

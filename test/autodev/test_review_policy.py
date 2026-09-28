@@ -80,6 +80,30 @@ def test_停滞しているのに分類が無ければ再計画に回す():
     assert review_policy.route({"cause": "unknown"}, ["r3"]) == "replan"
 
 
+# --- 設計の次の手 ------------------------------------------------------------
+
+
+def test_設計のジャッジが分類しなければ設計を書いたステージが直す():
+    assert review_policy.design_route(None, []) == "fix"
+
+
+def test_設計が前の版に戻ったら人に聞く():
+    assert review_policy.design_route({"cause": "reverted"}, []) == "ask"
+
+
+def test_設計の受入条件が曖昧なら人に聞く():
+    assert review_policy.design_route({"cause": "ambiguous"}, []) == "ask"
+
+
+def test_設計の指摘が停滞したら分類が無くても人に聞く():
+    """設計には割り方を直す先（再計画）が無い。直し続けても変わらないなら人が決める。"""
+    assert review_policy.design_route(None, ["r1"]) == "ask"
+
+
+def test_タスクの分類は設計の次の手にならない():
+    assert review_policy.design_route({"cause": "scope"}, []) == "fix"
+
+
 # --- 数え方 ------------------------------------------------------------------
 
 

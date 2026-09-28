@@ -17,6 +17,10 @@
       "type": ["string", "null"],
       "description": "テストが仕様と矛盾しているときだけ理由を入れる。無ければ null"
     },
+    "interfaceChange": {
+      "type": ["string", "null"],
+      "description": "受入条件を満たすのに <設計> の公開インターフェースを変える必要があるときだけ書く。どの形をどう変えるかと、なぜか。無ければ null"
+    },
     "verified": {
       "type": "array",
       "description": "自分で流して緑を確かめたコマンド",

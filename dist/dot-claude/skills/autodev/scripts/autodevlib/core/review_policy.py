@@ -27,6 +27,13 @@ STALE_AFTER = 2
 ROUTES = {"tests": "tests", "approach": "approach", "scope": "replan", "ambiguous": "ask"}
 
 
+#: 設計のジャッジが返す原因。どちらも人に聞く
+#:
+#: - `reverted`  前の版の形に戻った（その版から変えた理由があったのに、また同じ形になった）
+#: - `ambiguous` 受入条件か指示が一意に定まらず、どちらの設計にするか人が決める
+DESIGN_CAUSES = ("reverted", "ambiguous")
+
+
 def expected_reviewers(tier: str, change_kind: str, round_index: int) -> list[str]:
     """そのラウンドで走るべきレビューステージ。**体数をコードに埋めない。**
 
@@ -64,13 +71,25 @@ def stale(attempts: dict[str, int], data: dict[str, Any]) -> list[str]:
 def route(escalation: dict[str, Any] | None, stale_ids: list[str]) -> str:
     """ジャッジの分類から次の手を決める。`fix` / `tests` / `approach` / `replan` / `ask` のどれか。
 
-    停滞しているのにジャッジが分類を返さなかったら再計画に回す。**再計画は回数に上限があり、
-    超えると人に聞く**ので、ジャッジが分類を返さないまま修正を繰り返すことは無い。
+    停滞しているのにジャッジが分類を返さなかったら再計画に回す。**スタックに追加しないまま
+    再計画を続けると人に聞く**ので、ジャッジが分類を返さないまま修正を繰り返すことは無い。
     """
     cause = str((escalation or {}).get("cause") or "")
     if cause in ROUTES:
         return ROUTES[cause]
     return "replan" if stale_ids else "fix"
+
+
+def design_route(escalation: dict[str, Any] | None, stale_ids: list[str]) -> str:
+    """設計のジャッジの分類から次の手を決める。`fix`（設計を書いたステージが直す）か `ask`。
+
+    **停滞しているのにジャッジが分類を返さなかったら人に聞く。** タスクと違って、設計には
+    割り方を直す手（再計画）の先が無い。直し続けても変わらないなら、人が決めるしかない。
+    """
+    cause = str((escalation or {}).get("cause") or "")
+    if cause in DESIGN_CAUSES or stale_ids:
+        return "ask"
+    return "fix"
 
 
 def tally(data: dict[str, Any]) -> dict[str, int]:

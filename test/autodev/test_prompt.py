@@ -122,6 +122,40 @@ def test_値にドル記号が入っても崩れない():
     assert "`$HOME` と `${run_name}` をそのまま出す" in body
 
 
+# --- タスク PR 本文（まとめステージ） ----------------------------------------------
+
+PR_BODIES = ["/s/demo/tasks/task1/pr-body.md", "/s/demo/tasks/task2/pr-body.md"]
+
+
+def test_タスクPR本文のパスを空白区切りで表に出す():
+    """`cat <タスク PR 本文>` にそのまま渡せるよう、1 つのセルに空白で区切って並べる。"""
+    body = build(stages.TABLE["summary"], task_id=None, task_pr_bodies=PR_BODIES)
+    assert (
+        "| `<タスク PR 本文>` | `/s/demo/tasks/task1/pr-body.md /s/demo/tasks/task2/pr-body.md` |"
+        in body
+    )
+
+
+def test_タスクPR本文が1本も無ければまだ無いと出す():
+    body = build(stages.TABLE["summary"], task_id=None, task_pr_bodies=[])
+    assert "| `<タスク PR 本文>` | `(まだ無い)` |" in body
+
+
+def test_タスクPR本文を渡さないステージには行を出さない():
+    assert "<タスク PR 本文>" not in build(stages.TABLE["impl"])
+    assert "<タスク PR 本文>" not in build(stages.TABLE["impl"], task_pr_bodies=None)
+
+
+def test_まとめステージのプロンプトに起動時の指示の原文が入る():
+    body = build(
+        stages.TABLE["summary"],
+        task_id=None,
+        task_pr_bodies=[],
+        instruction="先に型を直す $HOME",
+    )
+    assert "先に型を直す $HOME" in body
+
+
 # --- 必須ルール ----------------------------------------------------------------
 
 

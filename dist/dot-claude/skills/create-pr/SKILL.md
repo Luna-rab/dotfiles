@@ -177,7 +177,7 @@ gh pr view --json number,url,baseRefName,title 2>/dev/null
   # draft=true の場合: --draft
   ```
 
-作成・更新後、`gh pr view --web` の URL を含め、対象の PR をユーザーに伝える。**PR 番号は呼び出し元が使うので、返答に必ず含める。**
+作成・更新後、`gh pr view --json url` で取った URL を含め、対象の PR をユーザーに伝える。**PR 番号は呼び出し元が使うので、返答に必ず含める。**
 
 ## ブランチ命名ルール
 

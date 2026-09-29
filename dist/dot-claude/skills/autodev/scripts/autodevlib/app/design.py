@@ -1,16 +1,20 @@
 """設計ファイルと、その確かめ（設計レビュー → 設計のジャッジ → 設計を書いたステージの直し）。
 
-**計画・再計画ステージの結果は、すぐ state.json に写さず「提案」として持つ。** 設計の指摘が
+**計画・再計画ステージの結果は、すぐ state.json に写さず「提案」として持つ。** 設計の must-fix が
 0 件になってから driver が写す（`app/drive.py` の `settle_proposal()`）。確かめる前の割り方で
 タスクが動き出すことが無い。
 
     提案 → 設計レビュー（毎ラウンドまっさら） → 設計のジャッジ（セッションを続ける）
-     ↑                                               │ 未解決が残る
+     ↑                                               │ must-fix が残る
      └────────── 設計を書いたステージが直す ←────────┘
 
 - **前の版に戻ったかを見分けるのは設計のジャッジである。** 設計レビューに過去の版を渡すと、
   前のラウンドの結論がフレーミングになって検出が落ちる（DESIGN.md の線引き 6）
-- 前の版に戻った・受入条件が曖昧・停滞（直しを 2 回受けても未解決）のどれかなら人に聞く
+- **must-fix が 0 件なら、should-fix と nit が残っていても通す。** 残りは設計ファイルの末尾に
+  書き足して、テスト作成・実装ステージへ申し送る。nit 1 件のために計画を書き直すと、1 回
+  $5〜30 かかるうえ、書き足した箇所に次の指摘が立つ
+- 前の版に戻った・受入条件が曖昧・停滞（直しを 2 回受けても未解決）・1 つの提案で
+  `DESIGN_ROUNDS` 回回っても must-fix が残る、のどれかなら人に聞く
 - 提案のタスクがすべて `light` なら、設計レビューを飛ばす
 
 設計を書いたステージをどう呼び直すかは、そのステージの側（`planning.revise()` など）が持つ。
@@ -38,9 +42,11 @@ DEFAULTS: dict[str, Any] = {
     #: まだ state.json に写していない計画・再計画ステージの結果。写したら None に戻す
     "proposal": None,
     #: 呼び直したとき、どこから続けるか。`review`（設計レビューから）/ `fix`（直しから）/
-    #: `settled`（指摘が 0 件になった。写すのを待っている）
+    #: `settled`（must-fix が 0 件になった。写すのを待っている）
     "step": "review",
     "rounds": 0,
+    #: いまの提案で回したラウンドの数。上限（`DESIGN_ROUNDS`）で人に聞いたら 0 に戻す
+    "proposalRounds": 0,
     "fixAttempts": {},
     #: 設計のジャッジのセッション。**ランの間ずっと続ける**（前の版の経緯を覚えさせる）
     "judgeSession": None,
@@ -110,6 +116,7 @@ def close(ctx: Ctx) -> None:
     d["proposal"] = None
     d["step"] = "review"
     d["fixAttempts"] = {}
+    d["proposalRounds"] = 0
     ctx.save()
 
 
@@ -137,7 +144,30 @@ def notes_block(d: dict[str, Any]) -> str:
     )
 
 
-def proposal_note(d: dict[str, Any]) -> str:
+def rejected_block(data: dict[str, Any]) -> str:
+    """設計レビューに渡す、却下済み・申し送り済みの指摘。
+
+    設計レビューは毎ラウンド新しく立つので、渡さないと却下した論点を重大度を上げて立て直す。
+    渡すのは結論（何を直したか）ではなく「立て直さない論点」なので、前の版に引きずられる害は小さい。
+    """
+    rejected = [i for i in review_store.items(data, only_open=False) if i["status"] == "rejected"]
+    if not rejected:
+        return ""
+    lines = [
+        "",
+        "",
+        "## 却下済みの指摘（同じ論点を立て直さない）",
+        "",
+    ]
+    for item in rejected:
+        why = item["comments"][-1]["body"] if item.get("comments") else ""
+        lines.append(f"- {item['id']}（{item['rating']}、{item['location']}）: {item['review']}")
+        if why:
+            lines.append(f"  - 却下の理由: {why}")
+    return "\n".join(lines)
+
+
+def proposal_note(d: dict[str, Any], data: dict[str, Any]) -> str:
     """設計レビューに渡す、提案された割り方。設計ファイルと突き合わせて読ませる。"""
     proposal = d["proposal"]
     lines = [f"## 提案されている割り方（設計 v{proposal['version']} と一緒に確かめる）", ""]
@@ -152,7 +182,7 @@ def proposal_note(d: dict[str, Any]) -> str:
                 lines.append(f"   - {label}: {task[key]}")
     if proposal.get("context"):
         lines += ["", str(proposal["context"])]
-    return "\n".join(lines) + notes_block(d)
+    return "\n".join(lines) + rejected_block(data) + notes_block(d)
 
 
 def judge_note(d: dict[str, Any], stale_ids: list[str]) -> str:
@@ -215,8 +245,53 @@ def questions_for(
     ]
 
 
+def round_limit_question(label: str, data: dict[str, Any]) -> dict[str, str]:
+    """1 つの提案で `DESIGN_ROUNDS` 回回っても must-fix が残ったときの質問。"""
+    left = "\n".join(
+        f"- {i['id']}（{i['location']}）: {i['review']}"
+        for i in review_store.items(data)
+        if i["rating"] == "must-fix"
+    )
+    return {
+        "id": f"{DESIGN_ID}-r{label}-rounds",
+        "question": f"設計を {review_policy.DESIGN_ROUNDS} ラウンド直しても、次の must-fix が残っている。\n"
+        f"{left}\n"
+        "指摘ごとに、実装ステージに任せて通すか、どう直させるかを回答してください。"
+        "指示が 1 ランに大きすぎるなら、ランを止めて指示を分けてください。",
+    }
+
+
+def hand_off(ctx: Ctx, path: str, data: dict[str, Any]) -> None:
+    """must-fix が 0 件で設計を通すとき、残った should-fix と nit を後ろのステージへ申し送る。
+
+    設計ファイルの末尾に節を書き足す。`<設計>` を読むテスト作成・実装ステージに、仕組みを足さずに
+    届く。タスクの `review.json` に立て直さないのは、タスクの段階で同じ往復を起こさないためである。
+    """
+    left = review_store.items(data)
+    if not left:
+        return
+    version = state(ctx.st)["proposal"]["version"]
+    for item in left:
+        review_store.hand_off(path, item["id"], f"must-fix が 0 件なので設計 v{version} を通した")
+    listed = "\n".join(
+        f"- {i['id']}（{i['rating']}、{i['location']}）: {i['review']}" for i in left
+    )
+    section = (
+        "\n## 設計で残った指摘（実装ステージが決めてよい）\n\n"
+        "設計レビューが立てたが、設計の段階では直さなかった。テスト作成・実装ステージで扱いを決める。\n\n"
+        f"{listed}\n"
+    )
+    files.write_text(ctx.run.design, files.read_text(ctx.run.design, "") + section)
+    run_store.add_decision(
+        ctx.st,
+        "decision",
+        f"設計 v{version} を must-fix 0 件で通し、残った指摘 {len(left)} 件"
+        f"（{', '.join(i['id'] for i in left)}）を設計ファイルで実装ステージへ申し送った",
+    )
+
+
 def settle(ctx: Ctx, revise: Revise) -> None:
-    """提案の設計の指摘が 0 件になったら戻る。人の判断が要るなら `Waiting` を投げる。
+    """提案の設計の must-fix が 0 件になったら戻る。人の判断が要るなら `Waiting` を投げる。
 
     ラウンドの番号は `design.rounds` から続ける。提案をまたいでも前のログを上書きしない。
     """
@@ -247,8 +322,12 @@ def settle(ctx: Ctx, revise: Revise) -> None:
 
         label = str(int(d["rounds"]) + 1)
         review_store.init(path)
-        call_or_wait(ctx, stages.TABLE["design-review"], None, label, extra=proposal_note(d))
+        before = review_store.read(path) or {"items": {}}
+        call_or_wait(
+            ctx, stages.TABLE["design-review"], None, label, extra=proposal_note(d, before)
+        )
         d["rounds"] = int(label)
+        d["proposalRounds"] = int(d["proposalRounds"]) + 1
         ctx.save()
         data = review_store.read(path) or {"items": {}}
         if "design-review" not in review_store.reviewers_seen(data, label):
@@ -280,14 +359,30 @@ def settle(ctx: Ctx, revise: Revise) -> None:
         data = review_store.read(path) or {"items": {}}
         tally = review_policy.tally(data)
         console.info(f"  設計 r{label}: 未解決 {tally['open']}（must-fix {tally['openMustFix']}）")
-        if tally["open"] == 0:
+        if tally["openMustFix"] == 0:
+            hand_off(ctx, path, data)
             d["step"] = "settled"
             ctx.save()
             return
 
-        escalation = (judged.result or {}).get("escalation") or None
-        stale_ids = review_policy.stale(d["fixAttempts"], data)
         d["step"] = "fix"
         ctx.save()
-        if review_policy.design_route(escalation, stale_ids) == "ask":
-            raise Waiting(DESIGN_ID, questions_for(label, escalation, stale_ids))
+        ask_if_stuck(ctx, d, label, data, (judged.result or {}).get("escalation") or None)
+
+
+def ask_if_stuck(
+    ctx: Ctx,
+    d: dict[str, Any],
+    label: str,
+    data: dict[str, Any],
+    escalation: dict[str, Any] | None,
+) -> None:
+    """must-fix が残ったラウンドの終わりに、直しへ進まず人に聞くなら `Waiting` を投げる。"""
+    stale_ids = review_policy.stale(d["fixAttempts"], data)
+    if review_policy.design_route(escalation, stale_ids) == "ask":
+        raise Waiting(DESIGN_ID, questions_for(label, escalation, stale_ids))
+    if int(d["proposalRounds"]) >= review_policy.DESIGN_ROUNDS:
+        # 回答したら、人が決めたことを渡して直しから続け、もう一度上限まで回せる
+        d["proposalRounds"] = 0
+        ctx.save()
+        raise Waiting(DESIGN_ID, [round_limit_question(label, data)])

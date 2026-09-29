@@ -23,6 +23,7 @@ GLOBS = "test_*.py\ntests/**"
 
 #: ステージごとの環境変数。driver が `stage_env()` で渡すものと同じ形
 TESTGEN = {"AUTODEV_ALLOW_TESTS": "1"}
+EXPECT = {"AUTODEV_ALLOW_TESTS": "1", "AUTODEV_TESTS_ONLY": "1"}
 IMPL: dict[str, str] = {}
 READ_ONLY = {"AUTODEV_READ_ONLY": "1"}
 
@@ -38,7 +39,7 @@ def hook():
 
 
 def call(hook, monkeypatch, stage: dict[str, str], tool: str, tool_input: dict) -> int:
-    for name in ("AUTODEV_READ_ONLY", "AUTODEV_ALLOW_TESTS"):
+    for name in ("AUTODEV_READ_ONLY", "AUTODEV_ALLOW_TESTS", "AUTODEV_TESTS_ONLY"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AUTODEV_TEST_GLOBS", GLOBS)
     for name, value in stage.items():
@@ -83,6 +84,25 @@ def test_impl_can_touch_source(hook, monkeypatch, tool, tool_input):
 def test_testgen_can_touch_tests(hook, monkeypatch):
     got = call(hook, monkeypatch, TESTGEN, "Edit", {"file_path": f"{TREE}/test_app.py"})
     assert got == 0
+
+
+# --- 期待値を決めるステージ: テストだけ書ける ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tool,tool_input,expected",
+    [
+        ("Write", {"file_path": f"{TREE}/tests/golden/draw.json"}, 0),
+        ("Edit", {"file_path": "test_app.py"}, 0),
+        ("Bash", {"command": "echo x > tests/golden/draw.json"}, 0),
+        # 実装を出力に合わせて書き換えると、承認したのか作ったのか区別できない
+        ("Edit", {"file_path": f"{TREE}/src/app.py"}, 2),
+        ("Bash", {"command": "sed -i s/a/b/ src/app.py"}, 2),
+        ("Read", {"file_path": f"{TREE}/src/app.py"}, 0),
+    ],
+)
+def test_expect_can_touch_only_tests(hook, monkeypatch, tool, tool_input, expected):
+    assert call(hook, monkeypatch, EXPECT, tool, tool_input) == expected
 
 
 # --- 読むだけのステージ: worktree の中を全部守る -----------------------------------

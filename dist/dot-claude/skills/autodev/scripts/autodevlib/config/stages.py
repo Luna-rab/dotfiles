@@ -48,8 +48,11 @@ class Stage:
     session: str | None = None
     #: `AUTODEV_JUDGE_TOKEN` を渡すか。**ジャッジだけ真**
     judge: bool = False
-    #: テストファイルへの書き込みを許すか。**テスト作成だけ真**
+    #: テストファイルへの書き込みを許すか。**テスト作成と期待値を決めるステージだけ真**
     allow_tests: bool = False
+    #: テストファイル**だけ**を書けるか（`AUTODEV_TESTS_ONLY`）。**期待値を決めるステージだけ真**。
+    #: 実装の出力を承認する側が実装を書き換えると、出力に合わせて期待値を決めたのか区別できない
+    tests_only: bool = False
     #: ソースを書き換えるステージか。**偽なら worktree の中への書き込みがフックで止まる**
     #: （`AUTODEV_READ_ONLY`）。ツールごと消さないのは、結果の JSON を書くのに
     #: `Write` が要るからである
@@ -109,6 +112,18 @@ TABLE: dict[str, Stage] = {
         role="テスト作成",
         max_turns=180,
         allow_tests=True,
+        edits=True,
+        reads_design=True,
+    ),
+    # 実装の後に、テスト作成が空けておいた期待値を実装の出力から決める。テスト作成と同じ指示書で
+    # `<役割>` で見分ける。毎回まっさらにする（実装の経緯に引きずられずに受入条件と照らす）
+    "expect": Stage(
+        name="expect",
+        contract="testgen",
+        role="期待値を決める",
+        max_turns=180,
+        allow_tests=True,
+        tests_only=True,
         edits=True,
         reads_design=True,
     ),

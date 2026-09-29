@@ -5,12 +5,13 @@
 ことを確かめた）。driver は `<ランディレクトリ>/guard.json` にここを指す設定を書き、`claude --settings` で
 渡す。**worktree にはファイルを置かない**（置くと commit に混ざる危険がある）。
 
-止めるものは 2 つあり、どちらも**worktree の中だけ**を見る。ステージは結果の JSON を
+止めるものは 3 つあり、どれも**worktree の中だけ**を見る。ステージは結果の JSON を
 `<ランディレクトリ>/` の下——worktree の外——へ書くので、そこは通す。
 
     AUTODEV_READ_ONLY=1   worktree の中への書き込みを全部止める（読むだけのステージ）
     AUTODEV_TEST_GLOBS    テストのパス。ここへの書き込みを止める（実装ステージ・修正ステージ）
-    AUTODEV_ALLOW_TESTS=1 テストへの書き込みを許す（テスト作成ステージだけ）
+    AUTODEV_ALLOW_TESTS=1 テストへの書き込みを許す（テスト作成・期待値を決めるステージ）
+    AUTODEV_TESTS_ONLY=1  テスト以外への書き込みを止める（期待値を決めるステージ）
 
 `--disallowedTools` ではなくフックで止めるのは、**結果の JSON を書くのに `Write` が要る**
 からである。ツールごと消すと、読むだけのステージが自分の結果を書けなくなる。フックなら宛先で
@@ -59,6 +60,12 @@ TEST_DENIED = (
     "テストファイルはこのステージから変更できません: {path}\n"
     "テストを書けるのはテスト作成ステージだけです。テストが仕様と矛盾していると判断したら、"
     "直さずに結果の JSON の testConflict に書いて終えてください。"
+)
+SOURCE_DENIED = (
+    "このステージはテスト以外を書き換えられません: {path}\n"
+    "書いてよいのは期待値だけです。実装の出力が受入条件と食い違うなら、期待値を書かずに"
+    "結果の JSON の expectedDefects に書いて終えてください。期待値のファイルがテストとみなすパスに"
+    "入っていないなら、blocked と questions でそのことを知らせてください。"
 )
 TREE_DENIED = (
     "このステージは worktree の中を書き換えられません: {path}\n"
@@ -128,7 +135,8 @@ def refuse(template: str, path: str) -> int:
 def main() -> int:
     read_only = os.environ.get("AUTODEV_READ_ONLY") == "1"
     allow_tests = os.environ.get("AUTODEV_ALLOW_TESTS") == "1"
-    if not read_only and allow_tests:
+    tests_only = os.environ.get("AUTODEV_TESTS_ONLY") == "1"
+    if not read_only and allow_tests and not tests_only:
         return 0
     try:
         payload = json.load(sys.stdin)
@@ -146,7 +154,10 @@ def main() -> int:
             continue  # worktree の外は対象外（結果の JSON はここに書く）
         if read_only:
             return refuse(TREE_DENIED, rel)
-        if not allow_tests and globs.matches_any(rel, patterns):
+        is_test = globs.matches_any(rel, patterns)
+        if tests_only and not is_test:
+            return refuse(SOURCE_DENIED, rel)
+        if not allow_tests and is_test:
             return refuse(TEST_DENIED, rel)
     return 0
 

@@ -20,7 +20,7 @@ from typing import Any
 from ..config import stages
 from ..core import review_policy
 from ..ports import console, review_store
-from .build import make_tests, settle_conflicts, write_code
+from .build import make_tests, settle_conflicts, settle_expected, write_code
 from .context import Ctx, NeedsReplan, Waiting
 from .stage_call import call_or_wait
 
@@ -95,6 +95,8 @@ def review_fix_loop(ctx: Ctx, task: dict[str, Any]) -> None:
     while True:
         index = int(task.get("rounds") or 0) + 1
         label = str(index)
+        # レビューが期待値の差分まで読めるよう、レビューより前に期待値を決める
+        settle_expected(ctx, task, label)
         expected = review_round(ctx, task, index, change_kind)
         task["rounds"] = index
         task.setdefault("reviewRounds", []).append([label, expected])

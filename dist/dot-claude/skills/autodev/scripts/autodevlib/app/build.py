@@ -1,8 +1,16 @@
 """コードとテストを書くステージ（テスト作成・実装・修正）を呼ぶ。
 
-**テストを直せるのはテスト作成ステージだけである。** 実装・修正ステージに直させると、テストを
-通すためにテストを緩める経路ができる。実装・修正ステージがテストの矛盾を報告したら、どの
-ラウンドでもテスト作成ステージに受入条件と照らして確かめさせ、正しければ直させる。
+**テストを直せるのはテスト作成ステージ（と、期待値だけを書く期待値を決めるステージ）だけである。**
+実装・修正ステージに直させると、テストを通すためにテストを緩める経路ができる。実装・修正ステージが
+テストの矛盾を報告したら、どのラウンドでもテスト作成ステージに受入条件と照らして確かめさせ、
+正しければ直させる。
+
+**テストは 2 種類ある。** 受入条件から言える値は実装の前に、言えない値は実装の後に書く。
+
+- シナリオを決めるテスト——入力と、受入条件から言える要所の結果。テスト作成ステージが実装の前に書く
+- 期待値を決めるテスト——出力の全体を期待値と比べる（golden・snapshot・出力全体の assert など）。
+  テスト作成ステージはシナリオだけを書いて期待値を空けておき、実装の後に期待値を決めるステージが
+  実装の出力を受入条件と照らして期待値にする（`settle_expected()`）。実装・修正ステージは期待値を書かない
 
 **テスト作成ステージは設計ファイルにある形だけを呼ぶ。** 足りない形があると報告したら
 （`designGap`）、テストを書かせずに再計画で設計を直させる。実装・修正ステージが設計の形を
@@ -17,7 +25,7 @@ from typing import Any
 
 from ..config import stages
 from ..core import globs, task_order
-from ..ports import console, evidence, repo, run_store
+from ..ports import console, evidence, repo, review_store, run_store
 from .context import Ctx, NeedsReplan, Waiting
 from .stage_call import call_or_wait, record_judgements
 
@@ -78,6 +86,10 @@ def write_tests(ctx: Ctx, task: dict[str, Any], label: str, extra: str) -> bool:
     # 見る（テスト作成ステージはタスクのブランチに commit するので、parent から見ると必ず差分が出る）
     run_store.set_task(ctx.st, task["id"], testsAt=after)
     task["testNotes"] = str(result.get("notes") or "")
+    # テストを直した回が欄を省いたら、前の回の一覧のままにする
+    for key in ("expectedTests", "expectedCommands"):
+        if key in result:
+            task[key] = [str(v) for v in result.get(key) or []]
     note_stubs(ctx, task, before, after)
     return before != after
 
@@ -173,6 +185,7 @@ def write_code(
     フックはランの頭で書いた `guard.json` を全ステージに渡してあるので、ここで出し入れするのは
     ファイルの書き込み権だけである（フックの裏をかかれても書けないようにする二重の栓）。
     """
+    extra = "\n\n".join(part for part in (expected_note(task), extra) if part)
     repo.lock_tests(ctx.run.tree, ctx.st["testGlobs"])
     try:
         got = call_or_wait(ctx, stages.TABLE[stage_code], task, label, extra=extra)
@@ -187,6 +200,58 @@ def write_code(
         # **報告の時点で**設計を直させる。スタックに追加してからでは、却下されても形を戻せない
         raise NeedsReplan(task["id"], change, [], kind="interface-change")
     return result
+
+
+def expected_note(task: dict[str, Any]) -> str:
+    """実装・修正ステージに渡す、期待値を空けてあるテスト。落ちたままでよいと知らせる。"""
+    listed = task.get("expectedTests") or []
+    if not listed:
+        return ""
+    return (
+        "## 期待値を決めるテスト\n\n"
+        + "\n".join(f"- {name}" for name in listed)
+        + "\n\n上のテストの期待値は、実装の後に期待値を決めるステージが、実装の出力を受入条件と"
+        "照らして決める。**期待値が決まるまで、このテストは落ちたままでよい。期待値を書かない**"
+        "（テストへの書き込みはフックが止める）。ほかのテストをすべて通す。"
+    )
+
+
+def settle_expected(ctx: Ctx, task: dict[str, Any], label: str) -> None:
+    """期待値を決めるテストが落ちていれば、期待値を決めるステージに実装の出力から期待値を決めさせる。
+
+    レビューの各ラウンドの頭で呼ぶ。落ちているかをその場で流して決めるので、実装の直後・修正の後・
+    回答待ちから呼び直した後のどれでも同じに動き、どこまで進んだかを state.json に持たなくてよい。
+
+    期待値を書いたら、完了チェック⑤の基準（`testsAt`）をそのコミットへ進める。食い違いの報告は
+    must-fix の指摘にして、修正ステージに実装を直させる。
+    """
+    commands = task.get("expectedCommands") or []
+    if not commands or not failing(ctx, commands):
+        return
+    before = repo.head_sha(ctx.run.tree)
+    got = call_or_wait(ctx, stages.TABLE["expect"], task, label, extra=expect_note(task, commands))
+    result = got.result or {}
+    if result.get("blocked"):
+        raise Waiting(task["id"], questions_of(task, "expect", result))
+    after = repo.head_sha(ctx.run.tree)
+    if after and after != before:
+        run_store.set_task(ctx.st, task["id"], testsAt=after)
+    defects = reported(result.get("expectedDefects"))
+    if defects:
+        review_store.add_expected_defect(ctx.run.review(task["id"]), defects, label)
+    ctx.save()
+
+
+def expect_note(task: dict[str, Any], commands: list[str]) -> str:
+    tests = "\n".join(f"- {name}" for name in task.get("expectedTests") or [])
+    listed = "\n".join(f"- `{c}`" for c in commands)
+    return (
+        "## 期待値を決める\n\n"
+        "次の期待値を決めるテストが落ちている。期待値がまだ無いか、実装の出力が前に決めた期待値から"
+        f"変わった。\n\n{tests or '- （一覧なし。コマンドから読み取る）'}\n\n流すコマンド:\n\n{listed}\n\n"
+        "実装の出力を、受入条件とシナリオの意図に照らして確かめる。合っていれば期待値として書いて"
+        "commit する。食い違えば、その期待値は書かずに結果の `expectedDefects` に書く。"
+    )
 
 
 def test_conflict(result: dict[str, Any]) -> str | None:

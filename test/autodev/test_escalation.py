@@ -564,6 +564,91 @@ def test_テスト以外に触ったファイルを控えて通常レビュー�
     assert extras["review:adversarial"] == ""
 
 
+# --- 期待値を決めるテスト --------------------------------------------------------
+
+
+def test_期待値を空けたテストを控えて実装に落ちたままでよいと渡す(ctx, fresh, monkeypatch):
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False))
+    written = {
+        "testFiles": ["tests/test_draw.rs"],
+        "failing": 2,
+        "blocked": False,
+        "expectedTests": ["draw_golden（tests/golden/draw.json）"],
+        "expectedCommands": ["cargo test --test golden"],
+    }
+    script = use(monkeypatch, Script({"testgen": [lambda c, t: written]}))
+    build.make_tests(ctx, fresh, "0")
+    build.write_code(ctx, fresh, "impl", "0")
+    assert fresh["expectedCommands"] == ["cargo test --test golden"]
+    assert "draw_golden" in script.calls[1][2]
+
+
+def test_期待値を決めるステージだけがテストしか書けない(ctx):
+    ctx.st["judgeToken"] = "t"
+    envs = {name: stage_call.stage_env(ctx, stage) for name, stage in stages.TABLE.items()}
+    assert sorted(n for n, e in envs.items() if e["AUTODEV_ALLOW_TESTS"]) == ["expect", "testgen"]
+    assert [n for n, e in envs.items() if e["AUTODEV_TESTS_ONLY"]] == ["expect"]
+
+
+def expecting(ctx: Ctx) -> dict[str, Any]:
+    """期待値を空けたテストがあり、レビューの前まで進んだタスク。"""
+    task = ctx.st["tasks"][0]
+    task.update(
+        testsAt="sha-tests",
+        expectedTests=["draw_golden"],
+        expectedCommands=["cargo test --test golden"],
+    )
+    return task
+
+
+def test_期待値を決めるテストが通っていれば期待値を決めるステージを呼ばない(ctx, monkeypatch):
+    task = expecting(ctx)
+    monkeypatch.setattr(evidence, "run_verify", verify_results(True))
+    script = use(monkeypatch, Script({"judge": [set_all("closed")]}))
+    review_loop.review_fix_loop(ctx, task)
+    assert script.names() == ["review:normal@1", "judge@1"]
+
+
+def test_期待値を決めたらレビューの前にコミットを完了チェックの基準にする(ctx, monkeypatch):
+    task = expecting(ctx)
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False))
+    script = use(monkeypatch, Script({"judge": [set_all("closed")]}))
+    review_loop.review_fix_loop(ctx, task)
+    assert script.names() == ["expect@1", "review:normal@1", "judge@1"]
+    assert "cargo test --test golden" in script.calls[0][2]
+    # 期待値のコミットより後でテストが動いたかを、完了チェック⑤が見る
+    assert task["testsAt"] != "sha-tests"
+
+
+def test_期待値にできない出力は同じ指摘に積んで修正に回す(ctx, monkeypatch):
+    task = expecting(ctx)
+    monkeypatch.setattr(evidence, "run_verify", verify_results(False, False))
+    defect = {"expectedDefects": "draw_golden: 山札が 1 枚多い（受入条件は 2 枚引く）"}
+    script = use(
+        monkeypatch,
+        Script(
+            {
+                "expect": [lambda c, t: defect, lambda c, t: defect],
+                "judge": [keep_open(), set_all("closed")],
+            }
+        ),
+    )
+    review_loop.review_fix_loop(ctx, task)
+    assert script.names() == [
+        "expect@1",
+        "review:normal@1",
+        "judge@1",
+        "fix@1",
+        "expect@2",
+        "review:normal@2",
+        "judge@2",
+    ]
+    items = list(stored(ctx, "task1")["items"].values())
+    assert [(i["reviewer"], i["rating"]) for i in items] == [("expect", "must-fix")]
+    # 立て直すと、直らない食い違いが停滞として数えられない
+    assert len(items[0]["comments"]) == 1
+
+
 # --- 設計の形の変更 ----------------------------------------------------------
 
 

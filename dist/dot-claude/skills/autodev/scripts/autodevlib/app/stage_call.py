@@ -88,7 +88,7 @@ def stage_env(ctx: Ctx, stage: stages.Stage) -> dict[str, str | None]:
     「設定されている」と読む相手がいる）。
 
     - ジャッジトークンはジャッジだけ。他のステージが status を動かせると自己承認になる
-    - テストの解禁はテスト作成ステージだけ
+    - テストの解禁はテスト作成と期待値を決めるステージだけ。期待値を決めるステージはテストしか書けない
     - ソースを書き換えないステージは worktree の中を書けない（`hooks/deny-writes.py` が止める）
     - **資格情報は全ステージで外す。** `ANTHROPIC_API_KEY` が残っていると claude が
       サブスクリプションではなく従量課金に切り替わる。無人のマシンで使う
@@ -97,6 +97,7 @@ def stage_env(ctx: Ctx, stage: stages.Stage) -> dict[str, str | None]:
     return {
         "AUTODEV_TEST_GLOBS": "\n".join(ctx.st["testGlobs"]),
         "AUTODEV_ALLOW_TESTS": "1" if stage.allow_tests else None,
+        "AUTODEV_TESTS_ONLY": "1" if stage.tests_only else None,
         "AUTODEV_READ_ONLY": None if stage.edits else "1",
         # `autodev ask` を止めるフックと `autodev ask` 自身が読む
         "AUTODEV_RUN_DIR": ctx.run.dir,

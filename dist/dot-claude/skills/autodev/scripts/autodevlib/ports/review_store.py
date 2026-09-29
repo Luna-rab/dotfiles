@@ -219,6 +219,28 @@ def add_gate_failure(path: str, check: str, detail: str, round_label: str) -> st
         )
 
 
+def add_expected_defect(path: str, detail: str, round_label: str) -> str:
+    """期待値を決めるステージが期待値にできなかった実装の出力を、must-fix の指摘として立てる。
+
+    修正ステージが実装を直し、次のラウンドの頭で期待値を決めるステージがもう一度確かめる。
+    **未解決の同じ指摘があれば、立て直さずにコメントを足す。** ラウンドごとに新しく立てると、
+    直らない食い違いが停滞として数えられない。
+    """
+    with opened(path) as data:
+        for review_id, item in data["items"].items():
+            if item["reviewer"] == "expect" and item["status"] == "open":
+                item["comments"].append({"by": "expect", "at": now(), "body": detail})
+                return review_id
+        return _append(
+            data,
+            reviewer="expect",
+            round=round_label,
+            rating="must-fix",
+            location="期待値を決めるテスト",
+            review=detail,
+        )
+
+
 def hand_off(path: str, review_id: str, reason: str) -> None:
     """設計を通したときに残った指摘を、後ろのステージへ申し送ったとして `rejected` にする。
 

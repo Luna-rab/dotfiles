@@ -15,7 +15,7 @@
     },
     "failing": {
       "type": "integer",
-      "description": "いま落ちているテストの数。実装前なので 1 以上のはず"
+      "description": "いま落ちているテストの数。テスト作成のときは実装前なので 1 以上のはず"
     },
     "blocked": {
       "type": "boolean",
@@ -24,6 +24,20 @@
     "designGap": {
       "type": ["string", "null"],
       "description": "受入条件をテストにするのに、設計ファイルに無い公開 API・タスクの境界をまたぐ形が要るときだけ書く（内部の型の欄は書かない）。何が要るかと、どの受入条件のためか。無ければ null"
+    },
+    "expectedTests": {
+      "type": "array",
+      "description": "テスト作成のとき: 期待値を空けた、期待値を決めるテスト。テストの名前と、期待値を置く場所（ファイルか、テストの中のどこか）を 1 件ずつ",
+      "items": { "type": "string" }
+    },
+    "expectedCommands": {
+      "type": "array",
+      "description": "テスト作成のとき: 期待値を決めるテストだけを流すコマンド。期待値が決まっていなければ落ちる。期待値を決めるテストが無ければ空",
+      "items": { "type": "string" }
+    },
+    "expectedDefects": {
+      "type": ["string", "null"],
+      "description": "期待値を決めるとき: 実装の出力が受入条件と食い違い、期待値にできなかったもの。どのテストの、どの出力が、受入条件のどの記述と、どう食い違うか。無ければ null"
     },
     "questions": { "type": "array", "items": { "type": "string" } },
     "notes": { "type": "string" }

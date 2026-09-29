@@ -173,11 +173,55 @@ def test_未着手のタスクを丸ごと差し替え新しい番号を振る()
     assert moves == [("r3", "task6")]
 
 
+def test_再計画で止まったタスクの検証コマンドを空にできる():
+    data = planned("running", "pending")
+    data["tasks"][0]["verify"] = ["bash -n b.sh"]
+    task_order.apply_replan(data, "demo", "task1", {"current": {"verify": []}, "tasks": []})
+    assert data["tasks"][0]["verify"] == []
+
+
+def test_再計画でラン共通の検証コマンドを置き換え空の一覧では置き換えない():
+    data = {**planned("running"), "verify": ["make test"]}
+    task_order.apply_replan(data, "demo", "task1", {"verify": [], "tasks": []})
+    assert data["verify"] == ["make test"]
+    task_order.apply_replan(data, "demo", "task1", {"verify": ["make lint"], "tasks": []})
+    assert data["verify"] == ["make lint"]
+
+
 def test_移した指摘を受入条件に足す文():
     items = [{"id": "r3", "rating": "should-fix", "location": "a.py:3", "review": "境界で落ちる"}]
     note = task_order.carry_note("task2", items)
     assert "task2 から移した指摘" in note
     assert "r3（should-fix、a.py:3）: 境界で落ちる" in note
+
+
+# --- 検証コマンド ------------------------------------------------------------
+
+
+def test_そのタスクと前のタスクが足した検証コマンドを流し後ろのタスクの分は流さない():
+    data: dict[str, Any] = {"tasks": [], "verify": ["make test"]}
+    task_order.add_tasks(
+        data,
+        "demo",
+        [
+            {"subject": "ルート", "verify": ["php -l routes/web.php"]},
+            {"subject": "スクリプト", "verify": ["bash -n install.sh", "make test"]},
+        ],
+    )
+    first, second = data["tasks"]
+    assert task_order.verify_commands(data, first) == ["make test", "php -l routes/web.php"]
+    assert task_order.verify_commands(data, second) == [
+        "make test",
+        "php -l routes/web.php",
+        "bash -n install.sh",
+    ]
+
+
+def test_取り下げたタスクが足した検証コマンドは流さない():
+    data: dict[str, Any] = {"tasks": [], "verify": ["make test"]}
+    task_order.add_tasks(data, "demo", [{"verify": ["bash -n a.sh"]}, {}])
+    data["tasks"][0]["status"] = "dropped"
+    assert task_order.verify_commands(data, data["tasks"][1]) == ["make test"]
 
 
 # --- タスクの組み立て --------------------------------------------------------

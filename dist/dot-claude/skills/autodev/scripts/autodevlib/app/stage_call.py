@@ -13,7 +13,7 @@ import uuid
 from typing import Any
 
 from ..config import paths, stages
-from ..core import events
+from ..core import events, task_order
 from ..core import prompt as prompt_lib
 from ..ports import console, files, review_store, run_store, runner, templates
 from .context import Ctx, Waiting
@@ -56,6 +56,12 @@ def stage_values(
                 "scope": task["scope"],
                 "entrypoints": task["entrypoints"],
                 "contracts": task["contracts"],
+                # ブリーフの検証コマンドに、このタスクで足して流すもの
+                "verify": [
+                    c
+                    for c in task_order.verify_commands(st, task)
+                    if c not in (st.get("verify") or [])
+                ],
                 "branch": task["branch"],
                 "parent": task.get("parent"),
                 "review": run.review(task["id"]),

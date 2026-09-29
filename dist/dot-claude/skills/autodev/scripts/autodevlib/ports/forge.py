@@ -108,15 +108,18 @@ def pr_view(tree: str, pr: int) -> dict[str, Any] | None:
     return loaded if isinstance(loaded, dict) else None
 
 
-def stack_link(tree: str, members: list[str]) -> proc.Run:
+def stack_link(tree: str, base: str, members: list[str]) -> proc.Run:
     """下から上の順に並べて stacked PR を組む・継ぎ足す。
 
     **2 つ以上渡す必要がある**（`gh stack link <a> <b> [...]`）。概要 PR だけの時点では
     呼ばない。
+
+    **`--base` は省かない。** 省くと一番下の PR の base がリポジトリの既定ブランチに
+    書き換わる。スタックに入った PR は `gh pr edit --base` で戻せない。
     """
     if len(members) < 2:
         return proc.Run(0, "", "")
-    return gh(tree, "stack", "link", *members, timeout=900)
+    return gh(tree, "stack", "link", "--base", base, *members, timeout=900)
 
 
 def _pr_number(text: str) -> int | None:

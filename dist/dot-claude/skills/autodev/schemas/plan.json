@@ -22,6 +22,11 @@
           "scope": { "type": "string" },
           "entrypoints": { "type": "string" },
           "contracts": { "type": "string" },
+          "verify": {
+            "type": "array",
+            "description": "このタスクから流す検証コマンド。ラン共通の verify に足して、このタスクと後ろのタスクの完了チェックで流す",
+            "items": { "type": "string" }
+          },
           "blockedBy": { "type": "array", "items": { "type": "string" } }
         }
       }
@@ -32,7 +37,7 @@
     },
     "verify": {
       "type": "array",
-      "description": "マージしてよいと言える全チェック。空で返してはいけない",
+      "description": "マージしてよいと言える全チェックのうち、どのタスクの時点でも通るもの。空で返してはいけない",
       "items": { "type": "string" }
     },
     "testGlobs": { "type": "array", "items": { "type": "string" } },

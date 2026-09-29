@@ -17,7 +17,12 @@
         "acceptance": { "type": "string" },
         "scope": { "type": "string" },
         "entrypoints": { "type": "string" },
-        "contracts": { "type": "string" }
+        "contracts": { "type": "string" },
+        "verify": {
+          "type": "array",
+          "description": "このタスクから流す検証コマンドの全部。空の一覧は「足すものは無い」",
+          "items": { "type": "string" }
+        }
       }
     },
     "tasks": {
@@ -35,6 +40,11 @@
           "scope": { "type": "string" },
           "entrypoints": { "type": "string" },
           "contracts": { "type": "string" },
+          "verify": {
+            "type": "array",
+            "description": "このタスクから流す検証コマンド",
+            "items": { "type": "string" }
+          },
           "blockedBy": { "type": "array", "items": { "type": "string" } },
           "carry": {
             "type": "array",
@@ -47,6 +57,11 @@
     "design": {
       "type": "string",
       "description": "直した設計ファイルの全文（Markdown）。変えない部分も書き写す"
+    },
+    "verify": {
+      "type": "array",
+      "description": "ラン共通の検証コマンドを変えるときだけ、変えたあとの全部を入れる。空にしない",
+      "items": { "type": "string" }
     },
     "notes": { "type": "string", "description": "何をなぜ変えたか。判断ログに残る" },
     "decisions": { "type": "array", "items": { "type": "string" } },

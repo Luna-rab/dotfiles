@@ -118,7 +118,7 @@ def plan(ctx: Ctx, config: dict[str, Any]) -> None:
     """計画ステージを呼び、結果を**提案**として持つ。state.json に写すのは設計の指摘が
     0 件になってから（`apply_plan()`）。"""
     st = ctx.st
-    known = "## 既に分かっている設定\n\n" + (
+    known = "## リポジトリ共通の既定値\n\n" + (
         "\n".join(f"- 検証コマンド: `{c}`" for c in config["verify"])
         or "- まだ無い（CI 定義から拾って結果に載せる）"
     )
@@ -190,12 +190,13 @@ def apply_plan(ctx: Ctx, config: dict[str, Any], result: dict[str, Any]) -> None
     """確かめ終えた計画ステージの結果を state.json に写し、ブリーフを書き出す。**1 回だけ呼ぶ。**"""
     st = ctx.st
     tasks = result.get("tasks") or []
+    # `or` で選ぶと、計画ステージが空の一覧（禁止するパスは無い）を返しても前の値が残る
     config = {
         "verify": result.get("verify") or config["verify"],
-        "testGlobs": result.get("testGlobs") or config["testGlobs"],
-        "protected": result.get("protected") or config["protected"],
+        "testGlobs": result["testGlobs"] if "testGlobs" in result else config["testGlobs"],
+        "protected": result["protected"] if "protected" in result else config["protected"],
     }
-    save_config(st["repo"], ctx.run, config)
+    save_config(ctx.run, config)
     st["testGlobs"] = config["testGlobs"]
     st["verify"] = config["verify"]
     task_order.add_tasks(st, st["name"], tasks)

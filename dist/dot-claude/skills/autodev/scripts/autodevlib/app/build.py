@@ -16,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..config import stages
-from ..core import globs
+from ..core import globs, task_order
 from ..ports import console, evidence, repo, run_store
 from .context import Ctx, NeedsReplan, Waiting
 from .stage_call import call_or_wait, record_judgements
@@ -100,7 +100,8 @@ def confirm_red(ctx: Ctx, task: dict[str, Any], label: str, extra: str = "") -> 
     """実装の前に検証コマンド一式が落ちることを確かめる。**通ってしまったら 1 回だけ書き直させ、
     それでも通るなら人に聞く。**
 
-    テスト作成ステージが返す `commands` ではなく、リポジトリの検証コマンド（config.json）を流す。
+    テスト作成ステージが返す `commands` ではなく、完了チェック⑥と同じ検証コマンド
+    （`task_order.verify_commands()`）を流す。
     ステージが選んだコマンドだと、いつも落ちるコマンド（パスの誤り・テストが 1 本も集まらない）でも
     「落ちた」ことになる。検証コマンドは実装の後に完了チェック⑥で通ることも確かめるので、
     前で落ちて後で通れば、新しいテストが流れている。
@@ -108,7 +109,7 @@ def confirm_red(ctx: Ctx, task: dict[str, Any], label: str, extra: str = "") -> 
     見分けられるのは「全部通った＝新しいテストが 1 本も落ちていない」だけである。lint など
     テスト以外で落ちても Red とみなすので、落ちたことはテストが正しいことの証明にはならない。
     """
-    commands = list(ctx.st.get("verify") or [])
+    commands = task_order.verify_commands(ctx.st, task)
     if not commands:
         return
     task["redCheck"] = "running"

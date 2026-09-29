@@ -49,7 +49,8 @@ def gate(ctx: Ctx, task: dict[str, Any]) -> verdict.Report:
     )
     report = verdict.judge(facts, tier=task["tier"], rounds=rounds, test_globs=st["testGlobs"])
     if verdict.needs_verify(report):
-        facts = replace(facts, verify=evidence.run_verify(run.tree, st["verify"]))
+        commands = task_order.verify_commands(st, task)
+        facts = replace(facts, verify=evidence.run_verify(run.tree, commands))
         report = verdict.judge(
             facts, tier=task["tier"], rounds=rounds, test_globs=st["testGlobs"], verify_ran=True
         )

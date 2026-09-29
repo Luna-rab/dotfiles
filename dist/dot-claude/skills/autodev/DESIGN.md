@@ -178,10 +178,13 @@ flowchart TD
   確かめさせる。敵対的レビューには渡さない
 - **そのタスクで初めてテストを書いたら、driver が検証コマンド一式を流す**（`app/build.py` の
   `confirm_red()`）。全部通ったら新しいテストが 1 本も落ちていないので、1 回だけ書き直させ、
-  それでも通るなら人に聞く。流すのはテスト作成ステージが返す `commands` ではなく config.json の
-  検証コマンドである。ステージが選んだコマンドだと、いつも落ちるもの（パスの誤り・テストが 1 本も
+  それでも通るなら人に聞く。流すのはテスト作成ステージが返す `commands` ではなく、完了チェック⑥と
+  同じ検証コマンドである。ステージが選んだコマンドだと、いつも落ちるもの（パスの誤り・テストが 1 本も
   集まらない）でも「落ちた」になる。検証コマンドは完了チェック⑥で実装の後に通ることも確かめるので、
   前で落ちて後で通れば新しいテストが流れている
+- **流す検証コマンドはタスクごとに決まる**（`core/task_order.py` の `verify_commands()`）。ラン共通の
+  `verify` に、そのタスクと前のタスクが足した `verify` を加える。後ろのタスクが足したものは流さない。
+  後ろのタスクで作るファイルを確かめるコマンドは、前のタスクの時点では必ず落ち、直しようがない
 - 確かめの途中で止まったら、タスクの `redCheck` から続ける。`running`（検証コマンドを流している間に
   driver が落ちた）なら確かめだけやり直す。`asked`（人に聞いた）なら回答に沿って 1 回書き直させ、
   もう確かめない。確かめ直すと「このまま進めてよい」という回答でも同じ質問に戻る
@@ -390,6 +393,9 @@ driver は `schemas/<指示書>.json` の本文を `claude --json-schema` に渡
 - **`gh stack link` は local tracking state に依らない。** だから「`gh stack` の追跡情報は
   worktree ごとに別」という制約を踏まない。PR は `gh pr create` で自分のタイトルと本文で
   作り、link で連ねる。
+- **`gh stack link` には `--base` を必ず渡す。** 省くと一番下の PR（概要 PR）の base が
+  リポジトリの既定ブランチに書き換わり、スタックに入った PR は `gh pr edit --base` で戻せない。
+  連ねたあと概要 PR の base がランの base と違えば、driver は止まる。
 - **順に 1 本ずつスタックに追加するので、積み替え（`gh stack rebase` ＋ force push）は 1 度も要らない。**
 - **完了チェック⑤の基準は `parent` ではなくテスト作成ステージのコミット**（`state.json` の `testsAt`）。
   テスト作成ステージはタスクのブランチに commit するので、`parent` を基準にすると、実装ステージが
@@ -405,7 +411,7 @@ driver は `schemas/<指示書>.json` の本文を `claude --json-schema` に渡
   schemas/    ステージが書く結果の形。driver が照らす
   templates/  文面。マーカーを driver が埋める
   hooks/      書いてはいけないファイルへの書き込みを止める PreToolUse
-~/.config/autodev/repos/<repo>.json   検証コマンド・テストのパス・変更禁止パス
+~/.config/autodev/repos/<repo>.json   検証コマンド・テストのパス・変更禁止パスの既定値。人が書き、driver は読むだけ
 ~/.local/state/autodev/<ラン名>/
   state.json          進行状態（driver だけが書く。ステージには渡さない）
   brief.md  map.md    ステージが読むブリーフとコードマップ

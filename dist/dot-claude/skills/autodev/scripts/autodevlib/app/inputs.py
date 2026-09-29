@@ -11,7 +11,7 @@ from ..ports import files, templates
 
 
 def load_config(repo: str, run: paths.Run) -> dict[str, Any]:
-    """リポジトリ固有の設定。ラン側 → リポジトリ共通のキャッシュ → 既定値の順に探す。"""
+    """リポジトリ固有の設定。ラン側 → リポジトリ共通の既定値（人が書く）→ 既定値の順に探す。"""
     for path in (run.config, paths.repo_config(repo)):
         loaded = files.read_json(path)
         if isinstance(loaded, dict) and loaded.get("verify"):
@@ -19,9 +19,13 @@ def load_config(repo: str, run: paths.Run) -> dict[str, Any]:
     return {"verify": [], "testGlobs": list(globs.DEFAULT_TEST_GLOBS), "protected": []}
 
 
-def save_config(repo: str, run: paths.Run, config: dict[str, Any]) -> None:
+def save_config(run: paths.Run, config: dict[str, Any]) -> None:
+    """ランの設定だけに書く。**リポジトリ共通の設定には書かない。**
+
+    計画ステージが決める値はそのランの作業に合わせたもの（変更禁止パス・作業専用の検証
+    コマンド）なので、書くと次のランの既定値になって、無関係な作業を止める。
+    """
     files.write_json(run.config, config)
-    files.write_json(paths.repo_config(repo), config)
 
 
 def write_brief(run: paths.Run, st: dict[str, Any], config: dict[str, Any]) -> None:

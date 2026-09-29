@@ -22,8 +22,8 @@ dependencies = []
 [dependency-groups]
 # `uv run ruff` / `uv run ty` / `uv run pytest` が使う。実行時には要らない。
 # pyyaml・tree-sitter-language-pack・rich・textual が入っているのは、ty が check-skills.py の
-# `import yaml`、dist/dot-claude/hooks/review-new-comments.py の
-# `import tree_sitter_language_pack`、dist/dot-claude/scripts/ の `import rich` と
+# `import yaml`、dist/dot-claude/hooks/turnreview/syntax/ の
+# `import tree_sitter_language_pack`、dist/dot-claude/scripts/ と hooks/turnreview/render/ の `import rich` と
 # `import textual` を解決し、pytest がそれらを関数として呼べるようにするため。
 # 実行時の依存はスクリプト自身が PEP 723（`# /// script`）で宣言している
 dev = [
@@ -88,9 +88,10 @@ ignore = [
 [tool.ty.environment]
 python-version = "3.10"
 # スクリプトが自分のディレクトリを起点に import するので、その起点を教える
-# （autodev は `from autodevlib import ...`、statusline と autodev-watch は `from hud import ...`）。
+# （autodev は `from autodevlib import ...`、statusline と autodev-watch は `from hud import ...`、
+# hooks の review-new-*.py は `from turnreview import ...`）。
 # PEP 723 のスクリプト（statusline.py などの入口）は ty が別の環境として検査するので、ここに
-# 足しても効かない。入口は数行にして、中身を hud/ に置く。
+# 足しても効かない。入口は数行にして、中身を hud/ と turnreview/ に置く。
 extra-paths = [
   "dist/dot-claude/skills/autodev/scripts",
   "dist/dot-claude/scripts",

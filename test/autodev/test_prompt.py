@@ -92,6 +92,12 @@ def test_タスクのあるステージは番号と受入条件を出す():
     body = build(stages.TABLE["impl"])
     assert "- 番号: `task1`（リスク階層 `standard`）" in body
     assert "- 受入条件: A が B になる" in body
+    assert "足して流す検証コマンド" not in body
+
+
+def test_タスクが足した検証コマンドを出す():
+    body = build(stages.TABLE["impl"], verify=["bash -n install.sh"])
+    assert "- ブリーフの検証コマンドに足して流す検証コマンド: `bash -n install.sh`" in body
 
 
 def test_指示が無ければ節ごと出さない():

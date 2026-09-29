@@ -28,6 +28,7 @@ from ..ports import console, review_store, run_store
 from . import design
 from .build import questions_of
 from .context import Ctx, NeedsReplan, Waiting
+from .inputs import load_config, save_config, write_brief
 from .stage_call import call_or_wait, record_judgements
 
 #: スタックに追加しないまま、この回数だけ続けて再計画したら人に聞く
@@ -177,6 +178,27 @@ def revise(ctx: Ctx, extra: str) -> None:
     )
 
 
+def record_verify_change(
+    ctx: Ctx, before: dict[str, list[str]], after: dict[str, list[str]]
+) -> None:
+    """再計画で変わった検証コマンドを判断ログに残す。ラン共通のものが変わったらブリーフも書き直す。
+
+    ブリーフはランの設定（config.json）から書き出すので、設定にも写さないと呼び直しで前の値に戻る。
+    """
+    st = ctx.st
+    for owner, old in before.items():
+        new = after[owner]
+        if new == old:
+            continue
+        shown = ", ".join(f"`{c}`" for c in new) or "なし"
+        run_store.add_decision(st, "decision", f"再計画で {owner} の検証コマンドを変えた → {shown}")
+    if after["ラン共通"] != before["ラン共通"]:
+        config = load_config(st["repo"], ctx.run)
+        config["verify"] = after["ラン共通"]
+        save_config(ctx.run, config)
+        write_brief(ctx.run, st, config)
+
+
 def apply(ctx: Ctx, proposal: dict[str, Any]) -> None:
     """確かめ終えた再計画の結果を state.json に写す。
 
@@ -191,7 +213,10 @@ def apply(ctx: Ctx, proposal: dict[str, Any]) -> None:
     result = proposal["result"]
     task = run_store.task(st, str(proposal["taskId"]))
     reason = str(proposal.get("reason") or "")
+    before = {"ラン共通": list(st.get("verify") or []), task["id"]: list(task.get("verify") or [])}
     moves = task_order.apply_replan(st, st["name"], task["id"], result)
+    after = {"ラン共通": list(st.get("verify") or []), task["id"]: list(task.get("verify") or [])}
+    record_verify_change(ctx, before, after)
     carried: dict[str, list[dict[str, Any]]] = {}
     for review_id, to_task in moves:
         source = review_store.read(run.review(task["id"])) or {"items": {}}

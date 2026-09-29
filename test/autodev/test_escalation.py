@@ -15,7 +15,7 @@ from autodevlib.app import build, design, drive, planning, replan, review_loop, 
 from autodevlib.app import task as task_mod
 from autodevlib.app.context import Ctx, NeedsReplan, Waiting
 from autodevlib.config import paths, stages
-from autodevlib.core import task_order, verdict
+from autodevlib.core import globs, task_order, verdict
 from autodevlib.ports import evidence, files, proc, repo, review_store, runner
 
 #: ステージ 1 回ぶんの台本。review.json を書き換えて、ステージの結果を返す。None ならエラーで終わる
@@ -320,6 +320,26 @@ def test_再計画で指摘を後ろのタスクへ移す(ctx, monkeypatch):
     assert "cli(argv)" in files.read_text(ctx.run.design)
 
 
+def test_再計画で変えた検証コマンドを判断ログとブリーフに残す(ctx, monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTODEV_CONFIG_DIR", str(tmp_path / "config"))
+    ctx.st.update(repo="/src/demo", base="main", overviewBranch="stack/demo", verify=["make all"])
+    ctx.st["tasks"][0]["verify"] = ["bash -n b.sh"]
+    result = {**replanned(), "verify": ["make test"], "current": {"verify": []}}
+    use(monkeypatch, Script({"replan": [lambda c, t: result]}))
+    replan.replan(ctx, NeedsReplan("task1", "後ろのタスクのファイルを確かめている", []))
+    drive.settle_proposal(ctx, {})
+
+    bodies = [d["body"] for d in ctx.st["decisions"]]
+    assert "再計画で ラン共通 の検証コマンドを変えた → `make test`" in bodies
+    assert "再計画で task1 の検証コマンドを変えた → なし" in bodies
+    assert "make test" in files.read_text(ctx.run.brief)
+    assert files.read_json(ctx.run.config) == {
+        "verify": ["make test"],
+        "testGlobs": list(globs.DEFAULT_TEST_GLOBS),
+        "protected": [],
+    }
+
+
 def test_再計画は設計レビューが済むまで写さない(ctx, monkeypatch):
     raise_finding(ctx, ctx.st["tasks"][0])
     script = use(monkeypatch, Script({"replan": [lambda c, t: replanned(tier="standard")]}))
@@ -460,6 +480,21 @@ def test_実装の前に検証コマンドが落ちればそのまま進む(ctx,
     script = use(monkeypatch, Script({}))
     build.make_tests(ctx, fresh, "0")
     assert script.names() == ["testgen@0"]
+
+
+def test_実装の前の確かめでは後ろのタスクが足した検証コマンドを流さない(ctx, fresh, monkeypatch):
+    fresh["verify"] = ["php -l routes/web.php"]
+    ctx.st["tasks"][1]["verify"] = ["bash -n install.sh"]
+    ran: list[list[str]] = []
+
+    def run_verify(tree: str, commands: list[str], timeout: int = 3600):
+        ran.append(commands)
+        return (verdict.VerifyResult(command=commands[0], ok=False, code=1, out="", err=""),)
+
+    monkeypatch.setattr(evidence, "run_verify", run_verify)
+    use(monkeypatch, Script({}))
+    build.make_tests(ctx, fresh, "0")
+    assert ran == [["uv run pytest -q", "php -l routes/web.php"]]
 
 
 def test_実装の前なのに通ったら1回だけ書き直させる(ctx, fresh, monkeypatch):

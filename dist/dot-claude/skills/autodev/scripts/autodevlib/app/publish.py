@@ -141,7 +141,7 @@ def publish(ctx: Ctx, task: dict[str, Any]) -> None:
     members = [str(st["overviewPr"])]
     members += [str(i["pr"]) for i in st["tasks"] if i["status"] == "stacked" and i.get("pr")]
     members.append(str(number))
-    linked = forge.stack_link(run.tree, members)
+    linked = forge.stack_link(run.tree, st["base"], members)
     if not linked.ok:
         console.info(f"gh stack link が失敗した（PR は作れている）: {linked.err or linked.out}")
 
@@ -150,3 +150,27 @@ def publish(ctx: Ctx, task: dict[str, Any]) -> None:
     st["replansSinceStack"] = 0
     refresh_overview_pr(ctx)
     console.info(f"{task['id']} を PR #{number} としてスタックに追加した")
+    check_overview_base(ctx)
+
+
+def check_overview_base(ctx: Ctx) -> None:
+    """概要 PR の base がランの base のままかを確かめ、ずれていたら止める。
+
+    base がずれたまま `gh stack merge` を流すと、別のブランチへマージされる。スタックに入った PR は
+    `gh pr edit --base` で直せないので、人が `gh stack unstack` で解いて組み直す。
+    止める前に state.json を書き出す。書き出さないと、呼び直したときに作り済みのタスク PR を
+    もう一度作ろうとする。
+    """
+    run, st = ctx.run, ctx.st
+    view = forge.pr_view(run.tree, st["overviewPr"])
+    if view is None:
+        console.info(f"概要 PR #{st['overviewPr']} の base を確かめられなかった")
+        return
+    actual = view.get("baseRefName")
+    if actual == st["base"]:
+        return
+    ctx.save()
+    console.die(
+        f"概要 PR #{st['overviewPr']} の base が {st['base']} ではなく {actual} になっている。"
+        f"`gh stack unstack` で解き、`gh stack link --base {st['base']} ...` で組み直してください"
+    )

@@ -13,7 +13,7 @@ TIERS = ("light", "standard")
 PHASES = ("tests", "build", "review", "gate")
 
 #: 再計画ステージが書き換えてよい、止まったタスクの項目
-EDITABLE = ("subject", "dod", "acceptance", "scope", "entrypoints", "contracts")
+EDITABLE = ("subject", "dod", "acceptance", "scope", "entrypoints", "contracts", "verify")
 
 
 def new_task(number: int, run_name: str, src: dict[str, Any]) -> dict[str, Any]:
@@ -31,6 +31,8 @@ def new_task(number: int, run_name: str, src: dict[str, Any]) -> dict[str, Any]:
         "scope": src.get("scope", ""),
         "entrypoints": src.get("entrypoints", ""),
         "contracts": src.get("contracts", ""),
+        #: このタスクで足して流す検証コマンド。流す組み合わせは `verify_commands()` が決める
+        "verify": list(src.get("verify") or []),
         "blockedBy": src.get("blockedBy", []),
         "status": "pending",
         "phase": "tests",
@@ -80,6 +82,8 @@ def apply_replan(
     - 止まったタスクを残すなら `current` の値で項目を書き換える。捨てるなら `dropped` にする
     - 止まったタスクより後ろの未着手のタスクを、`tasks` で丸ごと差し替える
     - スタック済みのタスクには触らない
+    - `verify` があれば、ラン共通の検証コマンドを置き換える（空の一覧では置き換えない。流すものが
+      無くなると完了チェック⑥が通らない）
     - **新しいタスクの番号は、使ったことのある番号と重ねない。** 捨てたタスクのブランチは残るので、
       同じ名前で作ると `start_task_branch()` が古いコミットの上に乗る
     """
@@ -88,7 +92,8 @@ def apply_replan(
     current = tasks[pos]
     if result.get("keepCurrent", True):
         for key, value in (result.get("current") or {}).items():
-            if key in EDITABLE and value:
+            # 検証コマンドの空の一覧は「このタスクで足すものは無い」を表すので、空でも書き換える
+            if key in EDITABLE and (value or key == "verify"):
                 current[key] = value
         # 範囲が変わったので、前の経緯を覚えたジャッジと停滞の数え方を引き継がない
         current["judgeSession"] = None
@@ -96,6 +101,8 @@ def apply_replan(
     else:
         current["status"] = "dropped"
         current["reason"] = str(result.get("notes") or "再計画で取り下げた")
+    if result.get("verify"):
+        data["verify"] = list(result["verify"])
 
     first = max(_number(t["id"]) for t in tasks) + 1
     added: list[dict[str, Any]] = []
@@ -131,6 +138,21 @@ def next_pending(data: dict[str, Any]) -> dict[str, Any] | None:
             return None
         return item
     return None
+
+
+def verify_commands(data: dict[str, Any], task: dict[str, Any]) -> list[str]:
+    """そのタスクで流す検証コマンド。ラン共通のものに、そのタスクと前のタスクが足したものを加える。
+
+    **後ろのタスクが足したものは流さない。** 後ろのタスクが作るファイルを確かめるコマンドは、
+    前のタスクの時点では必ず落ちる。取り下げたタスクが足したものも流さない。
+    """
+    commands = list(data.get("verify") or [])
+    for item in data["tasks"]:
+        if item["status"] != "dropped":
+            commands += [c for c in item.get("verify") or [] if c not in commands]
+        if item["id"] == task["id"]:
+            break
+    return commands
 
 
 def counts(data: dict[str, Any]) -> dict[str, int]:

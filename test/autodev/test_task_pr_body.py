@@ -11,7 +11,7 @@ import pytest
 from autodevlib.app import publish
 from autodevlib.app.context import Ctx
 from autodevlib.config import paths
-from autodevlib.ports import proc, runner
+from autodevlib.ports import proc, run_store, runner
 
 TASK: dict[str, Any] = {
     "id": "task2",
@@ -40,8 +40,10 @@ def publish_until_push(tmp_path, monkeypatch, got: runner.Result) -> str:
     return open(run.task_pr_body("task2"), encoding="utf-8").read()
 
 
-def test_スタックに追加したら続けて再計画した回数を数え直す(tmp_path, monkeypatch):
-    """数え直さないと、進んでいるランでも再計画 2 回で人に聞いて止まる。"""
+def publish_to_stack(
+    tmp_path, monkeypatch, *, overview_base: str = "release/v2"
+) -> tuple[Ctx, list[tuple[str, list[str]]]]:
+    """gh と git を差し替えて publish を最後まで流す。`overview_base` は `gh pr view` が返す概要 PR の base。"""
     monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
     run = paths.Run("demo")
     run.ensure()
@@ -49,6 +51,7 @@ def test_スタックに追加したら続けて再計画した回数を数え�
         run=run,
         st={
             "name": "demo",
+            "base": "release/v2",
             "overviewPr": 7,
             "tasks": [{**TASK, "status": "running", "tier": "standard"}],
             "running": {},
@@ -58,14 +61,44 @@ def test_スタックに追加したら続けて再計画した回数を数え�
         },
     )
     ok = proc.Run(code=0, out="", err="")
+    linked: list[tuple[str, list[str]]] = []
+
+    def stack_link(tree: str, base: str, members: list[str]) -> proc.Run:
+        linked.append((base, members))
+        return ok
+
     monkeypatch.setattr(publish, "call", lambda *a, **k: stage_result({"body": "本文"}))
     monkeypatch.setattr(publish.repo, "push", lambda *a, **k: ok)
     monkeypatch.setattr(publish.forge, "pr_create", lambda *a, **k: (12, ok))
-    monkeypatch.setattr(publish.forge, "stack_link", lambda *a, **k: ok)
+    monkeypatch.setattr(publish.forge, "stack_link", stack_link)
     monkeypatch.setattr(publish.forge, "pr_edit", lambda *a, **k: ok)
+    monkeypatch.setattr(
+        publish.forge, "pr_view", lambda *a, **k: {"number": 7, "baseRefName": overview_base}
+    )
     publish.publish(c, dict(TASK))
+    return c, linked
+
+
+def test_スタックに追加したら続けて再計画した回数を数え直す(tmp_path, monkeypatch):
+    """数え直さないと、進んでいるランでも再計画 2 回で人に聞いて止まる。"""
+    c, _ = publish_to_stack(tmp_path, monkeypatch)
     assert c.st["tasks"][0]["status"] == "stacked"
     assert c.st["replansSinceStack"] == 0
+
+
+def test_スタックに連ねるときランの_base_を渡す(tmp_path, monkeypatch):
+    """渡さないと、`gh stack link` が概要 PR の base を既定ブランチに書き換える。"""
+    _, linked = publish_to_stack(tmp_path, monkeypatch)
+    assert linked == [("release/v2", ["7", "12"])]
+
+
+def test_概要_PR_の_base_がずれたら止める(tmp_path, monkeypatch):
+    """止める前に state.json を書き出し、作ったタスク PR を stacked として残す。"""
+    with pytest.raises(SystemExit):
+        publish_to_stack(tmp_path, monkeypatch, overview_base="master")
+    saved = run_store.load(paths.Run("demo").state)
+    assert saved["tasks"][0]["status"] == "stacked"
+    assert saved["tasks"][0]["pr"] == 12
 
 
 def stage_result(got: dict[str, Any] | None, *, ok: bool = True) -> runner.Result:

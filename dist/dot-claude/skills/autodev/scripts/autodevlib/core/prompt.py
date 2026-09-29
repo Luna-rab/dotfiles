@@ -169,6 +169,10 @@ def _task_block(values: dict[str, Any]) -> str:
     ):
         if values.get(key):
             lines.append(f"- {label}: {values[key]}")
+    extra_verify = values.get("verify") or []
+    if extra_verify:
+        listed = ", ".join(f"`{c}`" for c in extra_verify)
+        lines.append(f"- ブリーフの検証コマンドに足して流す検証コマンド: {listed}")
     notes = values.get("notes") or []
     if notes:
         lines += ["", "### 人が決めたこと（受入条件と同じ重さで守る）", ""]

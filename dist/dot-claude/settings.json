@@ -37,6 +37,11 @@
             "type": "command",
             "command": "~/.claude/hooks/review-new-comments.py",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/review-new-tests.py",
+            "timeout": 15
           }
         ]
       }
@@ -47,6 +52,11 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/review-new-comments.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/review-new-tests.py",
             "timeout": 15
           }
         ]

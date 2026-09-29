@@ -219,6 +219,19 @@ def add_gate_failure(path: str, check: str, detail: str, round_label: str) -> st
         )
 
 
+def hand_off(path: str, review_id: str, reason: str) -> None:
+    """設計を通したときに残った指摘を、後ろのステージへ申し送ったとして `rejected` にする。
+
+    指摘の中身は設計ファイルの「設計で残った指摘」節に載せる（`app/design.py` の `hand_off()`）。
+    """
+    with opened(path) as data:
+        item = _get(data, review_id)
+        item["comments"].append({"by": "driver", "at": now(), "body": f"申し送り: {reason}"})
+        item["transitions"].append({"from": item["status"], "to": "rejected", "at": now()})
+        item["status"] = "rejected"
+        item["handedOff"] = True
+
+
 def move(path: str, review_id: str, to_task: str, reason: str) -> dict[str, Any]:
     """指摘を同じランの別のタスクへ移す。**移した先のタスクで解決を確かめる**（`add_carried()`）。"""
     with opened(path) as data:

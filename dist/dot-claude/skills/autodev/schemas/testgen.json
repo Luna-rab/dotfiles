@@ -23,7 +23,7 @@
     },
     "designGap": {
       "type": ["string", "null"],
-      "description": "受入条件をテストにするのに、設計ファイルに無い形が要るときだけ書く。何が要るかと、どの受入条件のためか。無ければ null"
+      "description": "受入条件をテストにするのに、設計ファイルに無い公開 API・タスクの境界をまたぐ形が要るときだけ書く（内部の型の欄は書かない）。何が要るかと、どの受入条件のためか。無ければ null"
     },
     "questions": { "type": "array", "items": { "type": "string" } },
     "notes": { "type": "string" }

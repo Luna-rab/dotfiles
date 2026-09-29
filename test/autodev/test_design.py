@@ -13,7 +13,7 @@ import pytest
 from autodevlib.app import design, drive, planning, stage_call
 from autodevlib.app.context import Ctx, Waiting
 from autodevlib.config import paths, stages
-from autodevlib.core import prompt
+from autodevlib.core import prompt, review_policy
 from autodevlib.ports import files, review_store, runner
 
 #: ステージ 1 回ぶんの台本。review.json を書き換えて、ステージの結果を返す
@@ -90,14 +90,14 @@ def review_path(ctx: Ctx) -> str:
     return ctx.run.review(stage_call.DESIGN_ID)
 
 
-def finding(body: str = "失敗の返し方が無い") -> Step:
+def finding(body: str = "失敗の返し方が無い", rating: str = "must-fix") -> Step:
     """設計レビューの台本。指摘を 1 件立てて、走り終えたことを残す。"""
 
     def step(ctx: Ctx, label: str) -> dict[str, Any]:
         review_store.add(
             review_path(ctx),
             reviewer="design-review",
-            rating="must-fix",
+            rating=rating,
             location="設計 公開インターフェース",
             body=body,
             round_label=label,
@@ -205,6 +205,83 @@ def test_指摘が残れば設計を書いたステージが直してレビュ�
     assert "失敗の返し方が無い" in revisions.extras[0]
     assert "--commenter plan" in revisions.extras[0]
     assert design.state(ctx.st)["step"] == "settled"
+
+
+def test_mustfixが0件ならshouldfixを申し送って通す(ctx, monkeypatch):
+    script = use(
+        monkeypatch,
+        Script(
+            {
+                "design-review": [finding("空の範囲の扱いが無い", rating="should-fix")],
+                "design-judge": [judge("open")],
+            }
+        ),
+    )
+    revisions = Revisions()
+    design.propose(ctx, "plan", "s1", plan_result(design_text="f(x) -> int"))
+    design.settle(ctx, revisions)
+    assert script.names() == ["design-review@1", "design-judge@1"]
+    assert revisions.extras == []
+    assert design.state(ctx.st)["step"] == "settled"
+    item = review_store.read(review_path(ctx))["items"]["r1"]
+    assert item["status"] == "rejected"
+    assert item["handedOff"] is True
+    # 設計のジャッジが判じた版のファイルは書き換えない
+    written = files.read_text(ctx.run.design)
+    assert written.startswith("f(x) -> int")
+    assert "## 設計で残った指摘" in written
+    assert "空の範囲の扱いが無い" in written
+    assert "設計で残った指摘" not in files.read_text(ctx.run.design_version(1))
+    assert "申し送った" in ctx.st["decisions"][-1]["body"]
+
+
+def keep_newest_open(ctx: Ctx, label: str) -> dict[str, Any]:
+    """設計のジャッジの台本。前のラウンドの指摘を却下し、このラウンドの指摘だけ未解決に残す。"""
+    with review_store.opened(review_path(ctx)) as data:
+        for item in data["items"].values():
+            if item["status"] == "open" and item["round"] != label:
+                item["status"] = "rejected"
+                item["comments"].append({"by": "judge", "at": "", "body": "内部の欄なので却下"})
+    return {"closed": 0, "rejected": 0, "escalation": None}
+
+
+def test_毎ラウンド新しいmustfixが立ち続けたら上限で人に聞く(ctx, monkeypatch):
+    """同じ指摘の停滞には掛からない、一段細かい所へ掘り進む往復を止める。"""
+    rounds = review_policy.DESIGN_ROUNDS
+    script = use(
+        monkeypatch,
+        Script(
+            {
+                "design-review": [finding(f"欄 {n} が無い") for n in range(1, rounds + 1)],
+                "design-judge": [keep_newest_open] * rounds,
+            }
+        ),
+    )
+    revisions = Revisions()
+    design.propose(ctx, "plan", "s1", plan_result())
+    with pytest.raises(Waiting) as raised:
+        design.settle(ctx, revisions)
+    assert len(revisions.extras) == rounds - 1
+    question = raised.value.questions[0]
+    assert question["id"] == f"design-r{rounds}-rounds"
+    assert f"欄 {rounds} が無い" in question["question"]
+    assert "欄 1 が無い" not in question["question"]
+    # 回答したら直しから続け、もう一度上限まで回せる
+    d = design.state(ctx.st)
+    assert (d["step"], d["proposalRounds"]) == ("fix", 0)
+    # 最初の却下は r2 のジャッジなので、却下済みの一覧が載るのは r3 の設計レビューから
+    third_review = script.calls[4]
+    assert third_review[:2] == ("design-review", "3")
+    assert "却下済みの指摘" in third_review[2]
+    assert "欄 1 が無い" in third_review[2]
+    assert "内部の欄なので却下" in third_review[2]
+
+
+def test_提案を写したらラウンドの数を戻す(ctx):
+    design.propose(ctx, "plan", "s1", plan_result())
+    design.state(ctx.st)["proposalRounds"] = 3
+    design.close(ctx)
+    assert design.state(ctx.st)["proposalRounds"] == 0
 
 
 def test_設計レビューには前の版を渡さず設計のジャッジにだけ渡す(ctx, monkeypatch):

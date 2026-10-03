@@ -36,27 +36,25 @@ from autodevlib.domain.questions import Questions
 from autodevlib.domain.run import Run
 from autodevlib.domain.supervision import Notice, Supervisor, Wake, wake_for
 from autodevlib.domain.task import Task
-from autodevlib.domain.values import (
-    MAX_SUPERVISOR_FAILURES,
-    BranchName,
-    CommandId,
-    CommitSha,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    ExecutionId,
-    GitJob,
-    GitJobKind,
-    Pointers,
-    Proposal,
-    QuestionId,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-)
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.limits import MAX_SUPERVISOR_FAILURES
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
 
 T1 = TaskId("task1")
 RUN = EventId("run#4")

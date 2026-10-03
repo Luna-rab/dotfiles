@@ -16,7 +16,8 @@ from typing import Any
 
 from ..adapters import children
 from ..domain.streams import aggregate_for
-from ..domain.values import ExecutionId, RunName
+from ..domain.value_objects.execution_id import ExecutionId
+from ..domain.value_objects.run_name import RunName
 from .eventstore import AggregateFactory, EventReader, decoded, replay
 from .files import write_atomic
 from .lock import held_elsewhere

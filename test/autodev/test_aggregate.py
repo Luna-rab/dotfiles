@@ -25,23 +25,21 @@ from autodevlib.domain.events import (
     RunPanicked,
 )
 from autodevlib.domain.flow import FlowStep
-from autodevlib.domain.values import (
-    BranchName,
-    CommandId,
-    EscalationKind,
-    EventId,
-    Evidence,
-    ExecutionId,
-    Issuer,
-    Pointers,
-    PrNumber,
-    SessionId,
-    StackEntry,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 
 STACK = StreamId.stack()
 GIT = Issuer.task_supervisor(TaskId.git())

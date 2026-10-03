@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from autodevlib.adapters.process import ProcessRunner
-from autodevlib.domain.values import VerifyCommand
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 
 
 def test_終了コードと出力を返す(tmp_path: Path):

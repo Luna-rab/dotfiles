@@ -20,16 +20,14 @@ from autodevlib.domain.aggregate import Aggregate
 from autodevlib.domain.commands import Command, Escalate
 from autodevlib.domain.events import DesignAmbiguous, DesignRoundsExhausted, Event
 from autodevlib.domain.policies import FOLLOW_UPS, POLICIES, RECEIVERS, By, Policy
-from autodevlib.domain.values import (
-    CommandId,
-    EscalationKind,
-    EventId,
-    ExecutionId,
-    IssuerKind,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.issuer_kind import IssuerKind
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.rejections import Rejection
 

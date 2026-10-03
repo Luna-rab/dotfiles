@@ -24,7 +24,9 @@ from typing import Any
 
 from ..domain import codec
 from ..domain.commands import COMMAND_TYPES, Command
-from ..domain.values import InvalidValue, Issuer, IssuerKind
+from ..domain.value_objects.base import InvalidValue
+from ..domain.value_objects.issuer import Issuer
+from ..domain.value_objects.issuer_kind import IssuerKind
 from . import db
 from .files import utc_now
 

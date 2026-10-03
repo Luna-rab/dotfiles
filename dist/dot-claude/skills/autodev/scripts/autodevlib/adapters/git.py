@@ -15,7 +15,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.values import BranchName, CommitSha
+from ..domain.value_objects.branch_name import BranchName
+from ..domain.value_objects.commit_sha import CommitSha
 from ._proc import CommandFailed, Completed, checked, run, run_raw
 
 #: git が対話で止まらないようにする（資格情報の入力・エディタ）。出力の文言で分岐する所があるので、

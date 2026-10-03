@@ -18,7 +18,8 @@ from ..domain.events import RunStarted
 from ..domain.questions import Questions
 from ..domain.run import Run
 from ..domain.task import Task
-from ..domain.values import ExecutionId, StreamId
+from ..domain.value_objects.execution_id import ExecutionId
+from ..domain.value_objects.stream_id import StreamId
 from ..infra.eventstore import EventReader
 from ..infra.paths import RunPaths
 from ..infra.repo_config import RepoConfig

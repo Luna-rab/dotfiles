@@ -9,7 +9,7 @@ from .review import ReviewLedger
 from .run import Run
 from .stack import Stack
 from .task import Task
-from .values import StreamId
+from .value_objects.stream_id import StreamId
 
 
 def aggregate_for(stream: StreamId) -> Aggregate:

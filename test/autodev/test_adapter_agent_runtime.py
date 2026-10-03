@@ -22,7 +22,7 @@ from autodevlib.adapters.agent_runtime import (
     argv_for,
     github_withheld_env,
 )
-from autodevlib.domain.values import SessionId
+from autodevlib.domain.value_objects.session_id import SessionId
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 SESSION = SessionId("0b6f3c1e-9a8d-4c2b-8e7f-1a2b3c4d5e6f")

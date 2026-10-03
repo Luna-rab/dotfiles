@@ -8,7 +8,9 @@ from autodevlib.domain.aggregate import Rejected
 from autodevlib.domain.commands import AnswerQuestion, PostQuestion, WithdrawQuestions
 from autodevlib.domain.events import QuestionAnswered, QuestionPosted, QuestionWithdrawn
 from autodevlib.domain.questions import Questions, QuestionStatus
-from autodevlib.domain.values import EventId, QuestionId, StreamId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.stream_id import StreamId
 
 Q = QuestionId("q-scope")
 ESCALATION = EventId("run#7")

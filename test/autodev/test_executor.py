@@ -37,24 +37,22 @@ from autodevlib.domain.events import (
     StageStarted,
 )
 from autodevlib.domain.flow import FlowStep, Reviewers, git_job_flow, planning_flow
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    EscalationKind,
-    ExecutionId,
-    GitJob,
-    GitJobKind,
-    InterruptCause,
-    Issuer,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    VerifyCommand,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 from conftest import SKILL_ROOT
 from executor_fakes import Env, FakeProcess, commit, make_env, outcome, sh
 

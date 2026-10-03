@@ -12,7 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .values import Guard, WriteScope
+from .value_objects.guard import Guard
+from .value_objects.write_scope import WriteScope
 
 
 class WriteZone(Enum):

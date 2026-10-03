@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from ..values import UnionFileVerdict
+from ..value_objects.union_file_verdict import UnionFileVerdict
 
 #: 行で比べられない本文の印。git も NUL を含むファイルをバイナリとして扱う
 _BINARY_MARK = b"\0"

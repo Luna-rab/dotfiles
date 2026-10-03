@@ -68,28 +68,25 @@ from .events import (
 )
 from .services.escalation_router import EscalationRouter, Route, SupervisorLevel
 from .services.task_scheduler import SchedulingEntry, TaskScheduler
-from .values import (
-    MAX_REPLANS_WITHOUT_STACK,
-    MAX_SUPERVISOR_FAILURES,
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    ParallelLimit,
-    PlannedTask,
-    Pointers,
-    Proposal,
-    QuestionId,
-    RunName,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-    VerifyCommand,
-)
+from .value_objects.artifact_kind import ArtifactKind
+from .value_objects.artifact_ref import ArtifactRef
+from .value_objects.branch_name import BranchName
+from .value_objects.design_version import DesignVersion
+from .value_objects.escalation_kind import EscalationKind
+from .value_objects.event_id import EventId
+from .value_objects.limits import MAX_REPLANS_WITHOUT_STACK, MAX_SUPERVISOR_FAILURES
+from .value_objects.parallel_limit import ParallelLimit
+from .value_objects.planned_task import PlannedTask
+from .value_objects.pointers import Pointers
+from .value_objects.proposal import Proposal
+from .value_objects.question_id import QuestionId
+from .value_objects.run_name import RunName
+from .value_objects.stream_id import StreamId
+from .value_objects.task_id import TaskId
+from .value_objects.task_kind import TaskKind
+from .value_objects.task_spec import TaskSpec
+from .value_objects.task_status import TaskStatus
+from .value_objects.verify_command import VerifyCommand
 
 _S = TaskStatus
 

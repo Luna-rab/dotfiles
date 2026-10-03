@@ -168,53 +168,51 @@ from autodevlib.domain.stack import Stack
 from autodevlib.domain.stages import STAGE_SPECS, Handoff, StageMode
 from autodevlib.domain.supervision import wake_for
 from autodevlib.domain.task import ExecutionStatus, Task
-from autodevlib.domain.values import (
-    MAX_JOB_RETURNS,
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommandId,
-    CommitSha,
-    Decision,
-    DecisionOrigin,
-    DeferredCall,
-    DesignCause,
-    EscalationKind,
-    EventId,
-    Evidence,
-    ExecutionId,
-    FindingOrigin,
-    FindingStatus,
-    FlowEnding,
-    GateItem,
-    GateItemResult,
-    GateReport,
-    GitJobKind,
-    GitJobOutcome,
-    Hint,
-    Instruction,
-    InterruptCause,
-    Issuer,
-    ParallelLimit,
-    Pointers,
-    QuestionId,
-    Rating,
-    Repository,
-    RunName,
-    SessionId,
-    StackEntry,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-    UnionFileVerdict,
-    UnionVerdict,
-    VerifyCommand,
-    VerifyResult,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.decision import Decision
+from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
+from autodevlib.domain.value_objects.deferred_call import DeferredCall
+from autodevlib.domain.value_objects.design_cause import DesignCause
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_origin import FindingOrigin
+from autodevlib.domain.value_objects.finding_status import FindingStatus
+from autodevlib.domain.value_objects.flow_ending import FlowEnding
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.gate_item_result import GateItemResult
+from autodevlib.domain.value_objects.gate_report import GateReport
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.git_job_outcome import GitJobOutcome
+from autodevlib.domain.value_objects.hint import Hint
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import MAX_JOB_RETURNS
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
+from autodevlib.domain.value_objects.union_file_verdict import UnionFileVerdict
+from autodevlib.domain.value_objects.union_verdict import UnionVerdict
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
+from autodevlib.domain.value_objects.verify_result import VerifyResult
 
 S = StageKind
 J = GitJobKind

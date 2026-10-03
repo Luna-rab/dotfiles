@@ -16,7 +16,9 @@ from enum import Enum
 from .aggregate import Aggregate, Rejected, applies, handles
 from .commands import AnswerQuestion, PostQuestion, WithdrawQuestions
 from .events import Event, QuestionAnswered, QuestionPosted, QuestionWithdrawn
-from .values import EventId, QuestionId, StreamId
+from .value_objects.event_id import EventId
+from .value_objects.question_id import QuestionId
+from .value_objects.stream_id import StreamId
 
 
 class QuestionStatus(Enum):

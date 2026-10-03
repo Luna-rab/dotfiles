@@ -80,20 +80,18 @@ from .events import (
     StackingResumed,
     TaskStacked,
 )
-from .values import (
-    MAX_JOB_RETURNS,
-    BranchName,
-    ExecutionId,
-    FlowEnding,
-    GitJob,
-    GitJobKind,
-    GitJobOutcome,
-    PrNumber,
-    StackEntry,
-    StreamId,
-    TaskId,
-    TaskKind,
-)
+from .value_objects.branch_name import BranchName
+from .value_objects.execution_id import ExecutionId
+from .value_objects.flow_ending import FlowEnding
+from .value_objects.git_job import GitJob
+from .value_objects.git_job_kind import GitJobKind
+from .value_objects.git_job_outcome import GitJobOutcome
+from .value_objects.limits import MAX_JOB_RETURNS
+from .value_objects.pr_number import PrNumber
+from .value_objects.stack_entry import StackEntry
+from .value_objects.stream_id import StreamId
+from .value_objects.task_id import TaskId
+from .value_objects.task_kind import TaskKind
 
 _J = GitJobKind
 

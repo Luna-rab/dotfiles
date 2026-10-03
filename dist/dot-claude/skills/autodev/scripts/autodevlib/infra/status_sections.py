@@ -19,7 +19,10 @@ from ..domain.questions import Questions
 from ..domain.run import Run, TaskEntry
 from ..domain.stack import Stack
 from ..domain.task import Execution, ExecutionStatus, Task
-from ..domain.values import GitJob, StackEntry, StreamId, TaskId
+from ..domain.value_objects.git_job import GitJob
+from ..domain.value_objects.stack_entry import StackEntry
+from ..domain.value_objects.stream_id import StreamId
+from ..domain.value_objects.task_id import TaskId
 from .eventstore import AggregateFactory, StoredEvent
 
 A = TypeVar("A", bound=Aggregate)

@@ -16,52 +16,50 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from .flow import FlowStep
-from .values import (
-    ArtifactRef,
-    BranchName,
-    CommandId,
-    CommitSha,
-    Decision,
-    DesignJudgement,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    Evidence,
-    ExecutionId,
-    FindingId,
-    FindingOrigin,
-    FindingStatus,
-    FindingSummary,
-    FindingVerdict,
-    FlowEnding,
-    GateItemResult,
-    GitJob,
-    GitJobKind,
-    Hint,
-    Instruction,
-    InterruptCause,
-    InvalidValue,
-    Issuer,
-    IssuerKind,
-    Location,
-    ParallelLimit,
-    Pointers,
-    PrNumber,
-    Proposal,
-    QuestionId,
-    Rating,
-    ReportedFinding,
-    Repository,
-    RunName,
-    SessionId,
-    StackEntry,
-    StallCause,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-)
+from .value_objects.artifact_ref import ArtifactRef
+from .value_objects.base import InvalidValue
+from .value_objects.branch_name import BranchName
+from .value_objects.command_id import CommandId
+from .value_objects.commit_sha import CommitSha
+from .value_objects.decision import Decision
+from .value_objects.design_judgement import DesignJudgement
+from .value_objects.design_version import DesignVersion
+from .value_objects.escalation_kind import EscalationKind
+from .value_objects.event_id import EventId
+from .value_objects.evidence import Evidence
+from .value_objects.execution_id import ExecutionId
+from .value_objects.finding_id import FindingId
+from .value_objects.finding_origin import FindingOrigin
+from .value_objects.finding_status import FindingStatus
+from .value_objects.finding_summary import FindingSummary
+from .value_objects.finding_verdict import FindingVerdict
+from .value_objects.flow_ending import FlowEnding
+from .value_objects.gate_item_result import GateItemResult
+from .value_objects.git_job import GitJob
+from .value_objects.git_job_kind import GitJobKind
+from .value_objects.hint import Hint
+from .value_objects.instruction import Instruction
+from .value_objects.interrupt_cause import InterruptCause
+from .value_objects.issuer import Issuer
+from .value_objects.issuer_kind import IssuerKind
+from .value_objects.location import Location
+from .value_objects.parallel_limit import ParallelLimit
+from .value_objects.pointers import Pointers
+from .value_objects.pr_number import PrNumber
+from .value_objects.proposal import Proposal
+from .value_objects.question_id import QuestionId
+from .value_objects.rating import Rating
+from .value_objects.reported_finding import ReportedFinding
+from .value_objects.repository import Repository
+from .value_objects.run_name import RunName
+from .value_objects.session_id import SessionId
+from .value_objects.stack_entry import StackEntry
+from .value_objects.stall_cause import StallCause
+from .value_objects.stream_id import StreamId
+from .value_objects.task_id import TaskId
+from .value_objects.task_kind import TaskKind
+from .value_objects.task_spec import TaskSpec
+from .value_objects.task_status import TaskStatus
 
 _K = IssuerKind
 

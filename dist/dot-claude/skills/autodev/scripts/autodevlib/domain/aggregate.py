@@ -51,7 +51,10 @@ from typing import Any, ClassVar, TypeVar
 
 from .commands import Command
 from .events import Event
-from .values import CommandId, EventId, IssuerKind, StreamId
+from .value_objects.command_id import CommandId
+from .value_objects.event_id import EventId
+from .value_objects.issuer_kind import IssuerKind
+from .value_objects.stream_id import StreamId
 
 
 class Rejected(Exception):

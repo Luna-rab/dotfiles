@@ -18,15 +18,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
-from .values import (
-    ArtifactKind,
-    EscalationKind,
-    GitJobKind,
-    Guard,
-    StageKind,
-    TaskKind,
-    WriteScope,
-)
+from .value_objects.artifact_kind import ArtifactKind
+from .value_objects.escalation_kind import EscalationKind
+from .value_objects.git_job_kind import GitJobKind
+from .value_objects.guard import Guard
+from .value_objects.stage_kind import StageKind
+from .value_objects.task_kind import TaskKind
+from .value_objects.write_scope import WriteScope
 
 
 class StageMode(Enum):

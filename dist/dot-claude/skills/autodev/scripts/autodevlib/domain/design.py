@@ -73,19 +73,17 @@ from .events import (
     ResultRefused,
 )
 from .stages import spec_of
-from .values import (
-    MAX_DESIGN_ROUNDS,
-    ArtifactKind,
-    ArtifactRef,
-    DesignVersion,
-    EscalationKind,
-    ExecutionId,
-    Proposal,
-    Rating,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from .value_objects.artifact_kind import ArtifactKind
+from .value_objects.artifact_ref import ArtifactRef
+from .value_objects.design_version import DesignVersion
+from .value_objects.escalation_kind import EscalationKind
+from .value_objects.execution_id import ExecutionId
+from .value_objects.limits import MAX_DESIGN_ROUNDS
+from .value_objects.proposal import Proposal
+from .value_objects.rating import Rating
+from .value_objects.stage_kind import StageKind
+from .value_objects.stream_id import StreamId
+from .value_objects.task_id import TaskId
 
 #: 設計を判定するステージ
 _DESIGN_JUDGE = StageKind.DESIGN_JUDGE

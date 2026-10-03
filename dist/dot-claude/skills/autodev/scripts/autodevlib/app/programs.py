@@ -22,23 +22,21 @@ from ..domain.services.gate import ChangedFile, GateEvaluator, GateEvidence
 from ..domain.services.union import UnionChecker
 from ..domain.services.verify import VerifySelector
 from ..domain.stages import has_own_commits
-from ..domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CutPoint,
-    DecisionOrigin,
-    GateReport,
-    GitJob,
-    PrNumber,
-    StageKind,
-    TaskStatus,
-    UnionFileVerdict,
-    UnionVerdict,
-    VerifyCommand,
-    VerifyResult,
-    overview_pr_title,
-)
+from ..domain.value_objects.artifact_kind import ArtifactKind
+from ..domain.value_objects.artifact_ref import ArtifactRef
+from ..domain.value_objects.branch_name import BranchName
+from ..domain.value_objects.cut_point import CutPoint
+from ..domain.value_objects.decision_origin import DecisionOrigin
+from ..domain.value_objects.gate_report import GateReport
+from ..domain.value_objects.git_job import GitJob
+from ..domain.value_objects.overview_pr_title import overview_pr_title
+from ..domain.value_objects.pr_number import PrNumber
+from ..domain.value_objects.stage_kind import StageKind
+from ..domain.value_objects.task_status import TaskStatus
+from ..domain.value_objects.union_file_verdict import UnionFileVerdict
+from ..domain.value_objects.union_verdict import UnionVerdict
+from ..domain.value_objects.verify_command import VerifyCommand
+from ..domain.value_objects.verify_result import VerifyResult
 from ..infra.files import write_atomic
 from . import markers
 from .stage_context import RunSetting, StageContext

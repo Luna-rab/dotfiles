@@ -12,20 +12,18 @@ from autodevlib.app.mainloop import Delivery, Subscriber
 from autodevlib.domain.aggregate import Aggregate, Rejected, applies, handles
 from autodevlib.domain.commands import Command, EnqueueStack, MarkInterrupted, ResumeStage
 from autodevlib.domain.events import Event, GitJobQueued, StageInterrupted, StageStarted
-from autodevlib.domain.values import (
-    BranchName,
-    CommandId,
-    CommitSha,
-    EventId,
-    ExecutionId,
-    GitJob,
-    GitJobKind,
-    InterruptCause,
-    Issuer,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 
 HEAD = CommitSha("0" * 40)
 POLICY = Issuer.policy("test", EventId("stack#1"))

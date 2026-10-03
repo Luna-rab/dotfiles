@@ -13,7 +13,10 @@ from typing import Generic, TypeVar
 from autodevlib.domain.aggregate import Aggregate
 from autodevlib.domain.commands import Command
 from autodevlib.domain.events import Event
-from autodevlib.domain.values import CommandId, EventId, Issuer, SessionId
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.session_id import SessionId
 
 SESSION = SessionId("0f8fad5b-d9cb-469f-a165-70867728950e")
 RUN_SUPERVISOR = Issuer.run_supervisor(SESSION)

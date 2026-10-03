@@ -6,7 +6,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from .stages import GIT_JOB_STAGES, REVIEWER_STAGES, STAGE_SPECS, SessionScope, StepArgument
-from .values import ArtifactKind, GitJob, GitJobKind, InvalidValue, StageKind, TaskKind
+from .value_objects.artifact_kind import ArtifactKind
+from .value_objects.base import InvalidValue
+from .value_objects.git_job import GitJob
+from .value_objects.git_job_kind import GitJobKind
+from .value_objects.stage_kind import StageKind
+from .value_objects.task_kind import TaskKind
 
 
 @dataclass(frozen=True)

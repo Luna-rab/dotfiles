@@ -40,16 +40,14 @@ from ..domain.stack import Stack
 from ..domain.stages import STAGE_SPECS
 from ..domain.supervision import Notice, Supervisor, Wake, wake_for
 from ..domain.task import Task
-from ..domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    DesignVersion,
-    EventId,
-    FindingStatus,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from ..domain.value_objects.artifact_kind import ArtifactKind
+from ..domain.value_objects.artifact_ref import ArtifactRef
+from ..domain.value_objects.design_version import DesignVersion
+from ..domain.value_objects.event_id import EventId
+from ..domain.value_objects.finding_status import FindingStatus
+from ..domain.value_objects.stage_kind import StageKind
+from ..domain.value_objects.stream_id import StreamId
+from ..domain.value_objects.task_id import TaskId
 from ..infra.paths import RunPaths
 from .mainloop import Delivery
 from .stage_context import StageContext, StagePrompt

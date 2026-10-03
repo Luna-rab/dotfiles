@@ -27,27 +27,25 @@ from autodevlib.domain.events import Event
 from autodevlib.domain.flow import FlowStep
 from autodevlib.domain.stages import STAGE_SPECS, StageMode
 from autodevlib.domain.task import Task
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommandId,
-    CommitSha,
-    DesignVersion,
-    Evidence,
-    ExecutionId,
-    GitJobKind,
-    Instruction,
-    Issuer,
-    Pointers,
-    Repository,
-    RunName,
-    SessionId,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.infra.paths import RunPaths
 from test_seams import HOLD, Outcome, Script
 
@@ -218,14 +216,12 @@ class FakeExecutor:
 
     @staticmethod
     def _evidence(execution: ExecutionId) -> dict[str, Any]:
-        from autodevlib.domain.values import (  # noqa: PLC0415
-            GateItem,
-            GateItemResult,
-            GateReport,
-            UnionVerdict,
-            VerifyCommand,
-            VerifyResult,
-        )
+        from autodevlib.domain.value_objects.gate_item import GateItem  # noqa: PLC0415
+        from autodevlib.domain.value_objects.gate_item_result import GateItemResult  # noqa: PLC0415
+        from autodevlib.domain.value_objects.gate_report import GateReport  # noqa: PLC0415
+        from autodevlib.domain.value_objects.union_verdict import UnionVerdict  # noqa: PLC0415
+        from autodevlib.domain.value_objects.verify_command import VerifyCommand  # noqa: PLC0415
+        from autodevlib.domain.value_objects.verify_result import VerifyResult  # noqa: PLC0415
 
         stage = execution.stage
         if stage is S.GATE:

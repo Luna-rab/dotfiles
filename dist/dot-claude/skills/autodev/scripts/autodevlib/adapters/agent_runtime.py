@@ -45,7 +45,7 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from ..domain.values import SessionId
+from ..domain.value_objects.session_id import SessionId
 from . import children
 from ._proc import merged_env, run
 

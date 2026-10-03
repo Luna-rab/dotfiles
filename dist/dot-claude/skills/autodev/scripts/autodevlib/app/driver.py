@@ -42,7 +42,11 @@ from ..domain.run import Run
 from ..domain.streams import aggregate_for
 from ..domain.supervision import Supervisor, wake_for
 from ..domain.task import Task
-from ..domain.values import CommandId, EventId, InterruptCause, Issuer, StreamId
+from ..domain.value_objects.command_id import CommandId
+from ..domain.value_objects.event_id import EventId
+from ..domain.value_objects.interrupt_cause import InterruptCause
+from ..domain.value_objects.issuer import Issuer
+from ..domain.value_objects.stream_id import StreamId
 from ..infra.eventstore import EventStore
 from ..infra.paths import RunPaths
 from ..infra.rejections import RejectionLog

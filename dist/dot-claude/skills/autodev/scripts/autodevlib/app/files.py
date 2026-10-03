@@ -18,7 +18,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ..adapters.guard import answer_path
-from ..domain.values import DesignVersion, EventId, FindingSummary, QuestionId
+from ..domain.value_objects.design_version import DesignVersion
+from ..domain.value_objects.event_id import EventId
+from ..domain.value_objects.finding_summary import FindingSummary
+from ..domain.value_objects.question_id import QuestionId
 from ..infra.files import write_atomic
 from ..infra.paths import RunPaths
 

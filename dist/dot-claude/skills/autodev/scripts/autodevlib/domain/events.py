@@ -21,47 +21,45 @@ from typing import Any, ClassVar
 from . import codec
 from .flow import Cursor, Flow, FlowStep
 from .stages import Handoff
-from .values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommitSha,
-    Decision,
-    DesignJudgement,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    ExecutionId,
-    FindingId,
-    FindingOrigin,
-    FindingSummary,
-    FindingTransfer,
-    GateItemResult,
-    GitJob,
-    GitJobOutcome,
-    Hint,
-    Instruction,
-    InterruptCause,
-    Location,
-    ParallelLimit,
-    PlannedTask,
-    Pointers,
-    PrNumber,
-    Proposal,
-    QuestionId,
-    Rating,
-    Repository,
-    RunName,
-    SessionId,
-    StackEntry,
-    StageResult,
-    StallCause,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-    VerifyCommand,
-)
+from .value_objects.artifact_kind import ArtifactKind
+from .value_objects.artifact_ref import ArtifactRef
+from .value_objects.branch_name import BranchName
+from .value_objects.commit_sha import CommitSha
+from .value_objects.decision import Decision
+from .value_objects.design_judgement import DesignJudgement
+from .value_objects.design_version import DesignVersion
+from .value_objects.escalation_kind import EscalationKind
+from .value_objects.event_id import EventId
+from .value_objects.execution_id import ExecutionId
+from .value_objects.finding_id import FindingId
+from .value_objects.finding_origin import FindingOrigin
+from .value_objects.finding_summary import FindingSummary
+from .value_objects.finding_transfer import FindingTransfer
+from .value_objects.gate_item_result import GateItemResult
+from .value_objects.git_job import GitJob
+from .value_objects.git_job_outcome import GitJobOutcome
+from .value_objects.hint import Hint
+from .value_objects.instruction import Instruction
+from .value_objects.interrupt_cause import InterruptCause
+from .value_objects.location import Location
+from .value_objects.parallel_limit import ParallelLimit
+from .value_objects.planned_task import PlannedTask
+from .value_objects.pointers import Pointers
+from .value_objects.pr_number import PrNumber
+from .value_objects.proposal import Proposal
+from .value_objects.question_id import QuestionId
+from .value_objects.rating import Rating
+from .value_objects.repository import Repository
+from .value_objects.run_name import RunName
+from .value_objects.session_id import SessionId
+from .value_objects.stack_entry import StackEntry
+from .value_objects.stage_result import StageResult
+from .value_objects.stall_cause import StallCause
+from .value_objects.task_id import TaskId
+from .value_objects.task_kind import TaskKind
+from .value_objects.task_spec import TaskSpec
+from .value_objects.task_status import TaskStatus
+from .value_objects.verify_command import VerifyCommand
 
 
 @dataclass(frozen=True)

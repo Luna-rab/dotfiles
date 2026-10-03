@@ -3,45 +3,43 @@
 from __future__ import annotations
 
 import pytest
-from autodevlib.domain.values import (
-    BranchName,
-    CommandId,
-    CommitSha,
-    CutPoint,
-    Decision,
-    DecisionOrigin,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    ExecutionId,
-    FindingId,
-    GateItem,
-    GateItemResult,
-    GateReport,
-    GitJob,
-    GitJobKind,
-    Instruction,
-    InvalidValue,
-    Issuer,
-    IssuerKind,
-    Location,
-    ParallelLimit,
-    PlannedTask,
-    PrNumber,
-    Proposal,
-    QuestionId,
-    Repository,
-    RunName,
-    SessionId,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-    VerifyCommand,
-    overview_pr_title,
-)
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.cut_point import CutPoint
+from autodevlib.domain.value_objects.decision import Decision
+from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.gate_item_result import GateItemResult
+from autodevlib.domain.value_objects.gate_report import GateReport
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.issuer_kind import IssuerKind
+from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.overview_pr_title import overview_pr_title
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.planned_task import PlannedTask
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 
 SESSION = SessionId("0f8fad5b-d9cb-469f-a165-70867728950e")
 

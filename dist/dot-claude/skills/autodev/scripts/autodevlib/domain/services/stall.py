@@ -7,7 +7,8 @@
 
 from __future__ import annotations
 
-from ..values import STALL_AFTER_FIXES, FindingStatus
+from ..value_objects.finding_status import FindingStatus
+from ..value_objects.limits import STALL_AFTER_FIXES
 
 
 class StallPolicy:

@@ -28,27 +28,25 @@ from autodevlib.domain.stages import (
     StageSpec,
 )
 from autodevlib.domain.supervision import Notice
-from autodevlib.domain.values import (
-    DesignCause,
-    EventId,
-    FindingId,
-    FindingStatus,
-    FindingTransfer,
-    GateItem,
-    Hint,
-    InvalidValue,
-    IssuerKind,
-    Pointers,
-    Proposal,
-    QuestionId,
-    Rating,
-    SessionId,
-    StageKind,
-    StallCause,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-)
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.design_cause import DesignCause
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_status import FindingStatus
+from autodevlib.domain.value_objects.finding_transfer import FindingTransfer
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.hint import Hint
+from autodevlib.domain.value_objects.issuer_kind import IssuerKind
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stall_cause import StallCause
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 from conftest import SKILL_ROOT
 
 CONTRACTS = SKILL_ROOT / "contracts"

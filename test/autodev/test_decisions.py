@@ -24,19 +24,17 @@ from autodevlib.domain.commands import (
     StopTasks,
 )
 from autodevlib.domain.flow import FlowStep, Reviewers
-from autodevlib.domain.values import (
-    CommandId,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    Issuer,
-    QuestionId,
-    SessionId,
-    StageKind,
-    StallCause,
-    TaskId,
-    TaskSpec,
-)
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stall_cause import StallCause
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 
 SESSION = SessionId("0f8fad5b-d9cb-469f-a165-70867728950e")
 T1 = TaskId("task1")

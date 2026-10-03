@@ -42,7 +42,7 @@ from ..domain.policies import FOLLOW_UPS
 from ..domain.questions import Questions
 from ..domain.supervision import wake_for
 from ..domain.task import Task
-from ..domain.values import StreamId
+from ..domain.value_objects.stream_id import StreamId
 from ..infra.paths import RunPaths
 from .executor import StageExecutor
 from .files import append_appendix, write_answer, write_question

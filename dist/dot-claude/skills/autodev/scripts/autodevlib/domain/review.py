@@ -66,23 +66,21 @@ from .events import (
 from .services.gate import GateEvaluator
 from .services.stall import StallPolicy
 from .stages import STAGE_SPECS, Handoff
-from .values import (
-    DesignJudgement,
-    DesignVersion,
-    ExecutionId,
-    FindingId,
-    FindingOrigin,
-    FindingStatus,
-    FindingSummary,
-    FindingVerdict,
-    Location,
-    Rating,
-    StageKind,
-    StallCause,
-    StreamId,
-    TaskId,
-    TaskKind,
-)
+from .value_objects.design_judgement import DesignJudgement
+from .value_objects.design_version import DesignVersion
+from .value_objects.execution_id import ExecutionId
+from .value_objects.finding_id import FindingId
+from .value_objects.finding_origin import FindingOrigin
+from .value_objects.finding_status import FindingStatus
+from .value_objects.finding_summary import FindingSummary
+from .value_objects.finding_verdict import FindingVerdict
+from .value_objects.location import Location
+from .value_objects.rating import Rating
+from .value_objects.stage_kind import StageKind
+from .value_objects.stall_cause import StallCause
+from .value_objects.stream_id import StreamId
+from .value_objects.task_id import TaskId
+from .value_objects.task_kind import TaskKind
 
 _S = FindingStatus
 

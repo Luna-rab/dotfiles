@@ -11,7 +11,8 @@ from autodevlib.domain.guard import (
     WriteZone,
 )
 from autodevlib.domain.stages import STAGE_SPECS
-from autodevlib.domain.values import Guard, WriteScope
+from autodevlib.domain.value_objects.guard import Guard
+from autodevlib.domain.value_objects.write_scope import WriteScope
 
 SCOPES = list(WriteScope)
 

@@ -13,16 +13,14 @@ from autodevlib.domain.flow import (
     planning_flow,
 )
 from autodevlib.domain.stages import STAGE_SPECS, SessionScope, StageMode
-from autodevlib.domain.values import (
-    ArtifactKind,
-    BranchName,
-    GitJob,
-    GitJobKind,
-    InvalidValue,
-    StageKind,
-    TaskId,
-    TaskKind,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
 
 S = StageKind
 A = ArtifactKind

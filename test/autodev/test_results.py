@@ -8,17 +8,15 @@ import pytest
 from autodev_samples import stage_result
 from autodevlib.domain.results import has_report, parse_result, read_report
 from autodevlib.domain.stages import STAGE_SPECS
-from autodevlib.domain.values import (
-    DesignCause,
-    DesignJudgement,
-    DesignVersion,
-    EscalationKind,
-    Evidence,
-    InvalidValue,
-    StageExit,
-    StageKind,
-    StallCause,
-)
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.design_cause import DesignCause
+from autodevlib.domain.value_objects.design_judgement import DesignJudgement
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stall_cause import StallCause
 
 S = StageKind
 EVIDENCE = Evidence(exit=StageExit.OK, result_valid=True)

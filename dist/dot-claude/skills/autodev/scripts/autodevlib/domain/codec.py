@@ -23,7 +23,7 @@ from enum import Enum
 from functools import cache
 from typing import Any, TypeVar, Union
 
-from .values import InvalidValue, Number, Text
+from .value_objects.base import InvalidValue, Number, Text
 
 T = TypeVar("T")
 

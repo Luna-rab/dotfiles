@@ -22,13 +22,11 @@ from autodevlib.domain.events import (
     from_record,
     to_record,
 )
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    StreamId,
-    TaskId,
-    TaskKind,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
 
 #: 宛先の集約ごとの土台。表には入れない
 COMMAND_BASES = {

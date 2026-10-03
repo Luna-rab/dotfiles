@@ -43,7 +43,11 @@ from ..adapters.agent_runtime import AgentCall, AgentOutcome, Ending
 from ..adapters.guard import guard_context, stage_env
 from ..domain.commands import Command, Panic, ReportSupervisorFailure
 from ..domain.supervision import SUPERVISOR_GUARD, Supervisor
-from ..domain.values import CommandId, EventId, Issuer, SessionId, TaskId
+from ..domain.value_objects.command_id import CommandId
+from ..domain.value_objects.event_id import EventId
+from ..domain.value_objects.issuer import Issuer
+from ..domain.value_objects.session_id import SessionId
+from ..domain.value_objects.task_id import TaskId
 from ..infra.files import write_atomic
 from ..infra.paths import RunPaths
 from .decisions import RUN_DECISIONS, TASK_DECISIONS, DecisionError, to_command

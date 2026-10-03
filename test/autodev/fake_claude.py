@@ -182,9 +182,55 @@ def init_then_crash() -> None:
     sys.exit(1)
 
 
+def session_not_found() -> None:
+    """`--resume` に見つからないセッションを渡した。claude 2.1.288 で確かめた形（プロンプトの有無で
+    変わらない）。init を出さず、`result` の欄の無い result を返して終了コード 1 で終わる。"""
+    session = sys.argv[sys.argv.index("--resume") + 1]
+    message = f"No conversation found with session ID: {session}"
+    emit(
+        {
+            "type": "result",
+            "subtype": "error_during_execution",
+            "duration_ms": 0,
+            "is_error": True,
+            "num_turns": 0,
+            "stop_reason": None,
+            "session_id": session,
+            "total_cost_usd": 0,
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+            "permission_denials": [],
+            "errors": [message],
+        }
+    )
+    sys.stderr.write(message + "\n")
+    sys.exit(1)
+
+
 def max_turns() -> None:
+    """claude 2.1.288 で `--max-turns 1` を超えた形。`result` の欄は無く、理由は `errors` に載る。"""
     read_line()
-    result(subtype="error_max_turns", is_error=True, terminal_reason="max_turns")
+    init()
+    emit(
+        {
+            "type": "result",
+            "subtype": "error_max_turns",
+            "is_error": True,
+            "num_turns": 2,
+            "stop_reason": "tool_use",
+            "terminal_reason": "max_turns",
+            "usage": {"input_tokens": 10, "output_tokens": 190},
+            "total_cost_usd": 0.02,
+            "permission_denials": [],
+            "errors": ["Reached maximum number of turns (1)"],
+        }
+    )
+    drain()
+    sys.exit(1)
+
+
+def result_and_errors() -> None:
+    read_line()
+    result(is_error=True, result="本文", errors=["診断"])
     drain()
     sys.exit(1)
 
@@ -193,6 +239,60 @@ def rate_limited() -> None:
     read_line()
     emit({"type": "rate_limit_event", "rate_limit_info": {"status": "rejected"}})
     result(is_error=True, api_error_status=429, result="You've hit your limit")
+    drain()
+    sys.exit(1)
+
+
+def assistant_error() -> None:
+    """API のエラーで終わったターン。assistant のイベントの一番上に `error` が付く（claude 2.1.288 の
+    実行ファイルの型の定義から読んだ形。実測ではない）。`error: "rate_limit"` は 429 のほかに、529 の
+    過負荷や `model_blocked` にも付く。
+
+    形は `FAKE_CLAUDE_ASSISTANT`（JSON）で決める: `text`（本文）、`parent`（`parent_tool_use_id`）、
+    `recovered`（その後にふつうの応答が続いたか）、`result`（result を返すか）。
+    """
+    shape = json.loads(os.environ["FAKE_CLAUDE_ASSISTANT"])
+    read_line()
+    init()
+    emit(
+        {
+            "type": "assistant",
+            "message": {"id": "m1", "content": [{"type": "text", "text": shape["text"]}]},
+            "parent_tool_use_id": shape.get("parent"),
+            "error": "rate_limit",
+        }
+    )
+    if shape.get("recovered"):
+        emit(
+            {
+                "type": "assistant",
+                "message": {"id": "m2", "content": [{"type": "text", "text": "続ける"}]},
+                "parent_tool_use_id": None,
+            }
+        )
+    if shape.get("result"):
+        result(is_error=True, result=shape["text"])
+        drain()
+    sys.exit(1)
+
+
+def overage_rejected_then_error() -> None:
+    """ふつうの呼び出しにも、`overageStatus: rejected` の rate_limit_event が出る（段 6 の実測）。"""
+    read_line()
+    init()
+    emit(
+        {
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "allowed",
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": False,
+            },
+        }
+    )
+    result(is_error=True, subtype="error_during_execution", result="落ちた")
     drain()
     sys.exit(1)
 
@@ -213,7 +313,17 @@ def interruptible() -> None:
         if message is None:
             return
         if message.get("type") == "control_request":
-            result(subtype="error_during_execution", is_error=True)
+            # claude 2.1.288 で、ツールの実行中に止めた形（段 6 の p3a2.jsonl）
+            result(
+                subtype="error_during_execution",
+                is_error=True,
+                result=None,
+                stop_reason="tool_use",
+                terminal_reason="aborted_tools",
+                errors=[
+                    "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"
+                ],
+            )
             drain()
             return
 
@@ -240,9 +350,13 @@ SCENARIOS = {
     "deferred": deferred,
     "no-result": no_result,
     "init-then-crash": init_then_crash,
+    "session-not-found": session_not_found,
     "max-turns": max_turns,
+    "result-and-errors": result_and_errors,
     "rate-limited": rate_limited,
     "rate-event-then-success": rate_event_then_success,
+    "assistant-error": assistant_error,
+    "overage-rejected-then-error": overage_rejected_then_error,
     "interruptible": interruptible,
     "stubborn": stubborn,
     "lingering": lingering,

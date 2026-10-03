@@ -84,7 +84,8 @@ def make_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def outcome(
     call: AgentCall, structured: Mapping[str, Any] | None = None, **fields: Any
 ) -> AgentOutcome:
-    """result が返って終わった（既定は成功）。"""
+    """result が返って終わった（既定は成功）。本物はセッションを開けたら init を出すので、既定は init を
+    受けたことにする（受けずに `--resume` から終わると、続けられなかったと数える）。"""
     values: dict[str, Any] = {
         "ending": Ending.RESULT,
         "exit_code": 0,
@@ -92,6 +93,7 @@ def outcome(
         "subtype": "success",
         "structured": structured,
         "log_path": call.log_path,
+        "initialized": True,
     }
     values.update(fields)
     return AgentOutcome(**values)

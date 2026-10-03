@@ -300,8 +300,13 @@ class FakeProcess:
         decided = self.runtime.decide(self.call, notice)
         if isinstance(decided, AgentOutcome):
             return decided
+        # 本物はセッションを開けたら init を出す。受けずに --resume から終わると続けられなかったと数える
         return AgentOutcome(
-            ending=Ending.RESULT, exit_code=0, session=self.call.session, structured=decided
+            ending=Ending.RESULT,
+            exit_code=0,
+            session=self.call.session,
+            structured=decided,
+            initialized=True,
         )
 
     def interrupt(self, reason: str) -> None:

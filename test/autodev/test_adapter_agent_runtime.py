@@ -236,6 +236,22 @@ def test_initを受けてから落ちたらセッションを開いた事実を�
     assert got.initialized
 
 
+@pytest.mark.parametrize("prompt", [None, "止めたところから続けて"])
+def test_見つからないセッションを続けるとinitを受けずにresultで終わった事実を返す(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prompt: str | None
+):
+    """claude 2.1.288 は init を出さず、`error_during_execution` の result を返す（段 6 の実測）。"""
+    scenario(monkeypatch, tmp_path, "session-not-found")
+    got = runtime(claude).run(make_call(tmp_path, prompt=prompt, resume=True))
+    assert got.ending is Ending.RESULT
+    assert got.exit_code == 1
+    assert got.subtype == "error_during_execution" and got.is_error
+    assert got.num_turns == 0
+    assert not got.initialized
+    # result の欄は無く、理由は `errors` に載る
+    assert got.text == f"No conversation found with session ID: {SESSION}"
+
+
 def test_ターンの上限で終わった事実を返す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -244,6 +260,15 @@ def test_ターンの上限で終わった事実を返す(
     assert got.exit_code == 1
     assert got.subtype == "error_max_turns"
     assert got.terminal_reason == "max_turns"
+    assert got.text == "Reached maximum number of turns (1)"
+
+
+def test_resultの本文があればerrorsより本文を返す(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    scenario(monkeypatch, tmp_path, "result-and-errors")
+    got = runtime(claude).run(make_call(tmp_path))
+    assert got.text == "本文"
 
 
 def test_利用枠の上限に当たった事実を返す(
@@ -253,6 +278,53 @@ def test_利用枠の上限に当たった事実を返す(
     got = runtime(claude).run(make_call(tmp_path))
     assert got.rate_limited
     assert got.api_error_status == 429
+
+
+LIMIT_TEXT = "You've hit your limit · resets 5pm"
+OVERLOAD_TEXT = "API Error: Opus is experiencing high load, please use /model to switch to Sonnet"
+
+
+@pytest.mark.parametrize(
+    ("shape", "limited"),
+    [
+        # 上限の文言と重なれば上限（result が無くても）
+        ({"text": LIMIT_TEXT}, True),
+        ({"text": LIMIT_TEXT, "result": True}, True),
+        # 529 の過負荷にも同じ印が付く。上限ではないので、パニックにせず普通の失敗にする
+        ({"text": OVERLOAD_TEXT}, False),
+        ({"text": OVERLOAD_TEXT, "result": True}, False),
+        # 「usage limit」の語を含むが、上限ではないと言っている文言
+        ({"text": "Server is temporarily limiting requests (not your usage limit)"}, False),
+        # 上限の文言に当たらない印だけでは、上限にしない
+        ({"text": "API Error: model is blocked"}, False),
+        # サブエージェントの印は、ステージの終わり方ではない
+        ({"text": LIMIT_TEXT, "parent": "toolu_9"}, False),
+        # 印の後にふつうの応答が続いてから落ちたのは、上限で終わったのではない
+        ({"text": LIMIT_TEXT, "recovered": True}, False),
+    ],
+)
+def test_assistantのrate_limitの印は上限の文言と重なり最後の応答のときだけ上限にする(
+    claude: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shape: dict[str, Any],
+    limited: bool,
+):
+    scenario(monkeypatch, tmp_path, "assistant-error")
+    monkeypatch.setenv("FAKE_CLAUDE_ASSISTANT", json.dumps(shape))
+    got = runtime(claude).run(make_call(tmp_path))
+    assert got.api_error_status is None
+    assert got.rate_limited is limited
+
+
+def test_overageStatusがrejectedでも利用枠の上限に当たっていない(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """従量の超過を組織で切っていると、ふつうの呼び出しでも `overageStatus` は `rejected` になる。"""
+    scenario(monkeypatch, tmp_path, "overage-rejected-then-error")
+    got = runtime(claude).run(make_call(tmp_path))
+    assert got.is_error
+    assert not got.rate_limited
 
 
 def test_interruptを送るとresultが返る(
@@ -266,6 +338,8 @@ def test_interruptを送るとresultが返る(
     assert got.ending is Ending.RESULT
     assert got.subtype == "error_during_execution"
     assert got.interrupted == "止める"
+    # `errors` の診断の文は、失敗の理由にしない
+    assert got.text == ""
     sent = [json.loads(line) for line in json.loads(record.read_text(encoding="utf-8"))["stdin"]]
     control = [m for m in sent if m["type"] == "control_request"]
     assert control[0]["request"] == {"subtype": "interrupt", "cancel_queued": True}

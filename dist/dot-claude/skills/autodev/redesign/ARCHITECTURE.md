@@ -359,19 +359,9 @@ flowchart LR
 
 ## 14. 未決
 
-- `gh stack unstack` に渡すスタックの番号を、対話なしでどう得るか（REST API にスタックを一覧する口があると文書にある。実装のときに確かめる）
 - `autodev status --json` を statusline から呼んだときの速さ（実装してから測る）
-- `interrupt` で止めたセッションを `--resume` で再開するときに渡す、短い続きの指示で続きから進むか（実測が無い。実装のときに確かめる）
-- `--resume` で続けるセッションが見つからないとき、claude が `system/init` を出さずに result も返さずに終わるか（実行器は、これを続けられなかった印にしている。ADDENDUM §12。段 6 で本物の claude で確かめる。init を出してから落ちるなら、標準エラーの `No conversation found` に印を替える）
 
-次のものは、実装が前提にしているが本物の claude・gh で確かめていない。段 6 で確かめ、外れたら設計と ADDENDUM を直す。
+次のものは、実装が前提にしているが本物の claude・gh で確かめきれていない。確かめて外れたら、設計と ADDENDUM を直す。
 
-- defer の後にプロンプト無しで `--resume` すると、同じ `tool_use_id` の PreToolUse がもう一度走り、回答のファイルを置いた ask が通るか（回答のファイルの名前がこの id に頼っている）
-- 利用枠の上限に当たったことを、何で見分けるか（`rate_limit_event`・HTTP 429・文言。パニックの判定がこれに頼っている）
-- stacks の REST API（`stacks?pull_request=`）の応答の形と、`gh stack unstack <番号>` が `trees/overview` から通るか
-- `gh stack link --base` の後に、概要 PR の base が変わらないか
-- `gh pr create --body-file -` と `--draft`、`gh pr list --head <ブランチ> --state open` で作り済みの PR を引けるか
-- 本物の claude の構造化出力が、`adapters/schema.py` の照合を通るか（`schemas/` の全ステージ）
-- ガードのフックが拒んだときに claude へ返る文面と、`--max-turns` を超えたときの終わり方
-- `AUTODEV_GUARD` が、ステージの claude から Bash の子プロセスまで引き継がれるか
-- LLM のステージから GitHub の認証を外したとき（偽の `GH_TOKEN`）に、`gh` が本当に通らないか。ssh の `git push` は、フックのほかに止める所が無いか
+- 利用枠の上限に当たったことを、何で見分けるか（パニックの判定がこれに頼っている）。`rate_limit_event` の欄（`rate_limit_info.status`）は claude 2.1.288 で実測した。上限に当てた形（result に `api_error_status: 429` が載るか、`rejected` の `rate_limit_event` が result の前に届くか、assistant に `error: "rate_limit"` が付くか）は実測していない。assistant の `error: "rate_limit"` は、実行ファイルの中の定義では 529 の過負荷（`… is experiencing high load`）と `model_blocked` にも付く。上限だけに付くものではないので、上限の文言か 429 と重なるときだけ上限とみなしている
+- LLM のステージから GitHub の認証を外したとき、ssh の `git push` は、フックのほかに止める所が無いか（偽の `GH_TOKEN` で `gh` が通らないことは確かめた）

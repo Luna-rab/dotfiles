@@ -1,4 +1,4 @@
-"""Questions 集約（DOMAIN_MODEL §6.6・ADDENDUM §8）。ラン統括から `/autodev` へ上げた質問と、その回答。
+"""Questions 集約。ラン統括から `/autodev` へ上げた質問と、その回答。
 
 質問は、それを出すきっかけになった Run の側のエスカレーション（経路）を持ち、回答はその経路を
 逆にたどって下りる。回答をどこで 1 回だけ使えるかは、回答を使う判断（answer・replan）を受ける
@@ -50,7 +50,7 @@ class Questions(Aggregate):
         """ユーザーの回答を待っている質問がある。
 
         進められるものが無くなった driver が、終了コード 4（回答待ち）で終えてよいかの問い。これが
-        偽なのに進められないなら、回答を待っているのではない（ARCHITECTURE §9）。
+        偽なのに進められないなら、回答を待っているのではない。
         """
         return bool(self.open_questions)
 

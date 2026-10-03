@@ -1,4 +1,4 @@
-"""glob の照合（LEDGER HK-14・HK-15）。フックと完了チェックが同じ照合を使う。"""
+"""glob の照合。フックと完了チェックが同じ照合を使う。"""
 
 from __future__ import annotations
 

@@ -1,10 +1,10 @@
 """Git: ブランチ・worktree・rebase・差分。
 
 worktree はどれも対象リポジトリの外（ランディレクトリの `trees/`）に置く。対象リポジトリの手元の
-ブランチと作業中のファイルには触らない（LEDGER CL-07）。
+ブランチと作業中のファイルには触らない。
 
-呼び直しで同じ結果になるように作る（ARCHITECTURE §9「決定的なステージの再開」）。ブランチの
-`already exists`・worktree の `already used by worktree` は、作り済みとして通す（LEDGER GH-03）。
+呼び直しで同じ結果になるように作る。ブランチの
+`already exists`・worktree の `already used by worktree` は、作り済みとして通す。
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def toplevel(path: str | os.PathLike[str]) -> Path | None:
 
 
 def available() -> bool:
-    """`git` が PATH にあって起動できるか（LEDGER GH-15）。"""
+    """`git` が PATH にあって起動できるか。"""
     return run(["git", "--version"], env=_ENV).ok
 
 
@@ -88,7 +88,7 @@ class Git:
         self._ok(self.repo, "fetch", "--prune", "origin", timeout=NETWORK_TIMEOUT)
 
     def default_branch(self) -> BranchName:
-        """origin の既定ブランチ。取れなければ origin の main・master の順に探し、無ければ main（LEDGER GH-16）。"""
+        """origin の既定ブランチ。取れなければ origin の main・master の順に探し、無ければ main。"""
         got = self._git(self.repo, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
         if got.ok and got.out.strip():
             return BranchName(got.out.strip().removeprefix("refs/remotes/origin/"))
@@ -136,7 +136,7 @@ class Git:
 
     def prune_worktrees(self) -> None:
         """ランディレクトリを手で消しても git 側の登録は残り、ブランチが「別の場所でチェックアウト中」に
-        なって作り直せない。worktree を作る前に通す（LEDGER GH-02）。"""
+        なって作り直せない。worktree を作る前に通す。"""
         self._ok(self.repo, "worktree", "prune")
 
     def add_worktree(self, path: str | os.PathLike[str], branch: BranchName) -> None:
@@ -146,7 +146,7 @@ class Git:
         if got.ok:
             return
         registered, checked_out = self._worktree(path)
-        # 登録だけ残ってディレクトリが無いもの（手で消した）は、prune してから作り直す（GH-02）
+        # 登録だけ残ってディレクトリが無いもの（手で消した）は、prune してから作り直す
         if not registered or not Path(path).is_dir():
             raise CommandFailed(got)
         if checked_out != f"refs/heads/{branch}":
@@ -187,7 +187,7 @@ class Git:
         self._ok(self.repo, "worktree", "add", "--detach", str(target), commit)
 
     def remove_worktree(self, path: str | os.PathLike[str]) -> None:
-        """worktree を消すと、無視されたファイルも一緒に消える（実測。LEDGER GH-04）。
+        """worktree を消すと、無視されたファイルも一緒に消える（実測）。
         push が済んでいるかを確かめるのは呼んだ側である。"""
         got = self._git(self.repo, "worktree", "remove", "--force", str(path))
         if not got.ok and "is not a working tree" not in got.err:
@@ -227,7 +227,7 @@ class Git:
         return CommitSha(got.out.strip()) if got.ok else None
 
     def commit_empty(self, tree: str | os.PathLike[str], message: str) -> CommitSha:
-        """空のコミットを 1 つ載せる。base との差分が 0 だと `gh pr create` が落ちる（LEDGER GH-01）。"""
+        """空のコミットを 1 つ載せる。base との差分が 0 だと `gh pr create` が落ちる。"""
         self._ok(tree, "commit", "--allow-empty", "--no-verify", "-m", message)
         return self.head(tree)
 
@@ -409,7 +409,7 @@ class Git:
     # --- push ---
 
     def push(self, tree: str | os.PathLike[str], branch: BranchName) -> None:
-        """force push はしない。積み直すときは新しいブランチ名で切り直す（LEDGER GH-11・ADDENDUM §10）。"""
+        """force push はしない。積み直すときは新しいブランチ名で切り直す。"""
         self._ok(
             tree,
             "push",

@@ -1,4 +1,4 @@
-"""`events.db` への接続とテーブル（DOMAIN_MODEL §7.4）。
+"""`events.db` への接続とテーブル。
 
 - 書く接続は driver のメインループの 1 つだけ。Python の `sqlite3` の接続は既定でスレッドを
   またげない（`check_same_thread`）ので、別のスレッドから使えば例外で気づける

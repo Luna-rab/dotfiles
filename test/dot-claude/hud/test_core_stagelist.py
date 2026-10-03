@@ -7,7 +7,7 @@ import copy
 import pytest
 from hud.core import stagelist
 from hud.core.pipeline import Mark
-from hud_samples import ADDENDUM_TASK
+from hud_samples import SAMPLE_TASK
 
 
 def rows(items: list[stagelist.StageItem]) -> list[tuple[str, str, int, str]]:
@@ -15,7 +15,7 @@ def rows(items: list[stagelist.StageItem]) -> list[tuple[str, str, int, str]]:
 
 
 def test_今のフローの段ごとに実行を持たせる():
-    got = stagelist.for_task(ADDENDUM_TASK)
+    got = stagelist.for_task(SAMPLE_TASK)
     assert rows(got) == [
         ("テスト作成", "done", 0, ""),
         ("ジャッジ r2", "current", 1, ""),
@@ -26,7 +26,7 @@ def test_今のフローの段ごとに実行を持たせる():
 
 def test_前の版のフローの実行は今の段に重ねず後ろに並べる():
     """`step` が 2 でも、書き直す前のフローの添字なので、今の Gate の段ではない。"""
-    task = copy.deepcopy(ADDENDUM_TASK)
+    task = copy.deepcopy(SAMPLE_TASK)
     task["flow"]["version"] = 2
     task["executions"][0]["step"] = 2
     got = stagelist.for_task(task)
@@ -37,7 +37,7 @@ def test_前の版のフローの実行は今の段に重ねず後ろに並べ�
 
 @pytest.mark.parametrize("step", [9, None, "1"])
 def test_stepがどの段にも当たらない実行は捨てずに最後に並べる(step):
-    task = copy.deepcopy(ADDENDUM_TASK)
+    task = copy.deepcopy(SAMPLE_TASK)
     older = {**task["executions"][0], "id": "old", "flow_version": 0}
     task["executions"][0]["step"] = step
     task["executions"].append(older)
@@ -47,7 +47,7 @@ def test_stepがどの段にも当たらない実行は捨てずに最後に並�
 
 
 def test_フローが無くても実行は見せる():
-    task = copy.deepcopy(ADDENDUM_TASK)
+    task = copy.deepcopy(SAMPLE_TASK)
     task["flow"] = None
     task["executions"][0]["status"] = "failed"
     got = stagelist.for_task(task)
@@ -55,4 +55,4 @@ def test_フローが無くても実行は見せる():
 
 
 def test_段のキーは添字で決まり読み直しても変わらない():
-    assert [i.key for i in stagelist.for_task(ADDENDUM_TASK)] == ["step:0", "step:1", "step:2"]
+    assert [i.key for i in stagelist.for_task(SAMPLE_TASK)] == ["step:0", "step:1", "step:2"]

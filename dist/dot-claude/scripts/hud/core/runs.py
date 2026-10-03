@@ -1,4 +1,4 @@
-"""`autodev status --json` の結果を読む。形は ADDENDUM §12「status --json の形」にある。
+"""`autodev status --json` の結果を読む。形は autodev の `infra/status_sections.py` にある。
 
 driver が生きているかは `run.driver_running` だけで決める。`updated_at`（イベントを確定した時刻）も
 `progress.updated` も、走っていても古くなるので生存の目安にしない。

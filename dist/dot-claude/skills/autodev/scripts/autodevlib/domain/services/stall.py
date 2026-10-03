@@ -1,4 +1,4 @@
-"""StallPolicy: 停滞の判定（DOMAIN_MODEL §10・ADDENDUM §5）。
+"""StallPolicy: 停滞の判定。
 
 レビューの体数は決めない（ReviewLoop の reviewers でタスク統括が選ぶ）。停滞を見るのは、判定を
 締めた後だけ（EvaluateStall・RecordGateResult）で、修正を数える時点（CountFix）では見ない。数えた

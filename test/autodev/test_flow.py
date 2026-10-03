@@ -97,7 +97,7 @@ def job(kind: GitJobKind, **kw) -> GitJob:
 def test_git管理タスクの統括は仕事の種類から決まった並びを組む():
     stack = job(GitJobKind.STACK, task=TaskId("task1"))
     assert git_job_flow(stack) == tuple(step(s) for s in STACKING)
-    # 積み直す仕事は、新しい名前のブランチを切り直してから rebase する（ADDENDUM §10）
+    # 積み直す仕事は、新しい名前のブランチを切り直してから rebase する
     restack = job(GitJobKind.STACK, task=TaskId("task1"), previous=BranchName("stack/r--task-1"))
     assert git_job_flow(restack) == (step(S.CUT_BRANCH), *(step(s) for s in STACKING))
     assert git_job_flow(job(GitJobKind.FINISH, ready_overview=True))[-1] == step(S.READY_OVERVIEW)

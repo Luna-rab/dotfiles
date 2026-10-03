@@ -15,8 +15,7 @@ flowchart TD
     idle -->|"無い"| stuck["1（進められないのに終わっていない）"]
 ```
 
-終わり方をどの終了コードにするかは ARCHITECTURE §9 の表のとおりで、ここで決めるのは、メインループの
-終わり方とドメインの問い（`Run.complete`・`Run.panicked`・`Questions.awaiting_answer`）の組み合わせを
+ここで決めるのは、メインループの終わり方とドメインの問い（`Run.complete`・`Run.panicked`・`Questions.awaiting_answer`）の組み合わせを
 表に引くことだけである。
 """
 
@@ -66,7 +65,7 @@ STOP_JOIN_SECONDS = INTERRUPT_GRACE + KILL_AFTER_SECONDS + 20
 
 
 class ExitCode(IntEnum):
-    """ARCHITECTURE §9 の終了コード。2 は使わない。"""
+    """終了コード。2 は使わない。"""
 
     #: ランを終えた（何本積んだかは status --json で見分ける）
     FINISHED = 0
@@ -268,7 +267,7 @@ class Driver:
             loop = self._loop
             fresh = store.last_seq() == 0
             if fresh != (start is not None):
-                # 新しいランに指示が無い・既にあるランに指示を足した（黙って捨てない。ARCHITECTURE §9）
+                # 新しいランに指示が無い・既にあるランに指示を足した（黙って捨てない）
                 log.error("ラン %s: %s", self.paths.name, "指示が無い" if fresh else "既にある")
                 return ExitCode.FAILED
             if start is not None:

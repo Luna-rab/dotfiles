@@ -1,9 +1,9 @@
 """`autodev` のサブコマンド。引数を読んでコマンドを組み、requests に置くか driver を組んで回し、
-終了コードを返すだけにする。進め方の判断は持たない（IMPLEMENTING §1）。
+終了コードを返すだけにする。進め方の判断は持たない。
 
-機械が読む出力は標準出力に JSON で、知らせと落ちた理由は標準エラーに出す（LEDGER CL-08）。
+機械が読む出力は標準出力に JSON で、知らせと落ちた理由は標準エラーに出す。
 
-終了コード（ARCHITECTURE §9）:
+終了コード:
 
 | コード | 意味 |
 | --- | --- |
@@ -121,7 +121,7 @@ def _repository(given: str) -> Repository:
 
 def _resume_checks(args: argparse.Namespace, paths: RunPaths, started: RunStarted) -> None:
     """既にあるランに、変えられない値を違う値で渡したら止める。黙って捨てると、呼んだ側は変えたつもり
-    になる（LEDGER CL-05）。"""
+    になる。"""
     if args.instruction is not None or args.instruction_file is not None:
         raise Failed(
             f"{paths.name} は既にある。続きから始めるときは --instruction を付けない"
@@ -145,7 +145,7 @@ def _start_command(
 ) -> StartRun:
     repo = Git(repository.value)
     overview = BranchName.overview(name)
-    # ランディレクトリを消してもブランチは残る（LEDGER GH-17）。残ったブランチを CutBranch が作り済みと
+    # ランディレクトリを消してもブランチは残る。残ったブランチを CutBranch が作り済みと
     # して使うと、前のランのコミットの上から始まる
     repo.fetch()
     if repo.remote_branch_exists(overview) or repo.branch_exists(overview):
@@ -252,7 +252,7 @@ def cmd_answer(args: argparse.Namespace) -> int:
         raise Failed(f"回答を置かなかった: {refusal}")
     with RequestBox.open(paths.events_db) as box:
         request = box.put(AnswerQuestion, {"question": question, "answer": text})
-    # driver を起こし直すのは answer の役目ではない（ARCHITECTURE §13「回答待ちの後の再開」）
+    # driver を起こし直すのは answer の役目ではない
     _say(f"回答を置いた。`autodev run --name {paths.name}` を呼び直すと driver が受け取る")
     _emit({"request": request, "question": question.value})
     return OK

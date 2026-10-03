@@ -1,4 +1,4 @@
-"""ポリシー: 集約どうしのつなぎ目（イベント → 次のコマンドの一覧。ADDENDUM §11・§12）。
+"""ポリシー: 集約どうしのつなぎ目（イベント → 次のコマンドの一覧）。
 
 ポリシーは、受けたイベントとその id（どのストリームの何番目か）だけからコマンドを返す純粋な関数で、
 集約の状態を読まない。状態で決まることは、受けた集約が `handle` で決める（取り出せる仕事が無ければ
@@ -265,7 +265,7 @@ def _ledger_of(task: TaskId) -> StreamId:
 
 
 def start_planning_and_git(e: RunStarted, src: EventId, stamp: Stamp) -> list[Command]:
-    """計画タスクと git 管理タスクを始め、最初の仕事（概要ブランチを切る）を列に入れる（ADDENDUM §1）。"""
+    """計画タスクと git 管理タスクを始め、最初の仕事（概要ブランチを切る）を列に入れる。"""
     return [
         StartTask(**stamp(), task=_PLANNING),
         StartTask(**stamp(), task=_GIT),
@@ -297,7 +297,7 @@ def open_task(e: TaskStarted, src: EventId, stamp: Stamp) -> list[Command]:
 
 
 def rescope_reopened(e: TaskStarted, src: EventId, stamp: Stamp) -> list[Command]:
-    """積む列から外して始め直したタスクには、新しいブランチで範囲を変えたと知らせる（ADDENDUM §2）。"""
+    """積む列から外して始め直したタスクには、新しいブランチで範囲を変えたと知らせる。"""
     if not e.reopened:
         return []
     assert e.spec is not None, "実装タスクの TaskStarted は中身を持つ"
@@ -326,7 +326,7 @@ def apply_first_plan(e: SettledPlanRecorded, src: EventId, stamp: Stamp) -> list
 
 def start_ready(e: Event, src: EventId, stamp: Stamp) -> list[Command]:
     """始められるタスクが増えうるイベントで頼む。どれを始めるかは、Run が TaskScheduler に聞いて
-    決める（ADDENDUM §12）。増えうるのは、計画を反映した・依存先を積んだ・差し込んだ・止めた（待つ
+    決める。増えうるのは、計画を反映した・依存先を積んだ・差し込んだ・止めた（待つ
     相手が減り、枠が空く）・呼び直された・並列の枠が空いた、のとき。"""
     return [StartReadyTasks(**stamp())]
 
@@ -418,7 +418,7 @@ def requeue(e: TasksReturnedToQueue, src: EventId, stamp: Stamp) -> list[Command
 
 
 def close_task_side(e: EscalationClosed, src: EventId, stamp: Stamp) -> list[Command]:
-    """Run の側で閉じたエスカレーションの、タスクの側の元を閉じる（ADDENDUM §3・§8）。"""
+    """Run の側で閉じたエスカレーションの、タスクの側の元を閉じる。"""
     if src.stream != StreamId.run() or e.task is None or e.source is None:
         return []
     return [CloseEscalation(**stamp(), task=e.task, escalation=e.source, reason=e.reason)]
@@ -660,7 +660,7 @@ def finish_git_job(e: FlowFinished | FlowAbandoned, src: EventId, stamp: Stamp) 
 
 
 def git_finished(e: FlowFinished, src: EventId, stamp: Stamp) -> list[Command]:
-    """仕上げの並びを終えた git 管理タスクを finished にする（ADDENDUM §1）。"""
+    """仕上げの並びを終えた git 管理タスクを finished にする。"""
     if e.job is None or e.job.kind is not _J.FINISH:
         return []
     return [
@@ -705,7 +705,7 @@ def plan_on_worktree(e: WorktreeReady, src: EventId, stamp: Stamp) -> list[Comma
 
 
 def status(to: TaskStatus) -> Rule:
-    """Task・Stack のイベントで、Run が持つタスクの状態を動かす（ADDENDUM §2）。"""
+    """Task・Stack のイベントで、Run が持つタスクの状態を動かす。"""
 
     def rule(e: Event, src: EventId, stamp: Stamp) -> list[Command]:
         if isinstance(e, GitJobTaken):

@@ -1,4 +1,4 @@
-"""反応: イベントに書かれた副作用を、ポートを呼んで起こす受け手（DOMAIN_MODEL §7.4・IMPLEMENTING §1）。
+"""反応: イベントに書かれた副作用を、ポートを呼んで起こす受け手。
 
 反応は判断しない。起こすかどうか・何を起こすかは、イベントが出た時点でドメインが決めている
 （統括を起こすのは `domain.supervision.wake_for`、ask の続きは `domain.policies.FOLLOW_UPS`）。

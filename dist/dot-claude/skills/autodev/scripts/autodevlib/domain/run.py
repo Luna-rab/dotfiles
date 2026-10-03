@@ -1,10 +1,10 @@
-"""Run 集約（DOMAIN_MODEL §6.1・§9.1、ADDENDUM §1・§2・§3・§8・§9）。
+"""Run 集約。
 
 ランの全体と、タスクの依存のグラフと各タスクの状態（TaskStatus）を持つ。タスクをいつ始め、いつ
 止めるかはここで決まる。ラン統括の判断は、質問（PostQuestion）を除いてすべてここが受ける。
 
 ほかの集約で起きたこと（エスカレーション・フローの終わり・積む列から取り出した、など）による
-状態の遷移は、ポリシーが UpdateTaskStatus で知らせる（ADDENDUM §2）。Run が自分のコマンドで
+状態の遷移は、ポリシーが UpdateTaskStatus で知らせる。Run が自分のコマンドで
 決める遷移（始める・止める・引き継ぐ・破棄する・積み直す・積んだ・積む列から外す）は、そのイベントで
 動かす。running へ入るのは、TaskScheduler が上限と依存を確かめる TaskStarted と、もう上限に
 数えている escalated から戻るときだけである。
@@ -93,7 +93,7 @@ from .values import (
 
 _S = TaskStatus
 
-#: ほかの集約のイベントを受けて、ポリシーが UpdateTaskStatus で動かす遷移（ADDENDUM §2）。
+#: ほかの集約のイベントを受けて、ポリシーが UpdateTaskStatus で動かす遷移。
 #: Run 自身のコマンドで決まる遷移は含めない。gated から running へは戻さない（範囲が変わった
 #: gated のタスクは、まだ始めていない状態に戻し、TaskScheduler が上限を見て始め直す）
 REPORTED_TRANSITIONS: Mapping[TaskKind, frozenset[tuple[TaskStatus, TaskStatus]]] = {
@@ -117,15 +117,15 @@ REPORTED_TRANSITIONS: Mapping[TaskKind, frozenset[tuple[TaskStatus, TaskStatus]]
         {
             (_S.RUNNING, _S.ESCALATED),
             (_S.ESCALATED, _S.RUNNING),
-            # 仕上げの並びを終えたとき。RunFinished の後だけ（ADDENDUM §1）
+            # 仕上げの並びを終えたとき。RunFinished の後だけ
             (_S.RUNNING, _S.FINISHED),
         }
     ),
 }
 
-#: 書き換えないタスク（DOMAIN_MODEL §6.1）。stacked は確定した再計画の破棄だけが動かす
+#: 書き換えないタスク。stacked は確定した再計画の破棄だけが動かす
 _UNTOUCHABLE = frozenset({_S.DROPPED, _S.SUPERSEDED, _S.DISCARDED})
-#: 止められる状態（§9.1・ADDENDUM §2）
+#: 止められる状態
 _STOPPABLE = frozenset({_S.PENDING, _S.RUNNING, _S.ESCALATED, _S.GATED, _S.STACKING})
 #: 範囲が変わったら、そのまま ChangeScope を送る状態（もう並列の上限に数えている）
 _SCOPE_CHANGEABLE = frozenset({_S.RUNNING, _S.ESCALATED})
@@ -151,7 +151,7 @@ class RunPhase(Enum):
 
 @dataclass(frozen=True)
 class TaskEntry:
-    """Run が持つタスク 1 つ（DOMAIN_MODEL §5 の TaskEntry）。"""
+    """Run が持つタスク 1 つ。"""
 
     id: TaskId
     status: TaskStatus
@@ -160,7 +160,7 @@ class TaskEntry:
     takes_over: TaskId | None = None
     superseded_by: TaskId | None = None
     #: ブランチを切り直した回数（破棄の後に積み直した・積む列から外して始め直した）。ブランチ名の
-    #: `-r<回数>` になる（ADDENDUM §10）。push したかもしれない名前は使い回さない
+    #: `-r<回数>` になる。push したかもしれない名前は使い回さない
     branch_round: int = 0
     #: 一度でも始めたか（始め直すときは OpenTask ではなく ChangeScope になる）
     started: bool = False
@@ -313,7 +313,7 @@ class Run(Aggregate):
         """ランを終え（RunFinished）、仕上げの並びも終えた（終端でないタスクが無い）。
 
         driver が終了コード 0 で終えてよいかの問い。git 管理タスクは RunFinished の後に仕上げの並びを
-        走らせ、その途中で上げることもあるので、RunFinished だけでは終えない（ADDENDUM §1）。
+        走らせ、その途中で上げることもあるので、RunFinished だけでは終えない。
         """
         return self.finished and not self.live_tasks
 
@@ -382,7 +382,7 @@ class Run(Aggregate):
         """エスカレーションとその回答を受けてよいか（名前の付いた規則）。
 
         ランが終わった後も、git 管理タスクのものは受ける。git 管理タスクは仕上げの並び（RunFinished の
-        後に走る）を終えるまで続き、その途中で上げることがあるからである（ADDENDUM §1）。
+        後に走る）を終えるまで続き、その途中で上げることがあるからである。
         """
         if self.name is None:
             raise Rejected("ランが始まっていない")
@@ -434,7 +434,7 @@ class Run(Aggregate):
         return found
 
     def _settles(self, events: list[Event]) -> list[Event]:
-        """最後の実装タスクが、どの道で終端になっても AllTasksSettled を出す（ADDENDUM §2）。"""
+        """最後の実装タスクが、どの道で終端になっても AllTasksSettled を出す。"""
         if self.all_settled or not self.preview(events).all_settled:
             return []
         return [AllTasksSettled()]
@@ -463,7 +463,7 @@ class Run(Aggregate):
         )
 
     def _usable_answer(self, question: QuestionId, escalation: EventId | None) -> RecordedAnswer:
-        """ユーザーの回答を使えるか（ADDENDUM §8）。1 回使った回答と、別のエスカレーションへの流用を拒む。"""
+        """ユーザーの回答を使えるか。1 回使った回答と、別のエスカレーションへの流用を拒む。"""
         recorded = self.answers.get(question)
         if recorded is None:
             raise Rejected(f"{question} の回答はまだ届いていない")
@@ -483,7 +483,7 @@ class Run(Aggregate):
     def _close_responded(
         self, events: list[Event], responds: RunEscalation | None, reason: str
     ) -> list[Event]:
-        """応えたエスカレーションを、まだ閉じていなければ閉じる（ADDENDUM §8）。"""
+        """応えたエスカレーションを、まだ閉じていなければ閉じる。"""
         closed = {e.escalation for e in events if isinstance(e, EscalationClosed)}
         if responds is None or responds.id in closed:
             return events
@@ -609,8 +609,8 @@ class Run(Aggregate):
         triggers = [self.escalations[e] for e in self.replan_triggers if e in self.escalations]
         for trigger in triggers:
             if trigger.task is not None and trigger.task.kind is TaskKind.IMPLEMENTATION:
-                # きっかけのエスカレーションを上げた実装タスクには、範囲が変わらなくても知らせる
-                # （§6.2）。ChangeScope は実装タスクにだけ送る（ADDENDUM §1）
+                # きっかけのエスカレーションを上げた実装タスクには、範囲が変わらなくても知らせる。
+                # ChangeScope は実装タスクにだけ送る
                 changed.add(trigger.task)
         status = {task: entry.status for task, entry in self.tasks.items()}
         closed = closing | {trigger.id for trigger in triggers}
@@ -663,7 +663,7 @@ class Run(Aggregate):
         return tuple(resolved)
 
     def _check_graph(self, graph: Mapping[TaskId, frozenset[TaskId]]) -> None:
-        """依存先が在り、止めた・破棄したタスクでなく、循環が無い（§6.1・ADDENDUM §2）。"""
+        """依存先が在り、止めた・破棄したタスクでなく、循環が無い。"""
         for task, dependencies in graph.items():
             for dependency in sorted(dependencies, key=str):
                 if dependency == task:
@@ -688,7 +688,7 @@ class Run(Aggregate):
         from_planning = trigger is not None and trigger.task == planning_task
         if self.planning and self.settled is None and not from_planning:
             # 計画が進んでいる間（初回も含む）は受けない。ただし計画タスクのエスカレーション（ask
-            # など）に replan で応じるのは、進んでいる計画をやり直すことなので受ける（§6.2）。確定した
+            # など）に replan で応じるのは、進んでいる計画をやり直すことなので受ける。確定した
             # 提案が反映を待っているなら、それを退けて頼み直せる
             raise Rejected(
                 "計画が進んでいる間は、計画タスクのエスカレーションに応じる再計画と、確定した提案を"
@@ -707,7 +707,7 @@ class Run(Aggregate):
         closes_on_apply = self.replan_triggers if self.planning else ()
         if trigger is not None and not from_planning and trigger.id not in closes_on_apply:
             closes_on_apply = (*closes_on_apply, trigger.id)
-        # 計画タスクの側で待っているエスカレーションは、再計画で要らなくなるので閉じる（ADDENDUM §3）。
+        # 計画タスクの側で待っているエスカレーションは、再計画で要らなくなるので閉じる。
         # ReplanRequested より前に出す。ReplanRequested を受けた計画タスクの統括が新しいフローを組む
         # ときに、計画タスクの側のエスカレーションがもう閉じている（フローを置き換えられる）ように
         events: list[Event] = [
@@ -1044,7 +1044,7 @@ class Run(Aggregate):
 
     @handles(ResumeRun)
     def _resume(self, command: ResumeRun) -> list[Event]:
-        """呼び直された。パニックの後も、落ちた後も、止まった実行の再開をタスクに頼む（ADDENDUM §9）。
+        """呼び直された。パニックの後も、落ちた後も、止まった実行の再開をタスクに頼む。
 
         ランが終わった後も、git 管理タスクが仕上げの並びを終えていなければ受ける。
         """
@@ -1062,7 +1062,7 @@ class Run(Aggregate):
             raise Rejected("計画が進んでいる")
         if self.cuts_pending or self.requeue:
             raise Rejected("破棄したタスクの上を閉じて、積む列へ戻し終えていない")
-        # 計画タスクと git 管理タスクはランが終わるまで続くので、見ない（ADDENDUM §1）
+        # 計画タスクと git 管理タスクはランが終わるまで続くので、見ない
         unsettled = sorted(
             str(entry.id)
             for entry in self.tasks.values()

@@ -4,25 +4,25 @@
 止まったか・利用枠の上限に当たったか）として返す。完了・失敗・やり直しのどれにするかは決めない
 （`Task.handle` が証拠から決める）。
 
-起動のしかたで効く事実（LEDGER の AR- の行）:
+起動のしかたで効く事実:
 
 - `ANTHROPIC_API_KEY`・`ANTHROPIC_AUTH_TOKEN`・`ANTHROPIC_BASE_URL` は変数ごと消す。残すと従量課金に
-  なる。`CLAUDE_CODE_OAUTH_TOKEN` は claude 自身のものなので通す（AR-01）
+  なる。`CLAUDE_CODE_OAUTH_TOKEN` は claude 自身のものなので通す
 - プロンプトは標準入力から渡す。`--allowedTools` は次のオプションまで後ろの引数を全部取るので、
-  ツールの一覧はカンマでつないで 1 引数にする（AR-03）
+  ツールの一覧はカンマでつないで 1 引数にする
 - `--input-format stream-json` で起動して標準入力を開いたままにすると、走行中に制御要求
-  （`interrupt`）を送れる（AR-05・AR-06）。送る user メッセージには uuid を振る（AR-07）
-- `system/init` はターンごとに出る（AR-09）。`cancel_queued` は init の `capabilities` に
-  `interrupt_cancel_queued_v1` があるときだけ付ける（AR-08）
-- result を見たら標準入力を閉じる。閉じても終わらないことがあるので、待つ時間を決めて kill する
-  （AR-10）。interrupt を送っても result が返らないことがあるので、一定時間で kill する（AR-11）
-- 引数の誤りは標準エラーにだけ出て、JSONL を 1 行も出さずに終わる（AR-13）
+  （`interrupt`）を送れる。送る user メッセージには uuid を振る
+- `system/init` はターンごとに出る。`cancel_queued` は init の `capabilities` に
+  `interrupt_cancel_queued_v1` があるときだけ付ける
+- result を見たら標準入力を閉じる。閉じても終わらないことがあるので、待つ時間を決めて kill する。
+  interrupt を送っても result が返らないことがあるので、一定時間で kill する
+- 引数の誤りは標準エラーにだけ出て、JSONL を 1 行も出さずに終わる
 - `--json-schema` の検証に失敗しても `subtype: success` のまま `structured_output` が空で返ることが
-  ある（AR-16）。ここでは空を空のまま返し、形を確かめるのは実行器である
-- defer で止まったセッションを再開するときはプロンプトを渡さない（AR-21）。呼んだ側が
+  ある。ここでは空を空のまま返し、形を確かめるのは実行器である
+- defer で止まったセッションを再開するときはプロンプトを渡さない。呼んだ側が
   `prompt=None` で表す
 - JSONL は走りながら 1 行ずつログに書く。渡したプロンプトも残す。同じステージを 2 度呼ぶことが
-  あるので、上書きせず書き足す（AR-24）
+  あるので、上書きせず書き足す
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from ..domain.values import SessionId
 from . import children
 from ._proc import merged_env, run
 
-#: 外して起動する変数（AR-01）
+#: 外して起動する変数
 REMOVED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
 _BASE_ARGV = (
     "-p",
@@ -61,14 +61,14 @@ _BASE_ARGV = (
     "--permission-mode",
     "bypassPermissions",
 )
-#: result を見て標準入力を閉じてから、終わるのを待つ時間（AR-10）
+#: result を見て標準入力を閉じてから、終わるのを待つ時間
 EXIT_GRACE = 30.0
-#: interrupt を送ってから result を待つ時間。過ぎたら kill する（AR-11）
+#: interrupt を送ってから result を待つ時間。過ぎたら kill する
 INTERRUPT_GRACE = 60.0
-#: 進み具合を知らせる間隔。ステージ 1 回で数百のイベントが流れるので、毎回は知らせない（AR-28）
+#: 進み具合を知らせる間隔。ステージ 1 回で数百のイベントが流れるので、毎回は知らせない
 PROGRESS_INTERVAL = 5.0
 CANCEL_QUEUED = "interrupt_cancel_queued_v1"
-#: フックに拒まれた呼び出しの tool_result の本文の頭（AR-26。Claude Code 2.1.281 で確かめた形）
+#: フックに拒まれた呼び出しの tool_result の本文の頭（Claude Code 2.1.281 で確かめた形）
 _HOOK_DENIAL = re.compile(r"PreToolUse:\S+ hook error")
 #: 利用枠の上限の文言。上限に当てた形は実物で確かめていない（モジュールの末尾の注を参照）
 _RATE_LIMIT_TEXT = re.compile(r"usage limit|hit your limit|rate limit|rate_limit", re.IGNORECASE)
@@ -81,7 +81,7 @@ _NOT_RATE_LIMIT_TEXT = re.compile(r"is experiencing high load|not your usage lim
 class AgentCall:
     """`claude -p` 1 回の起動条件。"""
 
-    #: None なら何も送らない（defer で止まったセッションの再開。AR-21）
+    #: None なら何も送らない（defer で止まったセッションの再開）
     prompt: str | None
     cwd: str
     session: SessionId
@@ -89,7 +89,7 @@ class AgentCall:
     resume: bool
     #: JSONL を書き足すファイル。標準エラーは `<log>.err` に書き足す
     log_path: str
-    #: 結果の形（JSON Schema draft-07 の本文。パスではない。AR-17）
+    #: 結果の形（JSON Schema draft-07 の本文。パスではない）
     json_schema: str | None = None
     model: str | None = None
     effort: str | None = None
@@ -104,7 +104,7 @@ class AgentCall:
     #: これを過ぎたら interrupt を送る（秒）。None なら待ち続ける
     timeout: float | None = None
     #: GitHub の権限を渡さないか。ステージなら `Guard.withholds_github` を渡す。統括には Guard が
-    #: 無いが、同じく渡さない（ARCHITECTURE §10）ので既定は True
+    #: 無いが、同じく渡さないので既定は True
     withhold_github: bool = True
 
 
@@ -113,7 +113,7 @@ class Ending(Enum):
 
     #: result が来て、プロセスが終わった
     RESULT = "result"
-    #: result が来ないまま、プロセスが自分で終わった（引数の誤りなど。AR-13）
+    #: result が来ないまま、プロセスが自分で終わった（引数の誤りなど）
     NO_RESULT = "no-result"
     #: result が来ないので、こちらが kill した（interrupt が効かなかった・result の後も終わらない）
     KILLED = "killed"
@@ -129,7 +129,7 @@ class Usage:
 
 @dataclass(frozen=True)
 class DeferredToolUse:
-    """PreToolUse のフックの defer で止まった呼び出し（HK-20）。"""
+    """PreToolUse のフックの defer で止まった呼び出し。"""
 
     tool_use_id: str
     name: str
@@ -164,7 +164,7 @@ class AgentOutcome:
     num_turns: int = 0
     #: result の `result`（最後の応答の本文）。無ければ `errors` をつないだもの
     text: str = ""
-    #: `structured_output`。返らなかった・object でなければ None（AR-16）
+    #: `structured_output`。返らなかった・object でなければ None
     structured: Mapping[str, Any] | None = None
     usage: Usage = Usage()
     cost_usd: float = 0.0
@@ -248,7 +248,7 @@ def env_for(call: AgentCall, gh_config_dir: str | None = None) -> dict[str, str]
 
 
 def user_message(prompt: str) -> str:
-    """stream-json の入力 1 行。uuid を振らないと interrupt の応答の `still_queued` / `cancelled` が空になる（AR-07）。"""
+    """stream-json の入力 1 行。uuid を振らないと interrupt の応答の `still_queued` / `cancelled` が空になる。"""
     message = {
         "type": "user",
         "message": {"role": "user", "content": prompt},
@@ -305,7 +305,7 @@ class AgentProcess:
         # 書き足すので、この呼び出しの標準エラーはここから後ろである
         self._err_offset = self._err.tell()
         argv = argv_for(call, claude)
-        # 再開ではプロンプトを渡さないので、最初の指示はログにしか残らない（AR-24）
+        # 再開ではプロンプトを渡さないので、最初の指示はログにしか残らない
         self._record(
             {
                 "type": "autodev/call",
@@ -352,7 +352,7 @@ class AgentProcess:
     # --- 外から ---
 
     def interrupt(self, reason: str) -> None:
-        """ターンを打ち切る。result が返れば usage と停止理由が残る（AR-06）。返らなければ kill する。
+        """ターンを打ち切る。result が返れば usage と停止理由が残る。返らなければ kill する。
 
         制御要求を送るのも kill の期限を決めるのも、最初の 1 回だけ。呼び直すたびに期限を延ばすと、
         interrupt が効かないときにいつまでも kill しない。
@@ -469,7 +469,7 @@ class AgentProcess:
     def _notify(self) -> None:
         if self._on_progress is None:
             return
-        # 進み具合を受ける側の誤りで、ステージを止めない（AR-25）
+        # 進み具合を受ける側の誤りで、ステージを止めない
         with contextlib.suppress(Exception):
             self._on_progress(self._state.progress())
 
@@ -508,12 +508,12 @@ class AgentRuntime:
         return self.start(call, on_progress).wait()
 
     def available(self) -> bool:
-        """`claude` が起動できるか（LEDGER GH-15。走り出す前に確かめる）。"""
+        """`claude` が起動できるか（走り出す前に確かめる）。"""
         return run([self.claude, "--version"], env=dict.fromkeys(REMOVED_ENV)).ok
 
 
 class _Collector:
-    """流れてきたイベントから、事実を拾う。読むのは result 1 つでよい（AR-12）。"""
+    """流れてきたイベントから、事実を拾う。読むのは result 1 つでよい。"""
 
     def __init__(self) -> None:
         self.final: dict[str, Any] | None = None
@@ -536,7 +536,7 @@ class _Collector:
         if kind == "result":
             self.final = dict(event)
         elif kind == "system" and event.get("subtype") == "init":
-            # init はターンごとに出る（AR-09）。最後のものを使う
+            # init はターンごとに出る。最後のものを使う
             self.capabilities = tuple(str(c) for c in event.get("capabilities") or ())
             self.initialized = True
         elif kind == "assistant":
@@ -652,7 +652,7 @@ def _hook_denials(event: Mapping[str, Any]) -> int:
     """PreToolUse のフックは、通したときは `type: attachment`（`hook_success`）のイベントを出すが、
     拒んだときは出さない（claude 2.1.288 で確かめた）。拒まれた呼び出しは次の user イベントの
     tool_result にだけ残る。`hook_response` の `exit_code` を数えると SessionStart のフックの失敗まで
-    数える（AR-26）。"""
+    数える。"""
     message = event.get("message")
     content = message.get("content") if isinstance(message, Mapping) else None
     if not isinstance(content, Sequence) or isinstance(content, str):

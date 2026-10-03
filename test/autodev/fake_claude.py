@@ -1,7 +1,7 @@
 """検査で `claude -p` の代わりに起動する偽物。本物は叩かない。
 
 `FAKE_CLAUDE_SCENARIO` で振る舞いを選び、受けた引数・環境変数・標準入力を `FAKE_CLAUDE_RECORD` に
-JSON で書く。流すイベントの形は LEDGER の AR- と HK-20・AR-26 の行に合わせてある。
+JSON で書く。流すイベントの形は本物の claude に合わせてある。
 """
 
 from __future__ import annotations

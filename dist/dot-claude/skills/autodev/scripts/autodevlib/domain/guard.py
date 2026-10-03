@@ -1,4 +1,4 @@
-"""ガードの規則（DOMAIN_MODEL §4 Guard・ARCHITECTURE §10）。LLM のステージに何を書かせ、何をさせないか。
+"""ガードの規則。LLM のステージに何を書かせ、何をさせないか。
 
 ここに書くのは「してよいか・いけないか」だけである。実パスをどの場所（`WriteZone`）に振り分けるか、
 テストのパスかどうか、コマンド行から宛先と操作を取り出すことは、アダプタ（`adapters/guard.py`）が
@@ -24,7 +24,7 @@ class WriteZone(Enum):
     RUN_DIR = "run-dir"
     #: ホームディレクトリ（設定を含む）
     HOME = "home"
-    #: 対象リポジトリの手元の checkout。手元のブランチと作業中のファイルに触らない（LEDGER CL-07）
+    #: 対象リポジトリの手元の checkout。手元のブランチと作業中のファイルに触らない
     TARGET_REPO = "target-repo"
     #: OS の一時ディレクトリ（`/tmp`・`$TMPDIR`）。テストやツールが一時ファイルを置く
     TEMP = "temp"
@@ -35,7 +35,7 @@ class WriteZone(Enum):
 
 
 #: ステージ 1 回でフックに拒まれてよい数。これを超えたら打ち切る。何度も止められるステージは指示書を
-#: 読み違えていて、ターンの上限まで使っても直らない（LEDGER AR-27）
+#: 読み違えていて、ターンの上限まで使っても直らない
 HOOK_DENIALS_BEFORE_CUTOFF = 10
 
 
@@ -105,7 +105,7 @@ class AskVerdict(Enum):
     REFUSE = "refuse"
 
 
-#: LLM のステージにも統括にも、GitHub の権限を渡さない（ARCHITECTURE §10）。GitHub を触るのは、
+#: LLM のステージにも統括にも、GitHub の権限を渡さない。GitHub を触るのは、
 #: git 管理タスクの決定的なステージだけである
 WITHHOLD_GITHUB_FROM_LLM = True
 
@@ -123,7 +123,7 @@ def _scope_allows(scope: WriteScope, target: WriteTarget) -> bool:
     if scope is WriteScope.NON_TESTS:
         return not target.is_test
     if scope is WriteScope.TESTS_AND_STUBS:
-        # テストとスタブを書く。スタブか実装かはフックで見分けられない（LEDGER HK-10・N-47）
+        # テストとスタブを書く。スタブか実装かはフックで見分けられない
         return True
     if scope is WriteScope.TESTS_ONLY:
         return target.is_test
@@ -157,7 +157,7 @@ def judge_operation(guard: Guard, operation: Operation) -> Refusal | None:
 
 
 def judge_ask(guard: Guard, answered: bool) -> AskVerdict:
-    """回答のファイルの実在だけで決め、中身を解釈しない。何度再開しても同じ判断になる（LEDGER HK-24）。"""
+    """回答のファイルの実在だけで決め、中身を解釈しない。何度再開しても同じ判断になる。"""
     if not guard.can_ask:
         return AskVerdict.REFUSE
     return AskVerdict.PASS if answered else AskVerdict.DEFER

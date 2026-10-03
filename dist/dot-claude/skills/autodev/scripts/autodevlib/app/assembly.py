@@ -39,7 +39,7 @@ def build_driver(paths: RunPaths, config: RepoConfig) -> Driver:
 
 
 def missing_tools(cwd: Path) -> list[str]:
-    """走り出す前に足りない道具。1 つでもあれば走らない（LEDGER GH-15。途中で気づくと、worktree と
+    """走り出す前に足りない道具。1 つでもあれば走らない（途中で気づくと、worktree と
     概要 PR だけが残る）。"""
     missing: list[str] = []
     if not AgentRuntime().available():

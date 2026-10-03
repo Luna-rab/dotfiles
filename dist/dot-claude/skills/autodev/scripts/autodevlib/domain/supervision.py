@@ -1,4 +1,4 @@
-"""LLM の統括（ラン統括と実装タスクの統括）を、どのイベントで起こすか（ARCHITECTURE §6・ADDENDUM §3）。
+"""LLM の統括（ラン統括と実装タスクの統括）を、どのイベントで起こすか。
 
 統括を起こすのは反応（アプリケーション層）だが、**どの出来事で誰を起こすかはここで決める。** 反応は
 `wake_for` に聞き、返った統括を、返った知らせで起こすだけにする。うまく進んでいる間は統括を起こさない
@@ -28,7 +28,7 @@ from .events import (
 from .services.escalation_router import EscalationRouter, SupervisorLevel, task_of_stream
 from .values import EventId, GitJobKind, Guard, StreamId, TaskId, TaskKind, WriteScope
 
-#: 統括の書き込みの範囲。統括は読むだけで、決めたことは判断の JSON で返す（ARCHITECTURE §3）
+#: 統括の書き込みの範囲。統括は読むだけで、決めたことは判断の JSON で返す
 SUPERVISOR_GUARD = Guard(WriteScope.NONE)
 
 
@@ -131,7 +131,7 @@ def wake_for(event: Event, source: EventId) -> Wake | None:  # noqa: PLR0911  �
 
 
 def _wake_run(event: Event) -> Wake | None:
-    """ラン統括を起こすのは、上がってきたイベント・回答の到着・再計画の確定・全タスクの終わり（ADDENDUM §3）。
+    """ラン統括を起こすのは、上がってきたイベント・回答の到着・再計画の確定・全タスクの終わり。
 
     ランの開始では起こさない（返す判断が無い）。初回の計画の確定は、ポリシーが ApplyPlan で反映する。
     """

@@ -1,4 +1,4 @@
-"""エスカレーションの出所から、1 段上の統括を決める（DOMAIN_MODEL §8.2・§10 の EscalationRouter）。
+"""エスカレーションの出所から、1 段上の統括を決める。
 
 エスカレーションは段を飛ばさない。ステージ（とタスクの中のポリシー）が上げたものはそのタスクの
 統括が受け、タスクの統括が上げたものはラン統括が受け、ラン統括が上げたもの（質問）は `/autodev`
@@ -64,7 +64,7 @@ RAISED_IN_TASK: Mapping[TaskKind, frozenset[EscalationKind]] = {
 
 #: タスクの統括がラン統括へ上げてよいもの。実装タスクの統括（LLM）は自分で解けないことを
 #: needs-replan・needs-human で上げる。計画タスクと git 管理タスクの統括はプログラムで、自分では
-#: 解かず、受けたものをそのままの種類で上げる（DOMAIN_MODEL §6.2）
+#: 解かず、受けたものをそのままの種類で上げる
 RELAYED_TO_RUN: Mapping[TaskKind, frozenset[EscalationKind]] = {
     TaskKind.PLANNING: RAISED_IN_TASK[TaskKind.PLANNING],
     TaskKind.IMPLEMENTATION: frozenset({_E.NEEDS_REPLAN, _E.NEEDS_HUMAN}),

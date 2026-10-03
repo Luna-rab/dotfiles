@@ -1,6 +1,6 @@
 """本物の `status --json` を statusline に渡す契約の検査。
 
-ほかの HUD の検査は、ADDENDUM の例を写した見本（`hud_samples.py`）を読む。見本と本物の形が
+ほかの HUD の検査は、手で書いた見本（`hud_samples.py`）を読む。見本と本物の形が
 ずれても、それらは全部通る。ここでは、イベントの列から `autodevlib.infra.status.all_statuses` で
 本物の JSON を組み立て、偽の入口に返させて statusline を通す。
 """

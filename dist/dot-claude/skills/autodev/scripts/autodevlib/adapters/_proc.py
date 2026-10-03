@@ -1,6 +1,6 @@
 """コマンドを 1 回流す。Git・Forge・ProcessRunner が使う。
 
-シェルを通さない（LEDGER FP-01）。ラン名やブランチ名がそのまま引数に入るので、シェルを通すと
+シェルを通さない。ラン名やブランチ名がそのまま引数に入るので、シェルを通すと
 空白や引用符の混ざった値でコマンドが組み変わる。
 """
 
@@ -160,8 +160,7 @@ class CommandFailed(RuntimeError):
 def merged_env(env: Mapping[str, str | None] | None) -> dict[str, str]:
     """今の環境に `env` を重ねる。値が None の変数は外す。
 
-    空文字を入れる形では足りない。`ANTHROPIC_API_KEY=""` でも「設定されている」と読む相手がいる
-    （LEDGER AR-01）。
+    空文字を入れる形では足りない。`ANTHROPIC_API_KEY=""` でも「設定されている」と読む相手がいる。
     """
     merged = dict(os.environ)
     for key, value in (env or {}).items():

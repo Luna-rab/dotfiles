@@ -1,4 +1,4 @@
-"""VerifySelector: 流す検証コマンドを、流す時点で選ぶ（DOMAIN_MODEL §10・ARCHITECTURE §7）。
+"""VerifySelector: 流す検証コマンドを、流す時点で選ぶ。
 
 - 実装タスクの ConfirmRed と Gate は、そのタスクの `verify` だけを流す。タスクが確かめるのは、自分が
   手を付けた範囲である

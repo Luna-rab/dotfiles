@@ -1,4 +1,4 @@
-"""リポジトリごとの設定（`infra/repo_config.py`・LEDGER FP-09）。"""
+"""リポジトリごとの設定（`infra/repo_config.py`）。"""
 
 from __future__ import annotations
 

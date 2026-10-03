@@ -5,9 +5,9 @@
 ステージの結果の JSON（PR 番号・切った worktree）は実行器が組む。
 
 Task が ReportStageResult を受けたときに呼ぶ。読めなければ `InvalidValue` で、Task は形の誤りとして
-StageFailed にする（構造化出力の検証に任せない。LEDGER AR-16）。
+StageFailed にする（構造化出力の検証に任せない）。
 
-- 報告（`report`）は、成果物の実物を確かめる前に読む（§6.7 の ③）ので、`read_report` で別に読む
+- 報告（`report`）は、成果物の実物を確かめる前に読むので、`read_report` で別に読む
 - 提案の版は結果の JSON に無い。設計の本文（`design`）を `design/v<版>.md` に書き出した実行器が、
   `proposal` の成果物の在りかに版の番号を書く（`ArtifactRef` の約束）
 - Expect の `defects`（受入条件と食い違う出力）は、Expect を出どころとする must-fix の指摘に読み替える

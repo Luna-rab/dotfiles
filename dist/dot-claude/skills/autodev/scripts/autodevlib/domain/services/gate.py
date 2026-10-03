@@ -1,4 +1,4 @@
-"""GateEvaluator: 完了チェック（DOMAIN_MODEL §10・§11.3・ADDENDUM §6）。
+"""GateEvaluator: 完了チェック。
 
 集めた証拠（`GateEvidence`）から、項目ごとの合否と、落ちた項目をどう扱うかを決める。
 
@@ -11,7 +11,7 @@
   いなくなる
 
 証拠を集めるのは実行器で、ここは判断だけをする。glob との照合（テストのパス・テストが要らないパス）は
-アダプタが持つ規則なので（LEDGER HK-15）、変わったファイルごとに照合の答えを添えて受け取り
+アダプタが持つ規則なので、変わったファイルごとに照合の答えを添えて受け取り
 （`ChangedFile`）、TestGen の有無でどちらの一覧のどの答えを見るかはここで決める。
 """
 
@@ -102,7 +102,7 @@ def _item(item: GateItem, failures: Iterable[str]) -> GateItemResult:
 class GateEvaluator:
     @staticmethod
     def evaluate(evidence: GateEvidence) -> GateOutcome:
-        """項目は ADDENDUM §6 の順。TestGen の有無で、4 と 5 のどちらか一方だけを見る。"""
+        """項目は `GateItem` の順。TestGen の有無で、4 と 5 のどちらか一方だけを見る。"""
         missing_reviewers = [
             kind.value
             for kind in evidence.reviewers_expected

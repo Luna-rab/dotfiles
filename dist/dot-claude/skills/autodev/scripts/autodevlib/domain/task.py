@@ -1,4 +1,4 @@
-"""Task 集約（DOMAIN_MODEL §6.2・§6.7・§9.2、ADDENDUM §1・§4・§6・§7・§8・§9）。
+"""Task 集約。
 
 タスク 1 つの中身。種類（計画・実装・git 管理）にかかわらず形は同じで、ストリームは TaskOpened から
 始まる。フローと cursor を持ち、**次にどのステージを走らせるかは Task が決める**。
@@ -10,8 +10,8 @@
 - ステージの性質は StageSpec の宣言を読む（合成ステージの中の役・返してよい報告・結果の JSON で読む
   欄・結果を渡す先・決定的なステージが期待する証拠・衝突したときだけ走るか・変えずに終えてよいか）。
   ステージごとの表や分岐をここに置かない
-- 合成ステージ（ReviewLoop・DesignLoop）の中も、実行器のループではなく Task の状態で進める
-  （ADDENDUM §4）。1 ラウンドは「頭 → 見る役（並列）→ 判定 → 直す役」で、判定の後は、ほかの集約
+- 合成ステージ（ReviewLoop・DesignLoop）の中も、実行器のループではなく Task の状態で進める。
+  1 ラウンドは「頭 → 見る役（並列）→ 判定 → 直す役」で、判定の後は、ほかの集約
   （指摘の台帳・Design）の結果が ConcludeReviewRound・ConcludeDesignRound で届くまで止まる。Gate の
   不合格の後は、G- の指摘の判定の結果が ConcludeGateRound で届くまで止まる
 - **結果をほかの集約へ渡すステージ（StageSpec.hands_to）は、渡した先の「受けた／受けられない」が
@@ -19,7 +19,7 @@
   られなかった（ConfirmHandoff の refused）なら result-refused で上げ、解けたら同じステージを
   もう一度走らせる
 - 実行器は証拠を集めるだけで、完了・失敗・エスカレーションのどれにするかは ReportStageResult を
-  受けた Task が決める（DOMAIN_MODEL §6.7）。結果の JSON は `domain/results.py` で値に読み替えて、
+  受けた Task が決める。結果の JSON は `domain/results.py` で値に読み替えて、
   StageCompleted に載せる
 - 回答以外でエスカレーションを閉じたら（EscalationClosed）、そのフローは続けず（FlowAbandoned）、
   置き換えを待つ
@@ -141,11 +141,11 @@ _A = ArtifactKind
 _R = InnerRole
 _C = InterruptCause
 
-#: 同じ位置が続けてこの回数落ちたら、stage-errors で上げる（1 回はやり直す。§11.5 の ⑥）
+#: 同じ位置が続けてこの回数落ちたら、stage-errors で上げる（1 回はやり直す）
 FAILURES_BEFORE_ESCALATION = 2
 
 #: 指摘の台帳へ渡す受け渡し（設計の段なら、見た提案の版を添える）
-_TO_LEDGER = frozenset({Handoff.FINDINGS, Handoff.JUDGEMENT})
+_TO_REVIEW = frozenset({Handoff.FINDINGS, Handoff.JUDGEMENT})
 
 #: 止めた理由ごとに、それを出せるコマンド
 _MARKED_BY_DRIVER = frozenset({_C.STARTUP, _C.PANIC})
@@ -153,7 +153,7 @@ _INTERRUPTED_BY_POLICY = frozenset({_C.PANIC, _C.REQUESTED})
 
 
 class ExecutionStatus(Enum):
-    """ステージの実行の状態（§9.2）。`requested` は、走らせると決めて BeginStage を待っている。"""
+    """ステージの実行の状態。`requested` は、走らせると決めて BeginStage を待っている。"""
 
     REQUESTED = "requested"
     RUNNING = "running"
@@ -177,7 +177,7 @@ _ACTIVE = frozenset({_X.REQUESTED, _X.RUNNING, _X.INTERRUPTED, _X.DEFERRED})
 #: StageStarted で続きから始めた元の状態（Execution.resumed_from）
 _RESUMED_FROM = frozenset({_X.INTERRUPTED, _X.DEFERRED})
 
-#: 続けたセッションが、この回数続けて落ちたら捨てて新しく立てる（LEDGER AR-22）
+#: 続けたセッションが、この回数続けて落ちたら捨てて新しく立てる
 SESSION_FAILURES_BEFORE_FRESH = 2
 
 
@@ -186,7 +186,7 @@ class StartMode(Enum):
 
     #: 初めて始める（プロンプトを渡す）
     FRESH = "fresh"
-    #: ask の defer で止まった実行を、回答のファイルを書いた後に続ける（プロンプトを渡さない。AR-21）
+    #: ask の defer で止まった実行を、回答のファイルを書いた後に続ける（プロンプトを渡さない）
     DEFERRED = "deferred"
     #: 止めた実行を続ける（短い続きの指示を渡す）。決定的なステージは、もう一度流す
     INTERRUPTED = "interrupted"
@@ -207,7 +207,7 @@ _START_MODES: Mapping[ExecutionStatus, StartMode] = {
 
 @dataclass(frozen=True)
 class Execution:
-    """ステージの実行 1 回（DOMAIN_MODEL §5 の StageExecution）。"""
+    """ステージの実行 1 回。"""
 
     id: ExecutionId
     #: Flow.steps の添字
@@ -316,7 +316,7 @@ def _settle(
 
 
 def _decision(answer: str, question: QuestionId | None) -> Decision:
-    """回答の出どころ。QuestionId があればユーザー、無ければラン統括（ADDENDUM §8）。"""
+    """回答の出どころ。QuestionId があればユーザー、無ければラン統括。"""
     origin = DecisionOrigin.USER if question is not None else DecisionOrigin.RUN_SUPERVISOR
     return Decision(answer, origin, question)
 
@@ -364,7 +364,7 @@ class Task(Aggregate):
         #: 元のコミットで、積み直しの Rebase で根元が動いたら、載せ直した先に替わる
         self.base_commit: CommitSha | None = None
         #: このタスクのために最後に切った worktree（ランディレクトリからのパス）。計画タスクなら、
-        #: コードを読む所（初回は概要ブランチ、再計画は stack-top。ADDENDUM §10）
+        #: コードを読む所（初回は概要ブランチ、再計画は stack-top）
         self.code_tree: str | None = None
 
     # --- 読む ---
@@ -415,7 +415,7 @@ class Task(Aggregate):
         ]
 
     def running_executions(self) -> list[ExecutionId]:
-        """running のまま残っている実行（メインループが起動時とパニックのときに聞く。ADDENDUM §9）。"""
+        """running のまま残っている実行（メインループが起動時とパニックのときに聞く）。"""
         return sorted((e.id for e in self.executions.values() if e.status is _X.RUNNING), key=str)
 
     def session_to_continue(self, execution: ExecutionId, fresh: bool = False) -> SessionId | None:
@@ -424,7 +424,7 @@ class Task(Aggregate):
         TASK・RUN は同じ種類のステージの、FOLLOWS は `follows` のステージの、最後に始めた実行の
         セッションを続ける。RUN のステージ（DesignJudge）は計画タスクにしか無いので、タスクの中を
         見れば足りる。`fresh`（FlowStep.fresh_session）なら続けない。続けるセッションが続けて
-        SESSION_FAILURES_BEFORE_FRESH 回落ちていたら、捨てて新しく立てる（LEDGER AR-22）。
+        SESSION_FAILURES_BEFORE_FRESH 回落ちていたら、捨てて新しく立てる。
         """
         spec = STAGE_SPECS[execution.stage]
         if fresh or spec.session in (SessionScope.NONE, SessionScope.FRESH):
@@ -613,7 +613,7 @@ class Task(Aggregate):
         if self.cursor.inner is None:
             return [] if active else [Move(step.stage, here, 0)]
         if STAGE_SPECS[self.cursor.inner].role is _R.LOOKER:
-            # 見る役は並列に走らせる（§6.2 の例外）。同じラウンドの見る役のほかが走っていれば待つ
+            # 見る役は並列に走らせる。同じラウンドの見る役のほかが走っていれば待つ
             lookers = _lookers(step, round)
             busy = set()
             for execution in active:
@@ -834,14 +834,13 @@ class Task(Aggregate):
             return events + self._follow_up(events)
         return self._judge_result(execution, command)
 
-    def _judge_result(  # noqa: PLR0911, PLR0912  §6.7 の確かめる順の段ごとの分岐
+    def _judge_result(  # noqa: PLR0911, PLR0912  確かめる順の段ごとの分岐
         self, execution: Execution, command: ReportStageResult
     ) -> list[Event]:
-        """ステージの結果を、§6.7 の順で確かめる。何を確かめるかは StageSpec の宣言から決まる。"""
+        """ステージの結果を、⓪ からの順で確かめる。何を確かめるかは StageSpec の宣言から決まる。"""
         evidence = command.evidence
         spec = STAGE_SPECS[execution.id.stage]
         # ⓪ `--resume` で続けられなかった。失敗に数えず、始めた時点から新しい実行で作り直す
-        # （DOMAIN_MODEL §9.2）
         if _session_lost(evidence):
             reason = evidence.error or "--resume で続けられなかった"
             events: list[Event] = [ExecutionRestarted(execution.id, reason, execution.start_commit)]
@@ -884,7 +883,7 @@ class Task(Aggregate):
                 if spec.on_mismatch is None:
                     return self._failed(execution, command, reason)
                 return self._reported(execution, command, spec.on_mismatch, reason=reason)
-        # ⑤ 結果の中身と実物。成果物は、それを produces に持つステージが完了したときだけ増える（§6.2）
+        # ⑤ 結果の中身と実物。成果物は、それを produces に持つステージが完了したときだけ増える
         try:
             result = parse_result(spec, command.result, evidence)
         except InvalidValue as e:
@@ -976,7 +975,7 @@ class Task(Aggregate):
         )
         reviewed = (
             self.proposal_version
-            if handoff in _TO_LEDGER and self.kind is TaskKind.PLANNING
+            if handoff in _TO_REVIEW and self.kind is TaskKind.PLANNING
             else None
         )
         shared: tuple[ArtifactRef, ...] = ()
@@ -1052,7 +1051,7 @@ class Task(Aggregate):
     def _gate_failed(
         self, execution: Execution, command: ReportStageResult, gate: GateReport
     ) -> list[Event]:
-        """Gate の項目の落ち（ADDENDUM §6）。コードで直せない項目があれば上げ、無ければ Fix へ戻る。"""
+        """Gate の項目の落ち。コードで直せない項目があれば上げ、無ければ Fix へ戻る。"""
         if kind := GateEvaluator.escalation_for(gate.failed):
             failed = [r for r in gate.failed if r.item.escalation is not None]
             items = tuple(r.item for r in failed)
@@ -1149,7 +1148,7 @@ class Task(Aggregate):
         if not set(stalled) <= set(unresolved):
             raise Rejected("停滞した指摘は、open の指摘のうちから挙げる")
         if stalled:
-            # 停滞のエスカレーションは、判定の後に 1 回だけ（ADDENDUM §4・§5）
+            # 停滞のエスカレーションは、判定の後に 1 回だけ
             hint = Hint(finding_ids=stalled, stall_cause=cause)
             where, result = self._judged_context(origin, pointers)
             reason = result.stall_reason if result is not None else None
@@ -1161,7 +1160,7 @@ class Task(Aggregate):
 
     @handles(ConcludeReviewRound)
     def _conclude_review(self, command: ConcludeReviewRound) -> list[Event]:
-        """ReviewLoop の判定の後（§11.3）。"""
+        """ReviewLoop の判定の後。"""
         self._require_live()
         step, round = self._judged(_S.REVIEW_LOOP, command.judge)
         reviewed = (ArtifactRef(_A.REVIEWED, str(command.judge)),)
@@ -1178,7 +1177,7 @@ class Task(Aggregate):
 
     @handles(ConcludeGateRound)
     def _conclude_gate(self, command: ConcludeGateRound) -> list[Event]:
-        """Gate の不合格の後（ADDENDUM §6）。G- の指摘が残れば Fix へ、停滞なら上げる。
+        """Gate の不合格の後。G- の指摘が残れば Fix へ、停滞なら上げる。
 
         止めた次の一手を外すのは、これだけである。残った指摘が無ければ、ReviewLoop を抜けた所
         （Gate）からもう一度走らせる。
@@ -1203,7 +1202,7 @@ class Task(Aggregate):
 
     @handles(ConcludeDesignRound)
     def _conclude_design(self, command: ConcludeDesignRound) -> list[Event]:
-        """DesignLoop の判定の後。設計が確定したら抜け、そうでなければ Revise へ（ADDENDUM §11）。"""
+        """DesignLoop の判定の後。設計が確定したら抜け、そうでなければ Revise へ。"""
         self._require_live()
         step, round = self._judged(_S.DESIGN_LOOP, command.judge)
         if command.settled is None:
@@ -1260,7 +1259,7 @@ class Task(Aggregate):
             raise Rejected(f"{command.escalation} は未処理のエスカレーションではない")
         if not command.answer.strip():
             raise Rejected("回答が空")
-        # defer で止まった計画ステージは、回答を受けて同じ呼び出しから続ける（DOMAIN_MODEL §11.1）
+        # defer で止まった計画ステージは、回答を受けて同じ呼び出しから続ける
         origin = self.executions.get(escalation.origin) if escalation.origin else None
         resume = (
             origin
@@ -1277,7 +1276,7 @@ class Task(Aggregate):
                 resume=resume.id if resume else None,
                 tool_use_id=resume.tool_use_id if resume else None,
             ),
-            # 回答は出どころ付きで notes に残し、以後のステージに毎回渡す（§4 の Decision）
+            # 回答は出どころ付きで notes に残し、以後のステージに毎回渡す（Decision）
             NoteAdded(_decision(command.answer, command.question)),
         ]
         return events + self._follow_up(events)
@@ -1331,7 +1330,7 @@ class Task(Aggregate):
     @handles(ChangeScope)
     def _change_scope(self, command: ChangeScope) -> list[Event]:
         """範囲が変わった。待っているエスカレーションは閉じ（StopTask と同じ形）、今のフローは捨てて、
-        統括が組み直すのを待つ（ADDENDUM §8）。走っているステージは終わるまで走らせ、成果物は残す。"""
+        統括が組み直すのを待つ。走っているステージは終わるまで走らせ、成果物は残す。"""
         kind = self._require_live()
         if kind is not TaskKind.IMPLEMENTATION:
             raise Rejected("範囲を変えるのは実装タスクだけ")
@@ -1591,7 +1590,7 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
     if check is EvidenceCheck.VERIFY_FAILS:
         holds = any(not outcome.passed for outcome in evidence.verify)
     elif check is EvidenceCheck.VERIFY_PASSES:
-        # 0 件なら通す。計画はラン共通の verify を空にしてよい（LEDGER N-07・schemas の verify に
+        # 0 件なら通す。計画はラン共通の verify を空にしてよい（schemas の verify に
         # minItems は無い）。空で落とすと、どのタスクも積めなくなる
         holds = all(outcome.passed for outcome in evidence.verify)
     elif check is EvidenceCheck.UNION_KEPT:
@@ -1612,7 +1611,7 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
 
 
 def _session_lost(evidence: Evidence) -> bool:
-    """`--resume` で起こした claude が、続けるセッションを開けなかったか（ADDENDUM §12 の実行器）。
+    """`--resume` で起こした claude が、続けるセッションを開けなかったか。
 
     印は、init を出さずに自分で終わり、ターンを 1 つも進めていないこと。claude 2.1.288 は
     `error_during_execution`・`num_turns: 0` の result を返して終わる。result が無ければターンの数は

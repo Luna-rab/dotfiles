@@ -1,6 +1,6 @@
 """ランディレクトリ 1 つに driver を 1 本だけ走らせる錠（`driver.lock` の flock）。
 
-`events` に書くのはメインループ 1 本だけという前提（ARCHITECTURE §8）は、同じラン名の `autodev run` を
+`events` に書くのはメインループ 1 本だけという前提は、同じラン名の `autodev run` を
 2 つ走らせると崩れる。錠は driver のプロセスが握り、落ちたら OS が外すので、残った錠で止まることは無い。
 `clean`・`purge` も、錠が握られている間は worktree とランディレクトリに触らない。
 """

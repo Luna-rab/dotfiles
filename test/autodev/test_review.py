@@ -65,8 +65,8 @@ from autodevlib.domain.values import (
 
 TASK = TaskId("task2")
 PLANNING = TaskId.planning()
-LEDGER = StreamId.review(TASK)
-DESIGN_LEDGER = StreamId.design_review()
+TASK_STREAM = StreamId.review(TASK)
+DESIGN_STREAM = StreamId.design_review()
 POLICY = Issuer.policy("review-loop", EventId("task/task2#3"))
 _ids = itertools.count(1)
 _rounds = itertools.count(1)
@@ -221,7 +221,7 @@ def track(ledger: ReviewLedger, version: int) -> list[Event]:
 
 
 def design_ledger(version: int = 1) -> ReviewLedger:
-    ledger = ReviewLedger(DESIGN_LEDGER)
+    ledger = ReviewLedger(DESIGN_STREAM)
     track(ledger, version)
     return ledger
 
@@ -247,7 +247,7 @@ VERIFY = FindingId.gate(GateItem.VERIFY)
 
 
 def test_指摘は台帳の中で番号を振って立つ():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     first = raise_finding(ledger, location=Location("src/a.py:3"), source=REVIEW)
     raise_finding(ledger, "名前が曖昧", Rating.NIT)
     assert first == [
@@ -273,23 +273,23 @@ def test_設計の台帳はDの番号で立ちレビューした版を持つ():
 
 def test_設計の版は設計の台帳の指摘だけが持ち設計の台帳では要る():
     with pytest.raises(Rejected, match="設計の台帳の指摘だけ"):
-        raise_finding(ReviewLedger(LEDGER), design=DesignVersion(1))
+        raise_finding(ReviewLedger(TASK_STREAM), design=DesignVersion(1))
     with pytest.raises(Rejected, match="版を持つ"):
         raise_finding(design_ledger())
     with pytest.raises(Rejected, match="TrackProposal が先"):
-        raise_finding(ReviewLedger(DESIGN_LEDGER), design=DesignVersion(1))
+        raise_finding(ReviewLedger(DESIGN_STREAM), design=DesignVersion(1))
 
 
 def test_本文が空の指摘は立てない():
     with pytest.raises(Rejected, match="本文が空"):
-        raise_finding(ReviewLedger(LEDGER), "  ")
+        raise_finding(ReviewLedger(TASK_STREAM), "  ")
 
 
 # --- 状態の遷移 ---
 
 
 def test_ジャッジはopenを閉じ却下し閉じたものを開き直せる():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     raise_finding(ledger)
     assert judge(ledger, "R1", FindingStatus.CLOSED) == [
@@ -314,7 +314,7 @@ def test_ジャッジはopenを閉じ却下し閉じたものを開き直せる(
     ],
 )
 def test_許されない遷移を拒む(start: FindingStatus, to: FindingStatus):
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     if start is not FindingStatus.OPEN:
         judge(ledger, "R1", start)
@@ -324,7 +324,7 @@ def test_許されない遷移を拒む(start: FindingStatus, to: FindingStatus)
 
 @pytest.mark.parametrize("status", [FindingStatus.OPEN, FindingStatus.CLOSED])
 def test_もうその状態にある指摘への判定は当て済みとして何もしない(status: FindingStatus):
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     if status is not FindingStatus.OPEN:
         judge(ledger, "R1", status)
@@ -332,7 +332,7 @@ def test_もうその状態にある指摘への判定は当て済みとして�
 
 
 def test_移した指摘は終端でジャッジも動かせない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     carry(ledger, "R1")
     with pytest.raises(Rejected, match="carried から open へは動かせない"):
@@ -340,39 +340,39 @@ def test_移した指摘は終端でジャッジも動かせない():
 
 
 def test_状態を変えるときはコメントが要る():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     with pytest.raises(Rejected, match="コメントが無い"):
         judge(ledger, "R1", FindingStatus.CLOSED, comment=" ")
 
 
 def test_無い指摘は判定もコメントもできない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     with pytest.raises(Rejected, match="R9 の指摘が無い"):
         judge(ledger, "R9", FindingStatus.CLOSED)
     # コメントはステージの結果から来るので、拒まずに受けなかったことを残す
     comment = CommentFinding(
         command_id=cid(),
         issuer=POLICY,
-        ledger=LEDGER,
+        ledger=TASK_STREAM,
         finding=FindingId("R9"),
         body="x",
         author=FIX,
     )
     assert drive(ledger, comment) == [
-        CommentRefused(FindingId("R9"), f"{LEDGER} に R9 の指摘が無い", FIX)
+        CommentRefused(FindingId("R9"), f"{TASK_STREAM} に R9 の指摘が無い", FIX)
     ]
 
 
 def test_コメントは状態を変えずに残る():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     events = drive(
         ledger,
         CommentFinding(
             command_id=cid(),
             issuer=POLICY,
-            ledger=LEDGER,
+            ledger=TASK_STREAM,
             finding=FindingId("R1"),
             body="ここを直した",
             author=FIX,
@@ -395,9 +395,9 @@ def test_Gateの項目の指摘のidは項目を指す():
 @pytest.mark.parametrize(
     ("ledger", "finding", "judge_stage"),
     [
-        (LEDGER, FindingId("R1"), StageKind.JUDGE),
-        (LEDGER, VERIFY, StageKind.GATE),
-        (DESIGN_LEDGER, FindingId("D1"), StageKind.DESIGN_JUDGE),
+        (TASK_STREAM, FindingId("R1"), StageKind.JUDGE),
+        (TASK_STREAM, VERIFY, StageKind.GATE),
+        (DESIGN_STREAM, FindingId("D1"), StageKind.DESIGN_JUDGE),
     ],
 )
 def test_指摘ごとに判定する者が決まっている(
@@ -427,7 +427,7 @@ def test_指摘ごとに判定する者が決まっている(
     ids=lambda e: e.stage.value,
 )
 def test_レビューの指摘はJudgeの結果でしか動かない(by: ExecutionId):
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     with pytest.raises(Rejected, match="task2 の Judge の実行の結果だけ"):
         judge(ledger, "R1", FindingStatus.CLOSED, by=by)
@@ -435,7 +435,7 @@ def test_レビューの指摘はJudgeの結果でしか動かない(by: Executi
 
 
 def test_Gateの項目の指摘はGateの結果でしか動かない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY))
     with pytest.raises(Rejected, match="task2 の Gate の実行の結果だけ"):
         judge(ledger, str(VERIFY), FindingStatus.CLOSED)
@@ -444,7 +444,7 @@ def test_Gateの項目の指摘はGateの結果でしか動かない():
 
 
 def test_ほかの台帳のジャッジでは状態を動かせない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     with pytest.raises(Rejected, match="task2 の Judge"):
         judge(ledger, "R1", FindingStatus.CLOSED, by=execution(StageKind.JUDGE, TaskId("task3")))
@@ -459,7 +459,7 @@ def test_ほかの台帳のジャッジでは状態を動かせない():
 
 
 def test_修正はそのときopenの指摘だけを数える():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     raise_finding(ledger)
     judge(ledger, "R2", FindingStatus.CLOSED)
@@ -469,16 +469,16 @@ def test_修正はそのときopenの指摘だけを数える():
 
 
 def test_CountFixは数えるだけで停滞を出さない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     for _ in range(STALL_AFTER_FIXES + 1):
         assert [type(e) for e in count_fix(ledger)] == [FixCounted]
 
 
 def test_同じ修正のコマンドを2回受けても1回しか数えない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
-    command = CountFix(command_id=cid(), issuer=POLICY, ledger=LEDGER, execution=FIX)
+    command = CountFix(command_id=cid(), issuer=POLICY, ledger=TASK_STREAM, execution=FIX)
     drive(ledger, command)
     assert drive(ledger, command) == []
     assert ledger.findings[FindingId("R1")].fixes == 1
@@ -487,9 +487,9 @@ def test_同じ修正のコマンドを2回受けても1回しか数えない():
 @pytest.mark.parametrize(
     ("stream", "by", "reason"),
     [
-        (LEDGER, execution(StageKind.IMPL), "Fix の実行だけ"),
-        (LEDGER, execution(StageKind.FIX, TaskId("task3")), "Fix の実行だけ"),
-        (DESIGN_LEDGER, execution(StageKind.REVISE, PLANNING), "修正を数えない"),
+        (TASK_STREAM, execution(StageKind.IMPL), "Fix の実行だけ"),
+        (TASK_STREAM, execution(StageKind.FIX, TaskId("task3")), "Fix の実行だけ"),
+        (DESIGN_STREAM, execution(StageKind.REVISE, PLANNING), "修正を数えない"),
     ],
 )
 def test_数えるのは持ち主のFixだけで設計の台帳は数えない(
@@ -500,7 +500,7 @@ def test_数えるのは持ち主のFixだけで設計の台帳は数えない(
 
 
 def test_判定の後にSTALL_AFTER_FIXES回直してもopenなら停滞する():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     raise_finding(ledger, "別の指摘")
     for _ in range(STALL_AFTER_FIXES):
@@ -517,7 +517,7 @@ def test_判定の後にSTALL_AFTER_FIXES回直してもopenなら停滞する()
 
 
 def test_判定で閉じた指摘は修正の回数が多くても停滞しない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     for _ in range(STALL_AFTER_FIXES):
         count_fix(ledger)
@@ -526,7 +526,7 @@ def test_判定で閉じた指摘は修正の回数が多くても停滞しな�
 
 
 def test_停滞が無くても判定を締めたことは出る():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger, rating=Rating.SHOULD_FIX)
     count_fix(ledger)
     events = evaluate(ledger)
@@ -537,15 +537,15 @@ def test_停滞が無くても判定を締めたことは出る():
 
 def test_判定を締めるのは台帳の種類に合ったジャッジだけ():
     with pytest.raises(Rejected, match="Judge の実行の結果だけ"):
-        evaluate(ReviewLedger(LEDGER), FIX)
+        evaluate(ReviewLedger(TASK_STREAM), FIX)
     with pytest.raises(Rejected, match="Judge の実行の結果だけ"):
-        evaluate(ReviewLedger(LEDGER), execution(StageKind.DESIGN_JUDGE, TASK))
+        evaluate(ReviewLedger(TASK_STREAM), execution(StageKind.DESIGN_JUDGE, TASK))
     with pytest.raises(Rejected, match="DesignJudge の実行の結果だけ"):
         evaluate(design_ledger(), execution(StageKind.JUDGE, PLANNING))
 
 
 def test_停滞として上げた指摘はそこからまたSTALL_AFTER_FIXES回直すまで上げ直さない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     for _ in range(STALL_AFTER_FIXES):
         count_fix(ledger)
@@ -568,7 +568,7 @@ def test_停滞の判定はopenで前に上げた所から回数が届いたも�
 
 
 def test_Judgeが締めるときGateの項目の指摘は数えない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY))
     raise_finding(ledger)
     judge(ledger, "R1", FindingStatus.CLOSED)
@@ -580,7 +580,7 @@ def test_Judgeが締めるときGateの項目の指摘は数えない():
 
 
 def test_Gateが落ちたら項目ごとに決まったidの指摘を開き番号を使わない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     events = gate(ledger, fails(GateItem.VERIFY, "pytest が落ちた"), by=GATE)
     assert events == [
         FindingRaised(VERIFY, Rating.MUST_FIX, "pytest が落ちた", source=GATE),
@@ -593,7 +593,7 @@ def test_Gateが落ちたら項目ごとに決まったidの指摘を開き番�
 
 
 def test_Gateが通ればopenのGateの項目の指摘を閉じる():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY), fails(GateItem.NO_OPEN_FINDINGS, "R1 が open"))
     events = gate(ledger, fails(GateItem.NO_OPEN_FINDINGS, "R1 が open"), by=GATE)
     assert events[0] == FindingClosed(VERIFY, "Gate の G-verify が通った", GATE)
@@ -604,7 +604,7 @@ def test_Gateが通ればopenのGateの項目の指摘を閉じる():
 
 
 def test_閉じたGateの項目がまた落ちたら開き直しopenならそのまま():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY, "1 回目"))
     assert [type(e) for e in gate(ledger, fails(GateItem.VERIFY, "2 回目"))] == [FindingsEvaluated]
     gate(ledger)
@@ -614,7 +614,7 @@ def test_閉じたGateの項目がまた落ちたら開き直しopenならその
 
 
 def test_Gateがまた落ちたとき修正をSTALL_AFTER_FIXES回受けていれば停滞する():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY))
     for _ in range(STALL_AFTER_FIXES - 1):
         count_fix(ledger)
@@ -626,7 +626,7 @@ def test_Gateがまた落ちたとき修正をSTALL_AFTER_FIXES回受けてい�
 
 
 def test_閉じた後に開き直しても修正の回数は積み上がり停滞に掛かる():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY))
     count_fix(ledger)
     gate(ledger)
@@ -639,7 +639,7 @@ def test_閉じた後に開き直しても修正の回数は積み上がり停�
 
 def test_Gateと修正を回しても停滞で必ず止まる():
     """Gate → Fix → Judge → Gate の輪は、STALL_AFTER_FIXES 回で停滞として上がる。"""
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gates = 0
     while gates < 10:
         gates += 1
@@ -660,7 +660,7 @@ def test_Gateと修正を回しても停滞で必ず止まる():
 )
 def test_Gateの結果の誤った渡し方を拒む(failed: tuple[GateItemResult, ...], reason: str):
     with pytest.raises(Rejected, match=reason):
-        gate(ReviewLedger(LEDGER), *failed)
+        gate(ReviewLedger(TASK_STREAM), *failed)
 
 
 def test_設計の台帳にGateの項目の指摘は立てない():
@@ -676,7 +676,7 @@ def carry_refused(events: list[Event]) -> str:
 
 
 def test_Gateの項目の指摘は移さない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     gate(ledger, fails(GateItem.VERIFY))
     assert "Gate の項目の指摘" in carry_refused(carry(ledger, str(VERIFY)))
 
@@ -702,14 +702,14 @@ def test_今の提案より前の版には指摘を立てず追う版は戻ら�
     with pytest.raises(Rejected, match="より後ではない"):
         track(ledger, 3)
     with pytest.raises(Rejected, match="設計の台帳だけ"):
-        track(ReviewLedger(LEDGER), 1)
+        track(ReviewLedger(TASK_STREAM), 1)
 
 
 # --- 移管 ---
 
 
 def test_移す元はcarriedになり未解決に数えない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger, location=Location("src/a.py"))
     assert carry(ledger, "R1") == [
         FindingCarried(
@@ -726,7 +726,7 @@ def test_移す元はcarriedになり未解決に数えない():
 
 
 def test_2回は移さずopenでない指摘も移さない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     raise_finding(ledger)
     carry(ledger, "R1")
@@ -739,13 +739,13 @@ def test_2回は移さずopenでない指摘も移さない():
 
 @pytest.mark.parametrize("to", ["task2", "planning", "git"])
 def test_移す先は別の実装タスク(to: str):
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     raise_finding(ledger)
     assert "別の実装タスク" in carry_refused(carry(ledger, "R1", to))
 
 
 def test_移した先の台帳には1回だけ立つ():
-    origin = FindingOrigin(LEDGER, FindingId("R1"))
+    origin = FindingOrigin(TASK_STREAM, FindingId("R1"))
     target = ReviewLedger(StreamId.review(TaskId("task3")))
     assert raise_finding(target, carried_from=origin)[0] == FindingRaised(
         FindingId("R1"), Rating.MUST_FIX, "境界の値で落ちる", carried_from=origin
@@ -761,7 +761,9 @@ def test_設計の台帳の指摘は移さず設計の台帳へも移さない()
         carry(design, "D1")
     with pytest.raises(Rejected, match="設計の台帳へは指摘を移さない"):
         raise_finding(
-            design, design=DesignVersion(1), carried_from=FindingOrigin(LEDGER, FindingId("R1"))
+            design,
+            design=DesignVersion(1),
+            carried_from=FindingOrigin(TASK_STREAM, FindingId("R1")),
         )
 
 
@@ -773,7 +775,7 @@ DESIGN_REVIEW = execution(StageKind.DESIGN_REVIEW, PLANNING, round=1)
 
 
 def test_見る役とExpectの指摘をまとめて立て受けたことを知らせる():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     events = record(ledger, REVIEW, FOUND, ReportedFinding(Rating.NIT, "名前"))
     assert events == [
         FindingRaised(FindingId("R1"), Rating.MUST_FIX, FOUND.body, FOUND.location, source=REVIEW),
@@ -784,13 +786,13 @@ def test_見る役とExpectの指摘をまとめて立て受けたことを知�
     assert record(ledger, EXPECT, FOUND)[0] == FindingRaised(
         FindingId("R3"), Rating.MUST_FIX, FOUND.body, FOUND.location, source=EXPECT
     )
-    assert JudgeCapability.judge_of(LEDGER, FindingId("R3")) is StageKind.JUDGE
+    assert JudgeCapability.judge_of(TASK_STREAM, FindingId("R3")) is StageKind.JUDGE
     # 指摘が無くても、受けたことは知らせる
     assert record(ledger, REVIEW) == [ResultReceived(REVIEW)]
 
 
 def test_指摘の中身の問題は拒まずに受けられないと返し何も立てない():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     assert record(ledger, REVIEW, ReportedFinding(Rating.NIT, " ")) == [
         ResultRefused(REVIEW, "本文が空の指摘がある")
     ]
@@ -803,13 +805,13 @@ def test_指摘の中身の問題は拒まずに受けられないと返し何�
 def test_指摘を立てられるのは持ち主のタスクの指摘を挙げるステージだけ():
     for by in (JUDGE, FIX, execution(StageKind.REVIEW, TaskId("task3"))):
         with pytest.raises(Rejected, match="指摘を挙げるステージの実行だけ"):
-            record(ReviewLedger(LEDGER), by, FOUND)
+            record(ReviewLedger(TASK_STREAM), by, FOUND)
     with pytest.raises(Rejected, match="見た提案の版を持つ"):
         record(design_ledger(), DESIGN_REVIEW, FOUND)
 
 
 def test_判定をまとめて当てて締め停滞の分類を写す():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     record(ledger, REVIEW, FOUND, FOUND)
     for _ in range(STALL_AFTER_FIXES):
         count_fix(ledger)
@@ -848,7 +850,7 @@ def test_判定をまとめて当てて締め停滞の分類を写す():
 def test_判定の中身の問題は拒まずに受けられないと返しどれも当てない(
     verdict: FindingVerdict, reason: str
 ):
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     record(ledger, REVIEW, FOUND)
     gate(ledger, fails(GateItem.VERIFY))
     good = FindingVerdict(FindingId("R1"), FindingStatus.CLOSED, "直っている")
@@ -858,7 +860,7 @@ def test_判定の中身の問題は拒まずに受けられないと返しど�
 
 
 def test_走らせ直した判定が当て済みの判定を返しても受けて締め直す():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     record(ledger, REVIEW, FOUND)
     good = FindingVerdict(FindingId("R1"), FindingStatus.CLOSED, "直っている")
     evaluate(ledger, JUDGE, good)
@@ -874,7 +876,7 @@ def test_走らせ直した判定が当て済みの判定を返しても受け�
 
 
 def test_当て済みかは同じ判定の前の件を当てた後の状態と比べる():
-    ledger = ReviewLedger(LEDGER)
+    ledger = ReviewLedger(TASK_STREAM)
     record(ledger, REVIEW, FOUND)
     good = FindingVerdict(FindingId("R1"), FindingStatus.CLOSED, "直っている")
     events = evaluate(ledger, JUDGE, good, good)
@@ -893,30 +895,34 @@ def test_設計の台帳の判定は見た版と設計の分類を写す():
     with pytest.raises(Rejected, match="停滞の分類を持つのはタスクの台帳だけ"):
         evaluate(ledger, DESIGN_JUDGE, stall_cause=StallCause.SCOPE)
     with pytest.raises(Rejected, match="設計の台帳の判定だけ"):
-        evaluate(ReviewLedger(LEDGER), JUDGE, design=DesignVersion(1))
+        evaluate(ReviewLedger(TASK_STREAM), JUDGE, design=DesignVersion(1))
 
 
 def test_計画タスクの指摘と判定は設計の台帳に入る():
-    assert JudgeCapability.ledger_of(PLANNING) == DESIGN_LEDGER
-    assert JudgeCapability.ledger_of(TASK) == LEDGER
+    assert JudgeCapability.ledger_of(PLANNING) == DESIGN_STREAM
+    assert JudgeCapability.ledger_of(TASK) == TASK_STREAM
 
 
 # --- 再生 ---
 
 
 def test_イベントの列を再生すると同じ状態になる():
-    live = ReviewLedger(LEDGER)
+    live = ReviewLedger(TASK_STREAM)
     history: list[tuple[Event, CommandId]] = []
 
     def step(command: Command) -> None:
         history.extend((event, command.command_id) for event in drive(live, command))
 
-    step(RaiseFinding(command_id=cid(), issuer=POLICY, ledger=LEDGER, rating=Rating.NIT, body="a"))
+    step(
+        RaiseFinding(
+            command_id=cid(), issuer=POLICY, ledger=TASK_STREAM, rating=Rating.NIT, body="a"
+        )
+    )
     step(
         RecordGateResult(
             command_id=cid(),
             issuer=POLICY,
-            ledger=LEDGER,
+            ledger=TASK_STREAM,
             execution=GATE,
             failed=(fails(GateItem.VERIFY),),
         )
@@ -924,14 +930,17 @@ def test_イベントの列を再生すると同じ状態になる():
     for _ in range(STALL_AFTER_FIXES):
         step(
             CountFix(
-                command_id=cid(), issuer=POLICY, ledger=LEDGER, execution=execution(StageKind.FIX)
+                command_id=cid(),
+                issuer=POLICY,
+                ledger=TASK_STREAM,
+                execution=execution(StageKind.FIX),
             )
         )
     step(
         JudgeFinding(
             command_id=cid(),
             issuer=POLICY,
-            ledger=LEDGER,
+            ledger=TASK_STREAM,
             finding=FindingId("R1"),
             to=FindingStatus.REJECTED,
             comment="nit",
@@ -942,12 +951,12 @@ def test_イベントの列を再生すると同じ状態になる():
         RecordGateResult(
             command_id=cid(),
             issuer=POLICY,
-            ledger=LEDGER,
+            ledger=TASK_STREAM,
             execution=execution(StageKind.GATE),
             failed=(fails(GateItem.VERIFY),),
         )
     )
-    replayed = ReviewLedger.replay(LEDGER, history)
+    replayed = ReviewLedger.replay(TASK_STREAM, history)
     assert replayed.findings == live.findings
     assert replayed.findings[VERIFY].stalled_at == STALL_AFTER_FIXES
     # 番号の続きも再生から決まる

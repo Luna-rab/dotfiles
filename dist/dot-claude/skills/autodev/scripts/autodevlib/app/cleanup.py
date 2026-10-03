@@ -2,7 +2,7 @@
 
 **GitHub の PR とリモートのブランチには触らない。** 公開したものは消すと戻せない。消してよいかは
 ここで決めず、集めた証拠（`Leftovers`）を `domain/services/housekeeping.py` に渡して聞く。
-worktree を外すと、無視されたファイルも一緒に消える（LEDGER GH-04）。
+worktree を外すと、無視されたファイルも一緒に消える。
 """
 
 from __future__ import annotations

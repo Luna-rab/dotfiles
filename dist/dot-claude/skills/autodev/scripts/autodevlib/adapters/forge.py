@@ -1,14 +1,14 @@
 """Forge: GitHub の PR と stacked PR（`gh` と `gh stack`）。
 
-触るのは git 管理タスクの決定的なステージだけ（ARCHITECTURE §10）。`gh stack` のローカルの追跡は
-worktree ごとに別なので使わない（LEDGER GH-05）。`gh stack link` は追跡に依らないので、PR を
-`gh pr create` で自分のタイトルと本文で作り、link で連ねる（GH-06）。`gh stack` は概要ブランチの
+触るのは git 管理タスクの決定的なステージだけ。`gh stack` のローカルの追跡は
+worktree ごとに別なので使わない。`gh stack link` は追跡に依らないので、PR を
+`gh pr create` で自分のタイトルと本文で作り、link で連ねる。`gh stack` は概要ブランチの
 worktree（`trees/overview`）を cwd にして叩く。
 
 確かめた範囲（gh-stack v0.1.0 の `--help`・GitHub の REST API の文書。2026-10-02）:
 
 - `gh stack link [--base <ブランチ>] <PR>...`: 下から順に渡す。足すだけで、すでにスタックにある PR を
-  外さない。`--base` を省くと一番下の base がリポジトリの既定ブランチになる（GH-07）。ブランチ名を
+  外さない。`--base` を省くと一番下の base がリポジトリの既定ブランチになる。ブランチ名を
   渡すと push と PR の作成までするので、PR 番号だけを渡す。`--open` は付けない（draft を外してしまう）
 - `gh stack unstack <スタックの番号>`: 対話なしで、GitHub の API を通してスタックを解く。手元の追跡は
   要らない
@@ -29,7 +29,7 @@ from typing import Any
 from ..domain.values import BranchName, PrNumber
 from ._proc import CommandFailed, Completed, run
 
-#: `gh pr create` の出力の最後の行の URL（LEDGER GH-14）
+#: `gh pr create` の出力の最後の行の URL
 _PR_URL = re.compile(r"/pull/(\d+)\s*$")
 #: スタックの REST API の版（文書の値）
 STACKS_API_VERSION = "2026-03-10"
@@ -72,7 +72,7 @@ class Forge:
     # --- 前提 ---
 
     def missing(self, cwd: str | os.PathLike[str]) -> list[str]:
-        """足りないもの。空なら使える（LEDGER GH-15。走り出す前に確かめる）。"""
+        """足りないもの。空なら使える（走り出す前に確かめる）。"""
         if not self._run(cwd, "auth", "status").ok:
             return ["gh が認証されていない（`gh auth login`）"]
         listed = self._run(cwd, "extension", "list")
@@ -165,7 +165,7 @@ class Forge:
     def stack_link(
         self, overview_tree: str | os.PathLike[str], base: BranchName, prs: Sequence[PrNumber]
     ) -> None:
-        """`prs` を下から順に渡す。gh stack link は 2 つ以上を要る（LEDGER GH-08）。"""
+        """`prs` を下から順に渡す。gh stack link は 2 つ以上を要る。"""
         if len(prs) < 2:
             raise ValueError(
                 f"gh stack link には PR を 2 つ以上渡す: {[int(p.value) for p in prs]}"
@@ -208,7 +208,7 @@ class Forge:
 
     def unstack(self, overview_tree: str | os.PathLike[str], stack: int) -> None:
         """スタックを GitHub の上で解く。閉じた PR はスタックに残り上の PR をマージできなくするので、
-        閉じただけでは足りない（DOMAIN_MODEL §11.4 Unstack）。"""
+        閉じただけでは足りない。"""
         self._ok(overview_tree, "stack", "unstack", str(stack))
 
 

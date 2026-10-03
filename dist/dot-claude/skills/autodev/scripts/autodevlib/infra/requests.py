@@ -1,4 +1,4 @@
-"""driver の外からの要求（DOMAIN_MODEL §7.4・§13 の `RequestBox`。Inbox パターン）。
+"""driver の外からの要求（Inbox パターン）。
 
 `/autodev` の CLI（`autodev answer` など）は `requests` に 1 行足す。driver が止まっていても足せて、
 次に起きたときに拾われる。driver は拾ったものをコマンドとして処理し、行を消す。
@@ -8,7 +8,7 @@
 
 - `command_id` は行の id。処理した後・消す前に落ちても、拾い直したときに同じ id のイベントが
   あるので 2 回処理しない
-- `issuer` は CLI に決める。行の中身で名乗らせない（DOMAIN_MODEL §7.1「出す者は driver が記録する」）
+- `issuer` は CLI に決める。行の中身で名乗らせない
 """
 
 from __future__ import annotations

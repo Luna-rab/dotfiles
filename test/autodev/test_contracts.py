@@ -1,8 +1,6 @@
 """指示書（contracts/）・結果の形（schemas/）・PR 本文の雛形（templates/）が、ドメインと合うこと。
 
-指示書とスキーマのパスは、ステージの種類の名前から組むので、実在と形は検査でしか分からない
-（LEDGER FP-07）。スキーマは `claude --json-schema` に本文のまま渡り、draft-07 だけが通る
-（LEDGER AR-17）。スキーマの欄は、ドメインが読む欄（`StageSpec.result`）と、統括の判断を置き換える
+指示書とスキーマのパスは、ステージの種類の名前から組むので、実在と形は検査でしか分からない。スキーマは `claude --json-schema` に本文のまま渡り、draft-07 だけが通る。スキーマの欄は、ドメインが読む欄（`StageSpec.result`）と、統括の判断を置き換える
 コマンドの欄に照らす。
 """
 
@@ -125,7 +123,7 @@ WRITTEN_BY_PROGRAM = {
     "escalate": frozenset({"question", "answer_only"}),
 }
 
-#: RefreshOverview が埋めるマーカー（LEDGER TX-03〜TX-05）。1 行に単独で置いた
+#: RefreshOverview が埋めるマーカー。1 行に単独で置いた
 #: `<!-- autodev:<名前> -->` だけを、1 回の走査で置き換える。RefreshOverview を実装したら、
 #: この一覧をそちらへ移し、ここはそれを読む
 OVERVIEW_MARKERS = frozenset(
@@ -602,7 +600,7 @@ def test_統括の指示書は状態を読むコマンドのほかにdriverの�
     assert "`<状態を読むコマンド>` のほかに driver のコマンドを叩く" in forbidden
 
 
-#: ask の呼び方。PreToolUse の defer が効くのは、そのターンのツール呼び出しが 1 つだけのとき（LEDGER HK-21）
+#: ask の呼び方。PreToolUse の defer が効くのは、そのターンのツール呼び出しが 1 つだけのとき
 ASK_IN_ONE_TURN = "1 つのターンで ask だけを 1 回呼ぶ。質問が複数あれば、ターンを分けて呼ぶ。"
 
 
@@ -713,7 +711,7 @@ def markers_of(path: Path) -> set[str]:
     text = path.read_text(encoding="utf-8")
     # 1 行に単独で置いたマーカーだけが埋まる。文の中に置いたマーカーは埋まらずに残る
     assert len(ANY_MARKER.findall(text)) == len(MARKER_LINE.findall(text)), path.name
-    # 本文を string.Template に通さない（LEDGER TX-01）ので、`${…}` は埋まらずに残る
+    # 本文を string.Template に通さないので、`${…}` は埋まらずに残る
     assert "${" not in text, path.name
     return set(MARKER_LINE.findall(text))
 

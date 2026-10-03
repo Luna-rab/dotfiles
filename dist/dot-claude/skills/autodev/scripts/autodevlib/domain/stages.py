@@ -1,4 +1,4 @@
-"""ステージの定義（DOMAIN_MODEL §11）。ステージの種類ごとに `StageSpec` を 1 つ持つ。
+"""ステージの定義。ステージの種類ごとに `StageSpec` を 1 つ持つ。
 
 `needs`・`produces` は、タスクの成果物（`ArtifactKind`）で書く。合成ステージの中のステージどうしで
 受け渡すもの（指摘・判定）は、合成ステージの中の進め方が順番を決めるので、ここには書かない。
@@ -62,7 +62,7 @@ class StepArgument(Enum):
 
 
 class InnerRole(Enum):
-    """合成ステージの 1 ラウンドの中の役（ADDENDUM §4）。並びは「頭 → 見る役 → 判定 → 直す役」。"""
+    """合成ステージの 1 ラウンドの中の役。並びは「頭 → 見る役 → 判定 → 直す役」。"""
 
     #: ラウンドの頭。`when` の成果物があるときだけ走る（Expect）
     HEAD = "head"
@@ -108,7 +108,7 @@ class ResultField(Enum):
     `domain/results.py` にあり、読み替えた値（`values.StageResult`）が StageCompleted に載る。
     """
 
-    #: 返した報告（Task が §6.7 の ③ で読む）。`reports` を持つステージだけが返す
+    #: 返した報告（Task が成果物より先に読む）。`reports` を持つステージだけが返す
     REPORT = "report"
     #: 報告の中身（StageReported.reason。RejectRequest の理由になる）
     REPORT_REASON = "reportReason"
@@ -168,7 +168,7 @@ class BodyTarget(Enum):
 
 
 class Handoff(Enum):
-    """ステージの結果を、どの集約へ、どのコマンドで渡すか（DOMAIN_MODEL §6）。
+    """ステージの結果を、どの集約へ、どのコマンドで渡すか。
 
     渡す先を宣言したステージは、完了しても cursor を進めず、渡した先の「受けた／受けられない」が
     届くまで待つ（ConfirmHandoff。判定は Conclude*Round）。受けられなければ、Task が
@@ -241,7 +241,7 @@ class StageSpec:
     required_arguments: frozenset[StepArgument] = frozenset()
     #: 落ちたときに戻る先（Gate は直前の ReviewLoop の直す役に戻る）。フローの中でこれより前に要る
     returns_to: StageKind | None = None
-    #: 結果の `report` で返してよい報告（失敗に数えず、cursor も進めない。DOMAIN_MODEL §6.7 の ③）
+    #: 結果の `report` で返してよい報告（失敗に数えず、cursor も進めない）
     reports: frozenset[EscalationKind] = frozenset()
     #: 結果の JSON でドメインが読む欄
     result: frozenset[ResultField] = frozenset()
@@ -254,7 +254,7 @@ class StageSpec:
     #: （1 回はやり直し、続けて落ちたら stage-errors）
     expects: EvidenceCheck | None = None
     on_mismatch: EscalationKind | None = None
-    #: 同じフローの前の Rebase が衝突したときだけ走る（§11.4 の積むときの並び）
+    #: 同じフローの前の Rebase が衝突したときだけ走る
     after_conflict_only: bool = False
     #: 結果の `body` を書き出す先（`body` を読むステージだけ）
     body: BodyTarget | None = None
@@ -271,7 +271,7 @@ class StageSpec:
     restores_start: bool = False
     model: str | None = None
     effort: str | None = None
-    #: ターンの上限（LEDGER AR-14）。値は実装のときに決める
+    #: ターンの上限。値は実装のときに決める
     max_turns: int | None = None
 
     def __post_init__(self) -> None:  # noqa: PLR0912  宣言の組み合わせの検査ごとの分岐
@@ -453,7 +453,7 @@ _REPLAN = _PROPOSAL | {_F.STOP, _F.DISCARD, _F.CARRY}
 _PR = frozenset({_F.PR})
 
 _SPECS: tuple[StageSpec, ...] = (
-    # --- 計画タスク（§11.1） ---
+    # --- 計画タスク ---
     _program(_S.PREPARE, _PLANNING, produces=frozenset({_A.BRIEF})),
     _llm(
         _S.PLAN,
@@ -514,7 +514,7 @@ _SPECS: tuple[StageSpec, ...] = (
         result=_REPLAN | {_F.COMMENTS},
         hands_to=_TO.PROPOSAL,
     ),
-    # --- 実装タスク（§11.2） ---
+    # --- 実装タスク ---
     _llm(
         _S.TEST_GEN,
         _IMPLEMENTATION,
@@ -535,7 +535,7 @@ _SPECS: tuple[StageSpec, ...] = (
         needs=frozenset({_A.TESTS}),
         produces=frozenset({_A.RED_TESTS}),
         before=frozenset({_S.IMPL}),
-        # テストが実装の前に全部通った。書き直させるかはタスク統括がフローで決める（§8.2）
+        # テストが実装の前に全部通った。書き直させるかはタスク統括がフローで決める
         expects=EvidenceCheck.VERIFY_FAILS,
         on_mismatch=_E.RED_CHECK_FAILED,
     ),
@@ -644,7 +644,7 @@ _SPECS: tuple[StageSpec, ...] = (
         reports=frozenset({_E.INTEGRATION_FAILED}),
         after_conflict_only=True,
     ),
-    # --- git 管理タスク（§11.4） ---
+    # --- git 管理タスク ---
     # 流し直すときは、途中の rebase を取りやめてから流す。統合に失敗して取りやめていない worktree・
     # 衝突で止まった前の流しの worktree から、切ったブランチへ移す・載せ直す
     _program(
@@ -654,7 +654,7 @@ _SPECS: tuple[StageSpec, ...] = (
         abandons_rebase=True,
     ),
     # 終えた rebase の後で結果が載らずに流し直すときは、載せ直す前の HEAD から古い根元で載せ直す。
-    # 載せ直すコミットが無ければ、ブランチを動かさずに落ちる（ADDENDUM §12）
+    # 載せ直すコミットが無ければ、ブランチを動かさずに落ちる
     _program(
         _S.REBASE,
         _GIT,
@@ -720,7 +720,7 @@ _STACKING = (
     _S.REFRESH_OVERVIEW,
 )
 
-#: git 管理タスクの仕事の種類ごとの並び（DOMAIN_MODEL §11.4・ADDENDUM §10）。積み直す仕事（前に
+#: git 管理タスクの仕事の種類ごとの並び。積み直す仕事（前に
 #: 積んだブランチがある）は、頭に CutBranch を足す（`flow.git_job_flow`）
 GIT_JOB_STAGES: Mapping[GitJobKind, tuple[StageKind, ...]] = {
     GitJobKind.CUT_OVERVIEW: (_S.CUT_BRANCH,),

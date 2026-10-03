@@ -1,4 +1,4 @@
-"""統括の判断の JSON を、コマンド 1 つに置き換える表（DOMAIN_MODEL §7.3・ADDENDUM §3）。
+"""統括の判断の JSON を、コマンド 1 つに置き換える表。
 
 判断の JSON は `decision` と、`decision` を camelCase にした中身の欄（`insert-task` なら `insertTask`）
 だけを持つ（`schemas/supervisor-*.json`）。どの `decision` でどの欄が要るかはスキーマに書けない

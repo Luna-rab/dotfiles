@@ -1,13 +1,12 @@
 """ステージが返した構造化出力を、`schemas/<ステージ>.json` の形と照らす。
 
 `--json-schema` は生成時の制約ではなく事後の検証で、外れても `subtype: success` のまま空や崩れた形で
-返ることがある（LEDGER AR-15・AR-16）。driver の側でもう一度確かめる。標準ライブラリだけで動かす
+返ることがある。driver の側でもう一度確かめる。標準ライブラリだけで動かす
 ため、`schemas/` が使うキーワード（`type`・`enum`・`required`・`properties`・`additionalProperties`・
 `items`・`minLength`・`maxLength`・`minItems`・`uniqueItems`・`pattern`・`minimum`）だけを扱う。知らない
 キーワードは、検査（`test_contracts.py`）が `schemas/` に置かせない。
 
-モデルが報告の欄の「無い」を `null` ではなく文字列の `"null"`・`"none"` で返すことがある（LEDGER
-AR-19）。`normalize_nulls` で、null を許す欄のそういう文字列を null に直してから照らす。
+モデルが報告の欄の「無い」を `null` ではなく文字列の `"null"`・`"none"` で返すことがある。`normalize_nulls` で、null を許す欄のそういう文字列を null に直してから照らす。
 """
 
 from __future__ import annotations

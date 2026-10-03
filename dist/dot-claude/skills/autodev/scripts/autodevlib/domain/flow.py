@@ -1,4 +1,4 @@
-"""フロー（タスク統括が組むステージの並び）と、フローの検査（DOMAIN_MODEL §4・§10・ADDENDUM）。"""
+"""フロー（タスク統括が組むステージの並び）と、フローの検査。"""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ class FlowStep:
     #: 書けるのは StageSpec.arguments に REVIEWERS を持つステージ（ReviewLoop）だけ
     reviewers: Reviewers | None = None
     #: タスクの間続くセッションのステージ（Impl）を、新しいセッションでやり直す
-    #: （堂々巡りのときなど。続けたセッションで落ち続けることがある。LEDGER AR-22）
+    #: （堂々巡りのときなど。続けたセッションで落ち続けることがある）
     fresh_session: bool = False
     #: 統括からステージへの言葉（確かめてほしいこと・直し方の方針など）。実行器がプロンプトに
     #: 埋めるだけで、ドメインは中身を解釈しない
@@ -79,7 +79,7 @@ class Flow:
 
 @dataclass(frozen=True)
 class Cursor:
-    """フローのどこまで進んだか。合成ステージの中なら、中のステージとラウンドも持つ（ADDENDUM §4）。
+    """フローのどこまで進んだか。合成ステージの中なら、中のステージとラウンドも持つ。
 
     合成ステージの中の次のステージを決めるのは Task で、Cursor は位置を持つだけである。
     """
@@ -108,14 +108,14 @@ class Cursor:
 
 
 #: タスクの種類ごとに、フローの終わりまでに作っていなければならない成果物。実装タスクだけが
-#: 持つ（ADDENDUM §1。計画タスクと git 管理タスクはランが終わるまで続く）
+#: 持つ（計画タスクと git 管理タスクはランが終わるまで続く）
 REQUIRED_AT_END: Mapping[TaskKind, frozenset[ArtifactKind]] = {
     TaskKind.IMPLEMENTATION: frozenset({ArtifactKind.GATED, ArtifactKind.PR_BODY}),
 }
 
 
 class FlowValidator:
-    """統括が返したフローを、実行の前に検査する（DOMAIN_MODEL §10・ADDENDUM §1・§11）。
+    """統括が返したフローを、実行の前に検査する。
 
     落ちた理由をすべて集めて返す。統括に 1 つずつ差し戻すと、直すたびに次の理由で落ちて往復が増える。
     """
@@ -148,8 +148,8 @@ class FlowValidator:
 def git_job_flow(job: GitJob) -> tuple[FlowStep, ...]:
     """git 管理タスクの統括（プログラム）が、取り出した仕事から組む決まった並び。
 
-    積み直す仕事（前に積んだブランチがある）は、新しい名前のブランチを切り直してから rebase する
-    （ADDENDUM §10）。仕上げは、概要 PR を draft から外すと決めたときだけ ReadyOverview を置く。
+    積み直す仕事（前に積んだブランチがある）は、新しい名前のブランチを切り直してから rebase する。
+    仕上げは、概要 PR を draft から外すと決めたときだけ ReadyOverview を置く。
     """
     stages = list(GIT_JOB_STAGES[job.kind])
     if job.kind is GitJobKind.STACK and job.previous is not None:
@@ -160,7 +160,7 @@ def git_job_flow(job: GitJob) -> tuple[FlowStep, ...]:
 
 
 def planning_flow(settled_before: bool) -> tuple[FlowStep, ...]:
-    """計画タスクの統括（プログラム）が組む決まった並び（DOMAIN_MODEL §11.1・ADDENDUM §3）。
+    """計画タスクの統括（プログラム）が組む決まった並び。
 
     設計が一度も確定していなければ（初回と、確定する前の再計画）Prepare → Plan から、確定した設計が
     あれば Replan から。

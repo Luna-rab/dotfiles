@@ -48,7 +48,7 @@ def test_既定のブランチをoriginから取る(repo: Path):
 
 
 def test_ブランチとworktreeは呼び直しても同じ結果になる(repo: Path, tmp_path: Path):
-    """`already exists`・`already used by worktree` は作り済みとして通す（LEDGER GH-03）。"""
+    """`already exists`・`already used by worktree` は作り済みとして通す。"""
     git = Git(repo)
     branch = BranchName("stack/r--task-0")
     tree = tmp_path / "run" / "trees" / "overview"
@@ -63,7 +63,7 @@ def test_ブランチとworktreeは呼び直しても同じ結果になる(repo:
 
 
 def test_手で消したworktreeはpruneすると作り直せる(repo: Path, tmp_path: Path):
-    """ランディレクトリを手で消しても git 側の登録は残る（LEDGER GH-02）。"""
+    """ランディレクトリを手で消しても git 側の登録は残る。"""
     git = Git(repo)
     branch = BranchName("stack/r--task-1")
     tree = tmp_path / "run" / "trees" / "task1"
@@ -78,7 +78,7 @@ def test_手で消したworktreeはpruneすると作り直せる(repo: Path, tmp
 
 
 def test_空のコミットで親との差分を作る(repo: Path, tmp_path: Path):
-    """base との差分が 0 だと gh pr create が落ちる（LEDGER GH-01）。"""
+    """base との差分が 0 だと gh pr create が落ちる。"""
     git = Git(repo)
     branch = BranchName("stack/r--task-0")
     tree = tmp_path / "trees" / "overview"

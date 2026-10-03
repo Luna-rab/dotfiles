@@ -45,20 +45,3 @@ class DriverLock:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             os.close(self._fd)
             self._fd = None
-
-
-def held(path: Path) -> bool:
-    """ほかのプロセスが錠を握っているか。錠のファイルが無ければ、握られていない。"""
-    try:
-        fd = os.open(path, os.O_RDWR)
-    except FileNotFoundError:
-        return False
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        return True
-    else:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        return False
-    finally:
-        os.close(fd)

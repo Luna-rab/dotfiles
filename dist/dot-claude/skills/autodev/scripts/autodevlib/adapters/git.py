@@ -415,6 +415,14 @@ class Git:
             timeout=NETWORK_TIMEOUT,
         )
 
+    def commits_off_refs(self, tree: str | os.PathLike[str]) -> int:
+        """`tree` の HEAD から辿れて、どの手元のブランチにも origin にも無いコミットの数（HEAD を
+        切り離した worktree で作ったコミット。worktree を外すと辿れなくなる）。"""
+        out = self._ok(
+            tree, "rev-list", "--count", "HEAD", "--not", "--branches", "--remotes=origin"
+        )
+        return int(out.strip())
+
     def unpushed_count(self, branch: BranchName) -> int:
         """origin のどのブランチにも無いコミットの数。worktree やブランチを消すと失う数である。"""
         out = self._ok(self.repo, "rev-list", "--count", str(branch), "--not", "--remotes=origin")

@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
+from .adapters import children
 from .adapters import git as git_adapter
 from .adapters._proc import CommandFailed
 from .adapters.git import Git
@@ -33,6 +34,14 @@ from .app import assembly, cleanup
 from .app.driver import ExitCode, StartRequest
 from .domain.commands import AnswerQuestion, StartRun
 from .domain.events import RunStarted
+from .domain.services.housekeeping import (
+    Blocker,
+    Leftovers,
+    blocking,
+    clean_blockers,
+    purge_blockers,
+    start_blockers,
+)
 from .domain.values import (
     BranchName,
     CommandId,
@@ -159,16 +168,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     paths = _paths(args.name)
     started = assembly.run_started(paths)
     instruction: Instruction | None = None
+    if started is None:
+        instruction = _instruction(args)
+        if args.repo is None:
+            raise Failed("新しいランには --repo が要る")
+    # 対象リポジトリを git で探す前に確かめる。git が無いと、リポジトリが無いという違う理由で落ちる
+    if missing := assembly.missing_tools(Path.cwd()):
+        raise Failed("足りないものがあるので走らない: " + " / ".join(missing))
     if started is not None:
         _resume_checks(args, paths, started)
         repository = started.repository
     else:
-        instruction = _instruction(args)
-        if args.repo is None:
-            raise Failed("新しいランには --repo が要る")
         repository = _repository(args.repo)
-    if missing := assembly.missing_tools(Path(repository.value)):
-        raise Failed("足りないものがあるので走らない: " + " / ".join(missing))
     try:
         config = load_repo_config(repository)
     except RepoConfigError as error:
@@ -183,7 +194,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     _say(f"{paths.name} を{'続きから始める' if start is None else '始める'}（記録: {paths.root}）")
     try:
         with DriverLock(paths.driver_lock):
-            return int(assembly.build_driver(paths, config).drive(start))
+            # 錠が取れたので前の driver はもういない。その driver が起こした子が残っていないかを見る
+            _refuse(
+                blocking(start_blockers(Leftovers(live=cleanup.live_children(paths))), force=False)
+            )
+            children.track_in(paths.children)
+            try:
+                return int(assembly.build_driver(paths, config).drive(start))
+            finally:
+                children.track_in(None)
     except DriverBusy as error:
         raise Failed(str(error)) from error
 
@@ -272,12 +291,27 @@ def cmd_ask(args: argparse.Namespace) -> int:
 # --- clean・purge ---
 
 
+def _refuse(blockers: Sequence[Blocker]) -> None:
+    """ドメインが挙げた、越えられない理由があれば止める。"""
+    if not blockers:
+        return
+    for blocker in blockers:
+        _say(blocker.reason)
+    if all(blocker.forcible for blocker in blockers):
+        raise Failed("何もしていない。失うものを承知で進めるなら --force を付ける")
+    raise Failed("何もしていない（--force でも進めない）")
+
+
 def cmd_clean(args: argparse.Namespace) -> int:
     paths = _existing(args.name)
     try:
         with DriverLock(paths.driver_lock):
             started = assembly.run_started(paths)
-            removed = cleanup.remove_worktrees(paths, started.repository if started else None)
+            repository = started.repository if started else None
+            found = cleanup.leftovers(paths, repository, count_unpushed=False)
+            finished = assembly.run_aggregate(paths).complete
+            _refuse(blocking(clean_blockers(found, finished=finished), force=args.force))
+            removed = cleanup.remove_worktrees(paths, repository)
     except DriverBusy as error:
         raise Failed(str(error)) from error
     _say(f"記録は残してある: {paths.root}")
@@ -291,11 +325,8 @@ def cmd_purge(args: argparse.Namespace) -> int:
         with DriverLock(paths.driver_lock):
             started = assembly.run_started(paths)
             repository = started.repository if started else None
-            problems = cleanup.purge_problems(paths, repository)
-            if problems and not args.force:
-                for problem in problems:
-                    _say(problem)
-                raise Failed("何も消していない。それでも消すなら --force を付ける")
+            found = cleanup.leftovers(paths, repository, count_unpushed=True)
+            _refuse(blocking(purge_blockers(found), force=args.force))
             branches = cleanup.purge(paths, repository)
     except DriverBusy as error:
         # driver が走っている間は --force でも消さない。消すと、走っている driver の記録が消える
@@ -344,14 +375,19 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument(ANSWER_FILE_OPTION, dest="answer_file", help=argparse.SUPPRESS)
     ask.set_defaults(func=cmd_ask)
 
-    clean = sub.add_parser("clean", help="worktree を外す（記録は残す）")
+    clean = sub.add_parser("clean", help="終えたランの worktree を外す（記録は残す）")
     clean.add_argument("--name", required=True)
+    clean.add_argument(
+        "--force", action="store_true", help="終えていない・コミットしていない変更があっても外す"
+    )
     clean.set_defaults(func=cmd_clean)
 
     purge = sub.add_parser("purge", help="worktree・手元のブランチ・ランディレクトリを消す")
     purge.add_argument("--name", required=True)
     purge.add_argument(
-        "--force", action="store_true", help="走っている記録・push していないコミットがあっても消す"
+        "--force",
+        action="store_true",
+        help="走っている記録・push していないコミット・コミットしていない変更があっても消す",
     )
     purge.set_defaults(func=cmd_purge)
     return parser

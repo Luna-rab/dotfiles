@@ -16,11 +16,13 @@ from ..domain.aggregate import Rejected
 from ..domain.commands import AnswerQuestion
 from ..domain.events import RunStarted
 from ..domain.questions import Questions
+from ..domain.run import Run
 from ..domain.task import Task
 from ..domain.values import ExecutionId, StreamId
 from ..infra.eventstore import EventReader
 from ..infra.paths import RunPaths
 from ..infra.repo_config import RepoConfig
+from ..infra.requests import RequestBox, UnreadableRequest
 from .driver import Driver
 from .executor import from_parts
 
@@ -63,6 +65,15 @@ def run_started(paths: RunPaths) -> RunStarted | None:
     return None
 
 
+def run_aggregate(paths: RunPaths) -> Run:
+    """再生した Run。events.db が無ければ、まだ何も起きていない Run。"""
+    if not paths.events_db.is_file():
+        return Run(StreamId.run())
+    with EventReader.open(paths.events_db) as reader:
+        history = [(s.decode(), s.command_id) for s in reader.read_stream(StreamId.run())]
+    return Run.replay(StreamId.run(), history)
+
+
 def running_executions(paths: RunPaths) -> list[ExecutionId]:
     """記録の上で running のまま残っている実行。driver が落ちた後は、走っていなくても残る。"""
     if not paths.events_db.is_file():
@@ -83,11 +94,31 @@ def answer_refusal(paths: RunPaths, command: AnswerQuestion) -> str | None:
 
     driver が要求を拾った所で拒むと `rejected.jsonl` に残るだけで、`/autodev` は気づけない。判断は
     `Questions.handle` のもので、ここは状態を変えずに借りるだけ。
+
+    driver がまだ拾っていない回答（`requests` に残る AnswerQuestion）も、拾われる順に先に当てる。
+    当てずに確かめると、同じ質問への 2 つ目の回答が通ったように見え、driver が拾った所で黙って拒む。
     """
     with EventReader.open(paths.events_db) as reader:
         history = [(s.decode(), s.command_id) for s in reader.read_stream(StreamId.questions())]
+    questions = Questions.replay(StreamId.questions(), history)
+    with RequestBox.open(paths.events_db) as box:
+        pending = box.pending()
+    for request in pending:
+        try:
+            earlier = request.to_command()
+        except UnreadableRequest:
+            continue
+        if not isinstance(earlier, AnswerQuestion):
+            continue
+        try:
+            events = questions.handle(earlier)
+        except Rejected:
+            # driver も拒むので、何も当たらない
+            continue
+        for event in events:
+            questions.apply(event, earlier.command_id)
     try:
-        Questions.replay(StreamId.questions(), history).handle(command)
+        questions.handle(command)
     except Rejected as rejected:
         return str(rejected)
     return None

@@ -21,8 +21,10 @@ from typing import Any
 import pytest
 from autodevlib.adapters import guard
 from autodevlib.adapters.guard import GuardContext, guard_context
+from autodevlib.app.files import write_answer
 from autodevlib.domain.guard import RefusalReason, WriteZone
-from autodevlib.domain.values import DEFAULT_TEST_GLOBS, Guard, WriteScope
+from autodevlib.domain.values import DEFAULT_TEST_GLOBS, Guard, RunName, WriteScope
+from autodevlib.infra.paths import RunPaths
 from conftest import SKILL_ROOT
 
 HOOKS = SKILL_ROOT / "hooks"
@@ -628,6 +630,21 @@ def test_回答のファイルがあれば通しaskの語だけで組み直す(p
         "--answer-file",
         str(path),
     ]
+
+
+def test_フックが組み直したaskのコマンドを流すと反応が書いた回答が出る(places: Places):
+    """フック（park-on-ask）→ 組み直したコマンド → 入口の `autodev.py ask` を、つないで流す。"""
+    paths = RunPaths(RunName("r"), places.run_dir)
+    write_answer(paths, "toolu_01", "300 秒にする")
+    command = f"{shlex.quote(sys.executable)} {LAUNCHER} ask --question 'どちら?'"
+    got = run_hook(
+        "park-on-ask.py", ask_payload(places, command), env_for(places, NONE, can_ask=True)
+    )
+    rebuilt = decision(got.stdout)["updatedInput"]["command"]
+    ran = subprocess.run(
+        ["bash", "-c", rebuilt], capture_output=True, text=True, check=False, cwd=places.tree
+    )
+    assert (ran.returncode, ran.stdout) == (0, "300 秒にする\n"), ran.stderr
 
 
 def test_別の呼び出しの回答では通さない(places: Places):

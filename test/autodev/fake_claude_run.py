@@ -9,7 +9,7 @@
   終わったら仕上げる
 
 `FAKE_CLAUDE_SCHEMAS` に `schemas/` の置き場、`FAKE_CLAUDE_LOG` に呼ばれ方を書き足すファイルを渡す。
-`FAKE_CLAUDE_HANG` に役の名前を渡すと、その役は result を返さずに待ち続ける。
+`FAKE_CLAUDE_HANG` に役の名前を渡すと、その役は result を返さずに待ち続ける（`hang`）。
 """
 
 from __future__ import annotations
@@ -131,6 +131,19 @@ OUTPUTS = {
 }
 
 
+def hang() -> int:
+    """result を返さずに待つ。interrupt を受けたら打ち切って終わる。driver が落ちて標準入力が
+    閉じても、ステージの途中の本物の claude のように走り続ける（検査が pid で止める）。"""
+    while line := sys.stdin.readline():
+        if json.loads(line).get("type") == "control_request":
+            result(subtype="error_during_execution", is_error=True)
+            while sys.stdin.readline():
+                pass
+            return 0
+    time.sleep(60)
+    return 1
+
+
 def main() -> int:
     argv = sys.argv[1:]
     if argv == ["--version"]:
@@ -152,9 +165,7 @@ def main() -> int:
         log.write(json.dumps(called, ensure_ascii=False) + "\n")
     emit({"type": "system", "subtype": "init", "session_id": "x", "capabilities": []})
     if os.environ.get("FAKE_CLAUDE_HANG") == name:
-        # 走っている間に driver ごと落とす検査のため、result を返さずに待つ
-        time.sleep(60)
-        return 1
+        return hang()
     if name == "plan":
         plan(resumed)
     elif name == "supervisor-run":

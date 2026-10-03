@@ -150,6 +150,25 @@ def test_runは計画のaskで回答待ちの4で止まり回答を置いて呼�
     assert types[0] == "RunStarted"
     assert "RunFinished" in types
 
+    # 終えたランは、--force 無しで worktree を外せる
+    code, out, err = world.cli("clean", "--name", NAME)
+    assert code == 0, err
+    assert json.loads(out)["removed"] == [str(world.paths.overview_tree)]
+    assert not world.paths.overview_tree.exists()
+    assert world.paths.events_db.is_file()
+    assert str(world.paths.overview_tree) not in sh(world.repo, "worktree", "list")
+
+
+def test_gitがPATHに無ければリポジトリを探す前に道具が足りないと言って1で止める(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    # 偽の claude と gh だけを置き、git を見つけられなくする
+    monkeypatch.setenv("PATH", str(world.tmp / "bin"))
+    code, _, err = start(world)
+    assert code == 1
+    assert "git が PATH に無い" in err
+    assert "リポジトリが見つからない" not in err
+
 
 def test_既にあるランに指示を付けたら1で止める(world: World):
     assert start(world)[0] == 4
@@ -288,6 +307,11 @@ def test_answerは回答を待つ質問への回答をrequestsに置くだけで
     world: World, tmp_path: Path
 ):
     seed_questions(world.paths, withdrawn=False)
+    # 無い質問・空の回答は、Questions が拒む理由で落ちる
+    code, _, err = world.cli("answer", "--name", NAME, "--question", "q-none", "--answer", "A")
+    assert (code, "q-none という質問は無い" in err) == (1, True)
+    code, _, err = world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", " ")
+    assert (code, "回答が空" in err) == (1, True)
     body = tmp_path / "answer.md"
     body.write_text("A にする\n", "utf-8")
     code, out, _ = world.cli(
@@ -301,11 +325,18 @@ def test_answerは回答を待つ質問への回答をrequestsに置くだけで
     assert isinstance(command, AnswerQuestion)
     assert (command.question, command.answer) == (QuestionId(QUESTION), "A にする\n")
     assert world.claude_calls() == []
-    # 無い質問・空の回答は、Questions が拒む理由で落ちる
-    code, _, err = world.cli("answer", "--name", NAME, "--question", "q-none", "--answer", "A")
-    assert (code, "q-none という質問は無い" in err) == (1, True)
-    code, _, err = world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", " ")
-    assert (code, "回答が空" in err) == (1, True)
+
+
+def test_answerはまだ拾われていない回答を当てた後で確かめ同じ質問への2つ目の回答を置かない(
+    world: World,
+):
+    seed_questions(world.paths, withdrawn=False)
+    assert world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "60")[0] == 0
+    code, _, err = world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "300")
+    assert code == 1
+    assert "回答できるのは open の質問だけ" in err
+    with RequestBox.open(world.paths.events_db) as box:
+        assert len(box.pending()) == 1
 
 
 def test_answerは無いランに要求を置かない(world: World):
@@ -351,15 +382,64 @@ def test_statusはnameがあればrun_statusを無ければall_statusesを呼ん
 # --- clean・purge ---
 
 
-def test_cleanはworktreeを外して記録を残す(world: World):
+def test_cleanは終えていないランのworktreeを外さずforceなら外す(world: World):
+    # 回答待ちのランの worktree を外すと、呼び直しても続きから進めない
     assert start(world)[0] == 4
+    code, _, err = world.cli("clean", "--name", NAME)
+    assert code == 1
+    assert "ランを終えていない" in err
     assert world.paths.overview_tree.is_dir()
-    code, out, _ = world.cli("clean", "--name", NAME)
+
+    code, out, _ = world.cli("clean", "--name", NAME, "--force")
     assert code == 0
     assert json.loads(out)["removed"] == [str(world.paths.overview_tree)]
     assert not world.paths.overview_tree.exists()
     assert world.paths.events_db.is_file()
-    assert str(world.paths.overview_tree) not in sh(world.repo, "worktree", "list")
+
+
+def test_cleanは始める前に止まったランでは外したものを報告しない(world: World):
+    (world.paths.trees / "overview").mkdir(parents=True)
+    code, out, _ = world.cli("clean", "--name", NAME, "--force")
+    assert code == 0
+    assert json.loads(out)["removed"] == []
+
+
+def test_purgeとcleanはworktreeの未コミットの変更を失うなら消さない(world: World):
+    assert start(world)[0] == 4
+    branch = f"stack/{NAME}--task-0"
+    sh(world.paths.overview_tree, "push", "-q", "origin", f"{branch}:{branch}")
+    (world.paths.overview_tree / "wip.txt").write_text("書きかけ\n", "utf-8")
+    # 無視されたファイルは変更に数えない
+    exclude = world.repo / ".git" / "info" / "exclude"
+    exclude.write_text("*.log\n", "utf-8")
+    (world.paths.overview_tree / "build.log").write_text("x\n", "utf-8")
+    for command in ("purge", "clean"):
+        code, _, err = world.cli(command, "--name", NAME)
+        assert code == 1
+        assert "trees/overview にコミットしていない変更がある: wip.txt" in err
+        assert "build.log" not in err
+    assert (world.paths.overview_tree / "wip.txt").is_file()
+
+
+def test_purgeは切り離したHEADのworktreeにしか無いコミットがあれば消さない(world: World):
+    assert start(world)[0] == 4
+    top = world.paths.stack_top_tree
+    sh(world.repo, "worktree", "add", "-q", "--detach", str(top), "HEAD")
+    commit(top, "c.txt", "x\n", "切り離した HEAD の上")
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 1
+    assert "trees/stack-top の切り離した HEAD にしか無いコミットがある（1 件）" in err
+
+
+def test_purgeはfetchしてからpushしていないコミットを数える(world: World):
+    assert start(world)[0] == 4
+    branch = f"stack/{NAME}--task-0"
+    commit(world.paths.overview_tree, "b.txt", "x\n", "別の口から push した")
+    # origin の名前でなく URL へ push すると、手元の origin/<ブランチ> は古いまま残る
+    url = sh(world.repo, "remote", "get-url", "origin").strip()
+    sh(world.paths.overview_tree, "push", "-q", url, f"{branch}:{branch}")
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 0, err
 
 
 def test_purgeはoriginに無いコミットがあれば何も消さずforceなら消す(world: World):
@@ -383,10 +463,8 @@ def test_purgeはoriginに無いコミットがあれば何も消さずforceな�
     assert not any(call["args"][:2] == ["pr", "close"] for call in world.gh.calls())
 
 
-def test_purgeはdriverが落ちて記録の上で走っている実行が残っていれば消さない(
-    world: World, monkeypatch: pytest.MonkeyPatch
-):
-    # 入口（scripts/autodev.py）を別のプロセスで起こし、Plan が走っている間に driver ごと落とす
+def spawn_until_plan(world: World, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, int]:
+    """入口（scripts/autodev.py）を別のプロセスで起こし、Plan の claude が走り出すまで待つ。"""
     monkeypatch.setenv("FAKE_CLAUDE_HANG", "plan")
     driver = subprocess.Popen(
         [
@@ -398,21 +476,67 @@ def test_purgeはdriverが落ちて記録の上で走っている実行が残っ
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-    try:
-        deadline = time.monotonic() + 30
-        while not world.claude_calls() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        (plan,) = world.claude_calls()
-    finally:
+    deadline = time.monotonic() + 30
+    while not world.claude_calls() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    calls = world.claude_calls()
+    if not calls:
         os.killpg(driver.pid, signal.SIGKILL)
-        driver.wait()
-    # claude は別のプロセスグループで起こすので、driver を落としても残る
-    os.kill(plan["pid"], signal.SIGKILL)
+        pytest.fail("Plan の claude が走り出さなかった")
+    return driver, calls[0]["pid"]
 
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # 終わったが親（落とした driver）に待たれていない子は、ゾンビとして残る
+    stat = Path(f"/proc/{pid}/stat").read_text()
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+def test_driverがSIGTERMを受けたらステージを止めてパニックと同じく3で終える(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    driver, plan = spawn_until_plan(world, monkeypatch)
+    driver.send_signal(signal.SIGTERM)
+    assert driver.wait(timeout=60) == 3
+    assert not alive(plan)
+    # 止めた実行は interrupted にしたので、記録の上で走っているものは残らない
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 0, err
+
+
+def test_driverがSIGKILLで落ちて子のclaudeが生きている間はrunもcleanもpurgeも止める(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    driver, plan = spawn_until_plan(world, monkeypatch)
+    os.killpg(driver.pid, signal.SIGKILL)
+    driver.wait()
+    try:
+        # claude は別のセッションで起こすので、driver を落としても残る
+        assert alive(plan)
+        code, _, err = world.cli("run", "--name", NAME)
+        assert code == 1
+        assert f"前の driver が起こしたプロセスがまだ走っている: pid {plan}" in err
+        for command in ("clean", "purge"):
+            code, _, err = world.cli(command, "--name", NAME, "--force")
+            assert (command, code) == (command, 1)
+            assert f"pid {plan}" in err
+        assert world.paths.overview_tree.is_dir()
+    finally:
+        os.kill(plan, signal.SIGKILL)
+
+    # 子が終われば、残るのは記録の上で走っている実行だけ（--force で越えられる）
+    deadline = time.monotonic() + 10
+    while alive(plan) and time.monotonic() < deadline:
+        time.sleep(0.05)
     code, _, err = world.cli("purge", "--name", NAME)
     assert code == 1
     assert "記録の上で走っている実行がある: planning-Plan" in err
-    assert world.paths.events_db.is_file()
+    assert "pid" not in err
+    assert world.cli("purge", "--name", NAME, "--force")[0] == 0
 
 
 def test_purgeとcleanはdriverが走っている間はforceでも消さない(world: World):

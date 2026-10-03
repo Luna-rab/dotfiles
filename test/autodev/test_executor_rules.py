@@ -255,7 +255,7 @@ SCHEMA = {
     "required": ["report", "items"],
     "properties": {
         "report": {"enum": ["design-gap", None]},
-        "reason": {"type": ["string", "null"], "minLength": 1},
+        "reason": {"type": ["string", "null"], "minLength": 1, "maxLength": 3},
         "items": {
             "type": "array",
             "uniqueItems": True,
@@ -274,6 +274,9 @@ def test_スキーマの形に合わない所を挙げる():
         "$.n: 型が integer でない"
     ]
     assert violations(None, SCHEMA) == ["$: 型が object でない"]
+    assert violations({"report": None, "items": [], "reason": "abcd"}, SCHEMA) == [
+        "$.reason: 文字列が長い"
+    ]
 
 
 def test_nullを許す欄の文字列のnullとnoneをnullに直す():

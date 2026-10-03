@@ -120,6 +120,11 @@ class RunPaths:
         埋め直す（埋めた本文で上書きすると、後から積んでも古いまま残る。LEDGER TX-06）。"""
         return self.root / "overview.md"
 
+    @property
+    def overview_title(self) -> Path:
+        """WriteOverview が返した概要 PR のタイトル（印の `[autodev] ` を付ける前）。"""
+        return self.root / "overview-title.txt"
+
     def pr_body(self, task: TaskId) -> Path:
         """WritePrBody が返したタスク PR の本文（成果物 pr-body の実物）。"""
         return self.task_dir(task) / "pr-body.md"

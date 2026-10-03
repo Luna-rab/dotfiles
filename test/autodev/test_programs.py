@@ -600,6 +600,7 @@ def overview_job(kind: GitJobKind = J.OPEN_OVERVIEW) -> GitJob:
 def test_CreateOverviewPRは空のコミットを載せてpushしdraftで作る(env: Env, tmp_path: Path):
     tree = overview(env)
     env.paths.overview_body.write_text("まとめ\n<!-- autodev:tasks -->\n", encoding="utf-8")
+    env.paths.overview_title.write_text("キャッシュを足す\n", encoding="utf-8")
     pr_list(env, OVERVIEW, "[]")
     env.gh.reply(["pr", "create"], out="https://github.com/o/r/pull/5\n")
     ctx = context(env, S.CREATE_OVERVIEW_PR, job=overview_job(), overview=OVERVIEW_FACTS)
@@ -611,6 +612,7 @@ def test_CreateOverviewPRは空のコミットを載せてpushしdraftで作る(
     )
     created = next(c for c in env.gh.calls() if c["args"][:2] == ["pr", "create"])
     assert "--draft" in created["args"]
+    assert created["args"][created["args"].index("--title") + 1] == "[autodev] キャッシュを足す"
     assert "- task1 キャッシュ — 積んだ（#11）" in created["stdin"]
     # 呼び直しても空のコミットを重ねない
     env.gh.replies.clear()
@@ -634,6 +636,7 @@ def test_RefreshOverviewは保存した本文のマーカーを状態から埋�
     )
     env.paths.overview_body.parent.mkdir(parents=True, exist_ok=True)
     env.paths.overview_body.write_text(saved, encoding="utf-8")
+    env.paths.overview_title.write_text("キャッシュを足して掃除する", encoding="utf-8")
     ctx = context(
         env,
         S.REFRESH_OVERVIEW,
@@ -643,7 +646,13 @@ def test_RefreshOverviewは保存した本文のマーカーを状態から埋�
     )
     programs.refresh_overview(ctx, tools(env))
     (edit,) = [c for c in env.gh.calls() if c["args"][:2] == ["pr", "edit"]]
-    assert edit["args"][:3] == ["pr", "edit", "5"]
+    assert edit["args"][:5] == [
+        "pr",
+        "edit",
+        "5",
+        "--title",
+        "[autodev] キャッシュを足して掃除する",
+    ]
     body = edit["stdin"]
     assert body.startswith(
         "上の区画 ${tasks} $$ \\1\n- task1 キャッシュ — 積んだ（#11）\n- task2 掃除 — 作業中\n"

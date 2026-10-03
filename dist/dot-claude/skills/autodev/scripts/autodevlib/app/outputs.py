@@ -35,6 +35,10 @@ def write_overview_body(paths: RunPaths, body: str) -> None:
     write_atomic(paths.overview_body, body)
 
 
+def write_overview_title(paths: RunPaths, title: str) -> None:
+    write_atomic(paths.overview_title, title)
+
+
 def write_awaiting(paths: RunPaths, task: TaskId, tests: Sequence[Any]) -> None:
     write_atomic(
         paths.awaiting_expectations(task), json.dumps(list(tests), ensure_ascii=False, indent=2)

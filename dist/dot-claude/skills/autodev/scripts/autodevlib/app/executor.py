@@ -831,6 +831,8 @@ class Executor:
                 found.append(ArtifactRef(_A.PR_BODY, paths.relative(paths.pr_body(task))))
             elif spec.body is BodyTarget.OVERVIEW_PR:
                 outputs.write_overview_body(paths, body)
+        if (title := _text(spec, result, _F.TITLE)) is not None:
+            outputs.write_overview_title(paths, title)
         awaiting = result.get(_F.AWAITING_EXPECTATIONS.value)
         if (
             _F.AWAITING_EXPECTATIONS in spec.result

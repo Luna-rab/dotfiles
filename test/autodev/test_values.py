@@ -40,6 +40,7 @@ from autodevlib.domain.values import (
     TaskSpec,
     TaskStatus,
     VerifyCommand,
+    overview_pr_title,
 )
 
 SESSION = SessionId("0f8fad5b-d9cb-469f-a165-70867728950e")
@@ -109,6 +110,14 @@ def test_autodevが切るブランチの名前の規約():
     assert BranchName.for_task(run, 2, branch_round=1) == BranchName("stack/add-cache--task-2-r1")
     with pytest.raises(InvalidValue):
         BranchName.for_task(run, 0)
+
+
+def test_概要PRのタイトルにはautodevの印を1つだけ付ける():
+    assert overview_pr_title("キャッシュを足す\n") == "[autodev] キャッシュを足す"
+    assert overview_pr_title("[autodev] キャッシュを足す") == "[autodev] キャッシュを足す"
+    for bad in (" ", "[autodev]"):
+        with pytest.raises(InvalidValue):
+            overview_pr_title(bad)
 
 
 @pytest.mark.parametrize("name", ["main", "release/1.2", "feature/x-y"])

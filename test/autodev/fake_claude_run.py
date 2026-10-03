@@ -126,8 +126,7 @@ OUTPUTS = {
     "design-review": {"findings": []},
     "review": {"findings": []},
     "design-judge": {"verdicts": [], "comments": [], "designCause": None},
-    # write-overview.json も write-pr-body.json と同じ形
-    "write-overview": {"body": "# 概要\n\n変えるものは無かった。\n"},
+    "write-overview": {"title": "何も変えない", "body": "# 概要\n\n変えるものは無かった。\n"},
     "write-pr-body": {"body": "# 概要\n\n変えるものは無かった。\n"},
 }
 

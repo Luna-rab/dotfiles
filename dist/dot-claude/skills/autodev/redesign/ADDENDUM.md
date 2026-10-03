@@ -98,6 +98,7 @@
 - 提案と一緒に、計画タスクのラン共通の成果物（brief・codemap）を Design へ渡し、`DesignSettled.artifacts`（確定した design の版を足す）から `RecordSettledPlan.artifacts` を組む
 - 確かめた結果「変えない」と返して実物なしに終える道を `StageSpec.can_keep` と結果の `unchanged` で持つ（TestGen・Impl。前に作った成果物を使う）。統括からステージへの言葉は `FlowStep.instruction` に書き、実行器がプロンプトに添える（ドメインは中身を読まない）
 - Expect が期待値を書き残したテストは、結果の `awaitingExpectations` で返し、期待値待ちの成果物は残る
+- 概要 PR のタイトルは WriteOverview が結果の `title` で書き、driver が `[autodev] ` を付ける（LEDGER N-93 の `[autodev] <ラン名>` ではない）。CreateOverviewPR と RefreshOverview が、どちらも最後に書いたタイトルを載せる
 - 差し込んで引き継いだタスクは、引き継ぎ元の統合で衝突したファイルを、成果物 `conflicts` と `TaskOpened.conflicts` で受け取る（`IntegrationFailed` → `RecordIntegrationFailure` → `InsertTask` の `takes_over` → `TaskStarted`）。ResolveConflict が書いてよいファイルになる
 - `EscalateToRun` は理由（`reason`）を持ち、Run の `EscalationRaised.reason` に写す
 

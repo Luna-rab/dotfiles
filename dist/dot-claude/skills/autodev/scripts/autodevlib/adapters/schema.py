@@ -3,7 +3,7 @@
 `--json-schema` は生成時の制約ではなく事後の検証で、外れても `subtype: success` のまま空や崩れた形で
 返ることがある（LEDGER AR-15・AR-16）。driver の側でもう一度確かめる。標準ライブラリだけで動かす
 ため、`schemas/` が使うキーワード（`type`・`enum`・`required`・`properties`・`additionalProperties`・
-`items`・`minLength`・`minItems`・`uniqueItems`・`pattern`・`minimum`）だけを扱う。知らない
+`items`・`minLength`・`maxLength`・`minItems`・`uniqueItems`・`pattern`・`minimum`）だけを扱う。知らない
 キーワードは、検査（`test_contracts.py`）が `schemas/` に置かせない。
 
 モデルが報告の欄の「無い」を `null` ではなく文字列の `"null"`・`"none"` で返すことがある（LEDGER
@@ -88,6 +88,8 @@ def violations(value: Any, node: Mapping[str, Any], where: str = "$") -> list[st
     if isinstance(value, str):
         if len(value) < node.get("minLength", 0):
             found.append(f"{where}: 文字列が短い")
+        if "maxLength" in node and len(value) > node["maxLength"]:
+            found.append(f"{where}: 文字列が長い")
         if "pattern" in node and re.search(node["pattern"], value) is None:
             found.append(f"{where}: {value!r} が形 {node['pattern']} に合わない")
     number = isinstance(value, (int, float)) and not isinstance(value, bool)

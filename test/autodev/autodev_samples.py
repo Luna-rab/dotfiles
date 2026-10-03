@@ -68,6 +68,7 @@ RESULT_DEFAULTS: dict[ResultField, Any] = {
     _F.DEFECTS: [],
     _F.UNCHANGED: False,
     _F.BODY: "本文",
+    _F.TITLE: "タイトル",
     _F.PR: 7,
     _F.WORKTREE_TASK: "task1",
     _F.TREE: "trees/task1",

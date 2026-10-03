@@ -311,7 +311,7 @@ def test_取り出せる仕事が無ければ何も出さない():
     assert drive(stack, FinishGitJob(command_id=cid(), issuer=POLICY, job=1)) == []
 
 
-def test_列にある・積んだタスクと使ったブランチは積む列に入れない():
+def test_列にあるタスクと積んだタスクと使ったブランチは積む列に入れない():
     stack = opened()
     enqueue(stack, 1)
     with pytest.raises(Rejected, match="すでに列にある"):

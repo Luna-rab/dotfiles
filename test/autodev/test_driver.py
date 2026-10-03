@@ -654,7 +654,7 @@ def test_停滞はタスク統括が上げラン統括が答えるとタスク�
     assert raised["reason"] == "テストが受入条件と合わない"
 
 
-def test_新しいラン名に指示が無い・既にあるラン名に指示を足したら終了コード1(tmp_path: Path):
+def test_新しいラン名に指示が無いか既にあるラン名に指示を足したら終了コード1(tmp_path: Path):
     rig = Rig(tmp_path, main_script)
     assert rig.drive() == 1
     assert rig.drive(start=True) == 0

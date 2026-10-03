@@ -141,23 +141,30 @@ def test_パニックは走っている実行より先に見せ原因を1行に�
 
 
 @pytest.mark.parametrize(
-    ("phase", "running", "want"),
+    ("phase", "running", "awaiting", "want"),
     [
-        ("running", False, True),
-        ("planning", False, True),
-        ("running", True, False),
+        ("running", False, False, True),
+        ("planning", False, False, True),
+        # 仕上げの途中で driver が落ちた
+        ("finishing", False, False, True),
+        ("running", True, False, False),
+        # 4 で終えて回答を待つ、いつもの流れ
+        ("running", False, True, False),
         # 呼び直すのを待つフェーズ・終えたフェーズでは、driver がいなくて当たり前
-        ("panicked", False, False),
-        ("finished", False, False),
+        ("panicked", False, False, False),
+        ("finished", False, False, False),
         # driver_running の無い古い形では、止まっているとは言わない
-        ("running", None, False),
+        ("running", None, False, False),
     ],
 )
-def test_driverが走っているはずのフェーズで走っていなければ止まっていると見る(phase, running, want):
-    run = {**status()["run"], "phase": phase, "driver_running": running}
+def test_driverが走っているはずのフェーズで走っていなければ止まっていると見る(
+    phase, running, awaiting, want
+):
+    st = quiet()
+    st["run"].update(phase=phase, driver_running=running, awaiting_answer=awaiting)
     if running is None:
-        del run["driver_running"]
-    assert headline.build(status(run=run), now()).stopped is want
+        del st["run"]["driver_running"]
+    assert headline.build(st, now()).stopped is want
 
 
 def test_前のdriverの子のpidを整数だけ拾う():

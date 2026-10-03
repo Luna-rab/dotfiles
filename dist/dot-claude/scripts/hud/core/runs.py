@@ -143,9 +143,15 @@ def awaiting(st: dict) -> bool:
 def driver_stopped(st: dict) -> bool:
     """driver が走っているはずのフェーズなのに走っていない。呼び直すまで進まない。
 
-    `driver_running` の無い古い形では、止まっているとは言わない。
+    回答待ちでは、driver が 4 で終えて回答を待つのがいつもの流れなので、止まっているとは言わない。
+    `driver_running` の無い古い形でも言わない。
     """
-    return run_of(st).get("driver_running") is False and phase(st) in ("running", "planning")
+    run = run_of(st)
+    return (
+        run.get("driver_running") is False
+        and not awaiting(st)
+        and phase(st) in ("running", "planning", "finishing")
+    )
 
 
 def live_children(st: dict) -> tuple[int, ...]:

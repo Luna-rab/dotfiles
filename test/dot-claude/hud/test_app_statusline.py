@@ -161,17 +161,15 @@ def test_パニックの原因を幅を切って添える(tmp_path):
     assert "autodev add-cache ▸ パニック · 呼び直すまで進まない · 利用枠の上限に" in head
     assert "…" in head
     # パニックの後に driver がいないのは当たり前なので、止まっているとは言わない
-    assert "driver が止まっている" not in head
+    assert "driver 停止" not in head
 
 
-def test_driverが止まっていれば呼び直し方と残った子のpidを出す(tmp_path):
+def test_driverが止まっていれば回答待ちとエスカレーションの後ろに短く出す(tmp_path):
     st = quiet()
     st["run"].update(driver_running=False, live_children=[4242, 4343])
-    assert run(tmp_path, columns=200, statuses=[st])[4] == (
-        "autodev add-cache ▸ 実行中 · スタック済み 1/4"
-        " · driver が止まっている（run --name add-cache で呼び直す）"
-        " · 前の driver の子が生きている pid 4242 4343"
-        " · エスカレーション 1 · 概要 PR #4"
+    assert run(tmp_path, columns=120, statuses=[st])[4] == (
+        "autodev add-cache ▸ 実行中 · スタック済み 1/4 · エスカレーション 1"
+        " · driver 停止 · 残った子 pid 4242 4343 · 概要 PR #4"
     )
 
 

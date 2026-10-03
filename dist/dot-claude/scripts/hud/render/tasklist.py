@@ -43,25 +43,36 @@ def headline(head: Headline) -> Text:
             line.append(f" {head.turns}ターン {head.tool}".rstrip(), style=DIM)
     else:
         line.append(f"{head.doing} · スタック済み {head.stacked}/{head.total}", style=DIM)
-    line.append_text(driver_notes(head))
     if head.waiting:
         line.append(f" · 回答待ち {' '.join(head.waiting)}", style=YELLOW)
     if head.escalated:
         line.append(f" · エスカレーション {head.escalated}", style=YELLOW)
+    # 端末の幅で行末から切れるので、回答待ちより後ろに短く置く。呼び直し方は autodev-watch の詳細に出す
+    for note in driver_notes(head, brief=True):
+        line.append(" · ").append_text(note)
     if head.overview_pr:
         line.append(f" · 概要 PR #{head.overview_pr}", style=DIM)
     return line
 
 
-def driver_notes(head: Headline) -> Text:
+def driver_notes(head: Headline, *, brief: bool = False) -> list[Text]:
     """driver が止まっている・前の driver の子が残っている。どちらも人が動くまで直らない。"""
-    out = Text()
+    notes: list[Text] = []
     if head.stopped:
-        out.append(f" · driver が止まっている（run --name {head.run_name} で呼び直す）", style=RED)
+        notes.append(
+            Text(
+                "driver 停止"
+                if brief
+                else f"driver が止まっている（run --name {head.run_name} で呼び直す）",
+                style=RED,
+            )
+        )
     if head.leftovers:
         pids = " ".join(map(str, head.leftovers))
-        out.append(f" · 前の driver の子が生きている pid {pids}", style=RED)
-    return out
+        notes.append(
+            Text(f"{'残った子' if brief else '前の driver の子が生きている'} pid {pids}", style=RED)
+        )
+    return notes
 
 
 def pipeline(steps: list[Step]) -> Text:

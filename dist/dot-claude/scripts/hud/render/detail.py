@@ -70,10 +70,9 @@ def run_detail(head: Headline, st: dict, now: dt.datetime) -> Group:
     parts: list[Any] = [title, run_meta(st, now)]
     notes = driver_notes(head)
     if head.panic_cause:
-        notes.append(f" · パニックの原因: {head.panic_cause}", style=RED)
-    if notes.plain:
-        # 頭の「 · 」は見出しに続けるときの区切りなので、行の頭では落とす
-        parts.append(notes[3:])
+        notes.append(Text(f"パニックの原因: {head.panic_cause}", style=RED))
+    if notes:
+        parts.append(Text(" · ").join(notes))
     parts.append(Text())
 
     pct = head.stacked / head.total * 100 if head.total else 0.0

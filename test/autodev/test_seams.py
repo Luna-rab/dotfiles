@@ -1695,7 +1695,8 @@ def asks_user_when_woken(world: World, eid: EventId, event: Event) -> list[Comma
     return asks_user(world, eid, event)
 
 
-def test_回答とラン統括の再計画が前後しても閉じたエスカレーションへの回答でラン統括を起こさない():
+def test_回答とラン統括の再計画が前後したら回答に閉じた印が立ちランは終わりまで進む():
+    # 起こさないことそのものは、test_supervision.py の表と test_run.py で確かめている
     world = World(
         impl_supervisor, run_supervisor(), asks_user_when_woken, script=replan_on_ask_script
     )
@@ -1724,7 +1725,7 @@ def test_回答とラン統括の再計画が前後しても閉じたエスカ�
     world.run_stages()
     (recorded,) = world.events(AnswerRecorded)
     assert recorded.escalation_closed
-    # 起こしていれば answer を拒まれていた（process が AssertionError にする）
+    # ラン統括が回答に応じなくても、再計画からランが仕上げまで進む
     assert world.events(EscalationAnswered) == []
     assert world.run.finished
 

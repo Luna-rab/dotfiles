@@ -23,8 +23,12 @@ from pathlib import Path
 from typing import Any
 
 from ..domain import codec
-from ..domain.aggregate import Aggregate
-from ..domain.design import Design
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.design import Design
+from ..domain.aggregates.review_ledger import ReviewLedger
+from ..domain.aggregates.run import Run
+from ..domain.aggregates.stack import Stack
+from ..domain.aggregates.task import Task
 from ..domain.events.base import Event
 from ..domain.events.design import DesignRevisionStarted
 from ..domain.events.run import (
@@ -34,12 +38,8 @@ from ..domain.events.run import (
     ReplanRequested,
 )
 from ..domain.flow import FlowStep
-from ..domain.review import ReviewLedger
-from ..domain.run import Run
-from ..domain.stack import Stack
 from ..domain.stages import STAGE_SPECS
 from ..domain.supervision import Notice, Supervisor, Wake, wake_for
-from ..domain.task import Task
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef
 from ..domain.value_objects.design_version import DesignVersion

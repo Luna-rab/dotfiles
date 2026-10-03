@@ -32,8 +32,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
-from .aggregate import Aggregate, Rejected, applies, handles
-from .commands.task import (
+from ..commands.task import (
     AbandonFlow,
     AcceptFlow,
     AddNote,
@@ -56,9 +55,9 @@ from .commands.task import (
     ResumeStage,
     StopTask,
 )
-from .events.base import Event
-from .events.run import EscalationRaised
-from .events.task import (
+from ..events.base import Event
+from ..events.run import EscalationRaised
+from ..events.task import (
     BaseRecorded,
     BranchRebased,
     EscalationClosed,
@@ -87,12 +86,12 @@ from .events.task import (
     TaskStopped,
     WorktreeReady,
 )
-from .flow import Cursor, Flow, FlowStep, FlowValidator
-from .guard import cut_off_by_denials
-from .results import has_report, parse_result, read_report
-from .services.escalation_router import EscalationRouter, task_of_stream
-from .services.gate import GateEvaluator
-from .stages import (
+from ..flow import Cursor, Flow, FlowStep, FlowValidator
+from ..guard import cut_off_by_denials
+from ..results import has_report, parse_result, read_report
+from ..services.escalation_router import EscalationRouter, task_of_stream
+from ..services.gate import GateEvaluator
+from ..stages import (
     STAGE_SPECS,
     EvidenceCheck,
     Handoff,
@@ -104,33 +103,34 @@ from .stages import (
     has_own_commits,
     inner_with,
 )
-from .value_objects.artifact_kind import RUN_SHARED_ARTIFACTS, ArtifactKind
-from .value_objects.artifact_ref import ArtifactRef
-from .value_objects.base import InvalidValue
-from .value_objects.branch_name import BranchName
-from .value_objects.commit_sha import CommitSha
-from .value_objects.decision import Decision
-from .value_objects.decision_origin import DecisionOrigin
-from .value_objects.design_version import DesignVersion
-from .value_objects.escalation_kind import EscalationKind
-from .value_objects.event_id import EventId
-from .value_objects.evidence import Evidence
-from .value_objects.execution_id import ExecutionId
-from .value_objects.finding_id import FindingId
-from .value_objects.gate_report import GateReport
-from .value_objects.hint import Hint
-from .value_objects.interrupt_cause import InterruptCause
-from .value_objects.pointers import Pointers
-from .value_objects.question_id import QuestionId
-from .value_objects.session_id import SessionId
-from .value_objects.stage_exit import StageExit
-from .value_objects.stage_kind import StageKind
-from .value_objects.stage_result import StageResult
-from .value_objects.stall_cause import StallCause
-from .value_objects.stream_id import StreamId
-from .value_objects.task_id import TaskId
-from .value_objects.task_kind import TaskKind
-from .value_objects.task_spec import TaskSpec
+from ..value_objects.artifact_kind import RUN_SHARED_ARTIFACTS, ArtifactKind
+from ..value_objects.artifact_ref import ArtifactRef
+from ..value_objects.base import InvalidValue
+from ..value_objects.branch_name import BranchName
+from ..value_objects.commit_sha import CommitSha
+from ..value_objects.decision import Decision
+from ..value_objects.decision_origin import DecisionOrigin
+from ..value_objects.design_version import DesignVersion
+from ..value_objects.escalation_kind import EscalationKind
+from ..value_objects.event_id import EventId
+from ..value_objects.evidence import Evidence
+from ..value_objects.execution_id import ExecutionId
+from ..value_objects.finding_id import FindingId
+from ..value_objects.gate_report import GateReport
+from ..value_objects.hint import Hint
+from ..value_objects.interrupt_cause import InterruptCause
+from ..value_objects.pointers import Pointers
+from ..value_objects.question_id import QuestionId
+from ..value_objects.session_id import SessionId
+from ..value_objects.stage_exit import StageExit
+from ..value_objects.stage_kind import StageKind
+from ..value_objects.stage_result import StageResult
+from ..value_objects.stall_cause import StallCause
+from ..value_objects.stream_id import StreamId
+from ..value_objects.task_id import TaskId
+from ..value_objects.task_kind import TaskKind
+from ..value_objects.task_spec import TaskSpec
+from .base import Aggregate, Rejected, applies, handles
 
 _S = StageKind
 _E = EscalationKind

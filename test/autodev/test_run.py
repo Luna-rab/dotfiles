@@ -6,7 +6,8 @@ from dataclasses import replace
 
 import pytest
 from autodev_harness import CLI, DRIVER, POLICY, RUN_SUPERVISOR, Loop, names, new_id, of_type
-from autodevlib.domain.aggregate import Rejected
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.run import Run
 from autodevlib.domain.commands.run import (
     AnswerEscalation,
     ApplyPlan,
@@ -49,7 +50,6 @@ from autodevlib.domain.events.run import (
     TaskSuperseded,
 )
 from autodevlib.domain.events.task import EscalationClosed
-from autodevlib.domain.run import Run
 from autodevlib.domain.services.escalation_router import SupervisorLevel
 from autodevlib.domain.supervision import wake_for
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind

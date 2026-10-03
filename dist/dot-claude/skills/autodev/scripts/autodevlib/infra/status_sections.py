@@ -12,15 +12,15 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from ..domain.aggregate import Aggregate
-from ..domain.design import Design
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.design import Design
+from ..domain.aggregates.questions import Questions
+from ..domain.aggregates.run import Run, TaskEntry
+from ..domain.aggregates.stack import Stack
+from ..domain.aggregates.task import Execution, ExecutionStatus, Task
 from ..domain.events.base import Event
 from ..domain.events.run import RunStarted
 from ..domain.events.task import StageStarted
-from ..domain.questions import Questions
-from ..domain.run import Run, TaskEntry
-from ..domain.stack import Stack
-from ..domain.task import Execution, ExecutionStatus, Task
 from ..domain.value_objects.git_job import GitJob
 from ..domain.value_objects.stack_entry import StackEntry
 from ..domain.value_objects.stream_id import StreamId

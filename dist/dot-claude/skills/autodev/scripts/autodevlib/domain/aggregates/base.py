@@ -49,12 +49,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any, ClassVar, TypeVar
 
-from .commands.base import Command
-from .events.base import Event
-from .value_objects.command_id import CommandId
-from .value_objects.event_id import EventId
-from .value_objects.issuer_kind import IssuerKind
-from .value_objects.stream_id import StreamId
+from ..commands.base import Command
+from ..events.base import Event
+from ..value_objects.command_id import CommandId
+from ..value_objects.event_id import EventId
+from ..value_objects.issuer_kind import IssuerKind
+from ..value_objects.stream_id import StreamId
 
 
 class Rejected(Exception):

@@ -112,7 +112,7 @@ def test_ドメイン層のファイルがある():
         "commands/base.py",
         "stages.py",
         "flow.py",
-        "aggregate.py",
+        "aggregates/base.py",
     } <= names
 
 

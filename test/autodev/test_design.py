@@ -5,7 +5,8 @@ from __future__ import annotations
 import itertools
 
 import pytest
-from autodevlib.domain.aggregate import Rejected
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.design import Design
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.design import (
     DiscardProposal,
@@ -16,7 +17,6 @@ from autodevlib.domain.commands.design import (
     ReviseDesign,
     SettleDesign,
 )
-from autodevlib.domain.design import Design
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.design import (
     DesignAmbiguous,

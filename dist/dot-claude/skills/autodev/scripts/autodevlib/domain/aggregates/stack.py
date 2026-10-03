@@ -43,8 +43,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .aggregate import Aggregate, Rejected, applies, handles
-from .commands.stack import (
+from ..commands.stack import (
     AppendEntry,
     DropGitJob,
     EnqueueGitJob,
@@ -61,9 +60,9 @@ from .commands.stack import (
     UnstackFrom,
     WithdrawRequest,
 )
-from .events.base import Event
-from .events.review_ledger import ResultReceived, ResultRefused
-from .events.stack import (
+from ..events.base import Event
+from ..events.review_ledger import ResultReceived, ResultRefused
+from ..events.stack import (
     GitJobDropped,
     GitJobFinished,
     GitJobQueued,
@@ -79,18 +78,19 @@ from .events.stack import (
     StackingResumed,
     TaskStacked,
 )
-from .value_objects.branch_name import BranchName
-from .value_objects.execution_id import ExecutionId
-from .value_objects.flow_ending import FlowEnding
-from .value_objects.git_job import GitJob
-from .value_objects.git_job_kind import GitJobKind
-from .value_objects.git_job_outcome import GitJobOutcome
-from .value_objects.limits import MAX_JOB_RETURNS
-from .value_objects.pr_number import PrNumber
-from .value_objects.stack_entry import StackEntry
-from .value_objects.stream_id import StreamId
-from .value_objects.task_id import TaskId
-from .value_objects.task_kind import TaskKind
+from ..value_objects.branch_name import BranchName
+from ..value_objects.execution_id import ExecutionId
+from ..value_objects.flow_ending import FlowEnding
+from ..value_objects.git_job import GitJob
+from ..value_objects.git_job_kind import GitJobKind
+from ..value_objects.git_job_outcome import GitJobOutcome
+from ..value_objects.limits import MAX_JOB_RETURNS
+from ..value_objects.pr_number import PrNumber
+from ..value_objects.stack_entry import StackEntry
+from ..value_objects.stream_id import StreamId
+from ..value_objects.task_id import TaskId
+from ..value_objects.task_kind import TaskKind
+from .base import Aggregate, Rejected, applies, handles
 
 _J = GitJobKind
 

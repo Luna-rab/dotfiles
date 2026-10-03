@@ -48,8 +48,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from .aggregate import Aggregate, Rejected, applies, handles
-from .commands.design import (
+from ..commands.design import (
     DiscardProposal,
     MarkAmbiguous,
     MarkReverted,
@@ -58,8 +57,8 @@ from .commands.design import (
     ReviseDesign,
     SettleDesign,
 )
-from .events.base import Event
-from .events.design import (
+from ..events.base import Event
+from ..events.design import (
     DesignAmbiguous,
     DesignProposalAbandoned,
     DesignProposed,
@@ -70,19 +69,20 @@ from .events.design import (
     DesignRoundsReset,
     DesignSettled,
 )
-from .events.review_ledger import ResultReceived, ResultRefused
-from .stages import spec_of
-from .value_objects.artifact_kind import ArtifactKind
-from .value_objects.artifact_ref import ArtifactRef
-from .value_objects.design_version import DesignVersion
-from .value_objects.escalation_kind import EscalationKind
-from .value_objects.execution_id import ExecutionId
-from .value_objects.limits import MAX_DESIGN_ROUNDS
-from .value_objects.proposal import Proposal
-from .value_objects.rating import Rating
-from .value_objects.stage_kind import StageKind
-from .value_objects.stream_id import StreamId
-from .value_objects.task_id import TaskId
+from ..events.review_ledger import ResultReceived, ResultRefused
+from ..stages import spec_of
+from ..value_objects.artifact_kind import ArtifactKind
+from ..value_objects.artifact_ref import ArtifactRef
+from ..value_objects.design_version import DesignVersion
+from ..value_objects.escalation_kind import EscalationKind
+from ..value_objects.execution_id import ExecutionId
+from ..value_objects.limits import MAX_DESIGN_ROUNDS
+from ..value_objects.proposal import Proposal
+from ..value_objects.rating import Rating
+from ..value_objects.stage_kind import StageKind
+from ..value_objects.stream_id import StreamId
+from ..value_objects.task_id import TaskId
+from .base import Aggregate, Rejected, applies, handles
 
 #: 設計を判定するステージ
 _DESIGN_JUDGE = StageKind.DESIGN_JUDGE

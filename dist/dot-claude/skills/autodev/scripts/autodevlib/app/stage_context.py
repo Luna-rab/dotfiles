@@ -12,15 +12,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..domain.aggregate import Aggregate
-from ..domain.design import Design
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.design import Design
+from ..domain.aggregates.review_ledger import ReviewLedger
+from ..domain.aggregates.run import Run
+from ..domain.aggregates.stack import Stack
+from ..domain.aggregates.task import ExecutionStatus, StartMode, Task
 from ..domain.events.run import RunStarted
 from ..domain.flow import FlowStep
-from ..domain.review import ReviewLedger
-from ..domain.run import Run
-from ..domain.stack import Stack
 from ..domain.stages import STAGE_SPECS, StageSpec, StepArgument
-from ..domain.task import ExecutionStatus, StartMode, Task
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef
 from ..domain.value_objects.branch_name import BranchName

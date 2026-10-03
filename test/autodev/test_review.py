@@ -5,7 +5,8 @@ from __future__ import annotations
 import itertools
 
 import pytest
-from autodevlib.domain.aggregate import Rejected
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.review_ledger import JudgeCapability, ReviewLedger
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.review_ledger import (
     CarryFinding,
@@ -35,7 +36,6 @@ from autodevlib.domain.events.review_ledger import (
     ResultReceived,
     ResultRefused,
 )
-from autodevlib.domain.review import JudgeCapability, ReviewLedger
 from autodevlib.domain.services.stall import StallPolicy
 from autodevlib.domain.value_objects.base import InvalidValue
 from autodevlib.domain.value_objects.command_id import CommandId

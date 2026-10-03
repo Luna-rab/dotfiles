@@ -12,12 +12,12 @@ from pathlib import Path
 from ..adapters import git
 from ..adapters.agent_runtime import AgentRuntime
 from ..adapters.forge import Forge
-from ..domain.aggregate import Rejected
+from ..domain.aggregates.base import Rejected
+from ..domain.aggregates.questions import Questions
+from ..domain.aggregates.run import Run
+from ..domain.aggregates.task import Task
 from ..domain.commands.questions import AnswerQuestion
 from ..domain.events.run import RunStarted
-from ..domain.questions import Questions
-from ..domain.run import Run
-from ..domain.task import Task
 from ..domain.value_objects.execution_id import ExecutionId
 from ..domain.value_objects.stream_id import StreamId
 from ..infra.eventstore import EventReader

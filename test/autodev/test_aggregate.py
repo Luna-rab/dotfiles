@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import pytest
 from autodevlib import domain
-from autodevlib.domain.aggregate import Aggregate, Rejected, UnknownEvent, applies, handles
+from autodevlib.domain.aggregates.base import Aggregate, Rejected, UnknownEvent, applies, handles
 from autodevlib.domain.commands.registry import COMMANDS_BY_AGGREGATE
 from autodevlib.domain.commands.run import EscalateToRun, StartTask
 from autodevlib.domain.commands.stack import AppendEntry, EnqueueStack, TakeNextGitJob

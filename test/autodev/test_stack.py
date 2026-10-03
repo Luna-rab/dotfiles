@@ -5,7 +5,8 @@ from __future__ import annotations
 import itertools
 
 import pytest
-from autodevlib.domain.aggregate import Rejected
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.stack import Stack
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.stack import (
     AppendEntry,
@@ -42,7 +43,6 @@ from autodevlib.domain.events.stack import (
     StackingResumed,
     TaskStacked,
 )
-from autodevlib.domain.stack import Stack
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.event_id import EventId

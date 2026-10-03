@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 from autodev_harness import CLI, DRIVER, POLICY, SESSION, Loop, names, new_id, of_type
 from autodev_samples import stage_result
-from autodevlib.domain.aggregate import Rejected
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.task import ExecutionStatus, Task
 from autodevlib.domain.commands.task import (
     AbandonFlow,
     AcceptFlow,
@@ -57,7 +58,6 @@ from autodevlib.domain.events.task import (
 from autodevlib.domain.flow import Cursor, FlowStep, Reviewers, git_job_flow
 from autodevlib.domain.services.escalation_router import EscalationRouter
 from autodevlib.domain.stages import STAGE_SPECS, Handoff, InnerRole, StageMode
-from autodevlib.domain.task import ExecutionStatus, Task
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

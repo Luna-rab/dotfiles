@@ -29,6 +29,10 @@ from autodevlib.app.mainloop import LoopExit
 from autodevlib.app.mainloop import Outcome as Outcome_
 from autodevlib.app.prompts import asset_name, contract_inputs
 from autodevlib.app.supervisors import MAX_ATTEMPTS, MAX_CORRECTIONS
+from autodevlib.domain.aggregates.questions import Questions
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.stack import Stack
+from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.questions import AnswerQuestion
 from autodevlib.domain.events.design import DesignSettled
 from autodevlib.domain.events.questions import QuestionPosted
@@ -45,10 +49,6 @@ from autodevlib.domain.events.task import (
     EscalationResolved,
     WorktreeReady,
 )
-from autodevlib.domain.questions import Questions
-from autodevlib.domain.run import Run
-from autodevlib.domain.stack import Stack
-from autodevlib.domain.task import Task
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.commit_sha import CommitSha

@@ -22,12 +22,12 @@ from autodevlib.app.driver import Driver, DriverParts, StartRequest
 from autodevlib.app.executor import StageContext, StagePrompt
 from autodevlib.app.files import write_design
 from autodevlib.app.mainloop import Ticket
+from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.run import Panic, StartRun
 from autodevlib.domain.commands.task import BeginStage, ReportStageResult
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.flow import FlowStep
 from autodevlib.domain.stages import STAGE_SPECS, StageMode
-from autodevlib.domain.task import Task
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

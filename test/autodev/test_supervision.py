@@ -6,6 +6,9 @@ import dataclasses
 
 import pytest
 from autodev_samples import sample
+from autodevlib.domain.aggregates.questions import Questions
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted
 from autodevlib.domain.events.run import (
@@ -33,10 +36,7 @@ from autodevlib.domain.events.task import (
     WorktreeReady,
 )
 from autodevlib.domain.flow import Flow, FlowStep
-from autodevlib.domain.questions import Questions
-from autodevlib.domain.run import Run
 from autodevlib.domain.supervision import Notice, Supervisor, Wake, wake_for
-from autodevlib.domain.task import Task
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.commit_sha import CommitSha

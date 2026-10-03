@@ -24,6 +24,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any
 
+from .aggregates.design import DESIGN_WAITS
+from .aggregates.review_ledger import JudgeCapability
 from .commands.base import Command
 from .commands.design import (
     DiscardProposal,
@@ -95,7 +97,6 @@ from .commands.task import (
     ResumeStage,
     StopTask,
 )
-from .design import DESIGN_WAITS
 from .events.base import Event
 from .events.design import (
     DesignAmbiguous,
@@ -152,7 +153,6 @@ from .events.task import (
     WorktreeReady,
 )
 from .flow import git_job_flow, planning_flow
-from .review import JudgeCapability
 from .services.escalation_router import EscalationRouter, SupervisorLevel, task_of_stream
 from .services.task_scheduler import TaskScheduler
 from .stages import Handoff

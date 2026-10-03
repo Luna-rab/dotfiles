@@ -33,15 +33,15 @@ from ..adapters import children
 from ..adapters._proc import KILL_AFTER_SECONDS
 from ..adapters.agent_runtime import INTERRUPT_GRACE
 from ..adapters.guard import write_hook_settings
-from ..domain.aggregate import Aggregate
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.questions import Questions
+from ..domain.aggregates.run import Run
+from ..domain.aggregates.task import Task
 from ..domain.commands.run import Panic, ResumeRun, StartRun
 from ..domain.events.run import RunStarted
 from ..domain.policies import RECEIVERS
-from ..domain.questions import Questions
-from ..domain.run import Run
 from ..domain.streams import aggregate_for
 from ..domain.supervision import Supervisor, wake_for
-from ..domain.task import Task
 from ..domain.value_objects.command_id import CommandId
 from ..domain.value_objects.event_id import EventId
 from ..domain.value_objects.interrupt_cause import InterruptCause

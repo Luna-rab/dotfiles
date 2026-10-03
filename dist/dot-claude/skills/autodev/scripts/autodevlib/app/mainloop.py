@@ -44,7 +44,7 @@ from types import MappingProxyType, TracebackType
 from typing import Protocol, runtime_checkable
 
 from ..domain import codec
-from ..domain.aggregate import Aggregate, Rejected
+from ..domain.aggregates.base import Aggregate, Rejected
 from ..domain.commands.base import Command
 from ..domain.commands.task import MarkInterrupted
 from ..domain.events.base import Event

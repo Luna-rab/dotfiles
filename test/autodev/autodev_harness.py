@@ -10,7 +10,7 @@ import itertools
 from collections.abc import Iterable
 from typing import Generic, TypeVar
 
-from autodevlib.domain.aggregate import Aggregate
+from autodevlib.domain.aggregates.base import Aggregate
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.value_objects.command_id import CommandId

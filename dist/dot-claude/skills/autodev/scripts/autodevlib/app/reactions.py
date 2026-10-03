@@ -24,7 +24,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from ..domain.aggregate import Aggregate
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.questions import Questions
+from ..domain.aggregates.task import Task
 from ..domain.commands.base import Command
 from ..domain.events.design import DesignSettled
 from ..domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
@@ -37,9 +39,7 @@ from ..domain.events.task import (
     StageStarted,
 )
 from ..domain.policies import FOLLOW_UPS
-from ..domain.questions import Questions
 from ..domain.supervision import wake_for
-from ..domain.task import Task
 from ..domain.value_objects.stream_id import StreamId
 from ..infra.paths import RunPaths
 from .executor import StageExecutor

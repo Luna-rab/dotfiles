@@ -57,13 +57,13 @@ from ..adapters.git import Git
 from ..adapters.guard import ask_question, guard_context, stage_env, write_hook_settings
 from ..adapters.process import ProcessRunner
 from ..adapters.schema import load_schema, normalize_nulls, violations
-from ..domain.aggregate import Aggregate
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.task import ExecutionStatus
 from ..domain.commands.base import Command
 from ..domain.commands.run import Panic
 from ..domain.commands.task import BeginStage, ReportBeginFailure, ReportStageResult
 from ..domain.guard import cut_off_by_denials
 from ..domain.stages import BodyTarget, ResultField, StageMode, StageSpec
-from ..domain.task import ExecutionStatus
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef
 from ..domain.value_objects.base import InvalidValue

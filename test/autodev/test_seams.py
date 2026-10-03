@@ -20,7 +20,13 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal
 
 from autodev_samples import stage_result
-from autodevlib.domain.aggregate import Aggregate, Rejected
+from autodevlib.domain.aggregates.base import Aggregate, Rejected
+from autodevlib.domain.aggregates.design import DESIGN_WAITS, Design
+from autodevlib.domain.aggregates.questions import Questions
+from autodevlib.domain.aggregates.review_ledger import JudgeCapability, ReviewLedger
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.stack import Stack
+from autodevlib.domain.aggregates.task import ExecutionStatus, Task
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.design import (
     DiscardProposal,
@@ -104,7 +110,6 @@ from autodevlib.domain.commands.task import (
     ResumeStage,
     StopTask,
 )
-from autodevlib.domain.design import DESIGN_WAITS, Design
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.design import (
     DesignAmbiguous,
@@ -172,14 +177,9 @@ from autodevlib.domain.events.task import (
     WorktreeReady,
 )
 from autodevlib.domain.flow import FlowStep, Reviewers, git_job_flow, planning_flow
-from autodevlib.domain.questions import Questions
-from autodevlib.domain.review import JudgeCapability, ReviewLedger
-from autodevlib.domain.run import Run
 from autodevlib.domain.services.escalation_router import task_of_stream
-from autodevlib.domain.stack import Stack
 from autodevlib.domain.stages import STAGE_SPECS, Handoff, StageMode
 from autodevlib.domain.supervision import wake_for
-from autodevlib.domain.task import ExecutionStatus, Task
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

@@ -20,7 +20,8 @@ from autodev_fakes import (
     task,
 )
 from autodevlib.app.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
-from autodevlib.domain.aggregate import Aggregate
+from autodevlib.domain.aggregates.base import Aggregate
+from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.task import (
     AcceptFlow,
@@ -33,7 +34,6 @@ from autodevlib.domain.commands.task import (
 from autodevlib.domain.events.stack import GitJobQueued
 from autodevlib.domain.events.task import StageInterrupted, StageStarted
 from autodevlib.domain.flow import FlowStep, Reviewers
-from autodevlib.domain.task import Task
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

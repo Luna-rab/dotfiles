@@ -42,7 +42,7 @@ def build_status(
         raise ValueError(f"骨組みの欄と同じ名前の欄は差し込めない: {clash}")
     with EventReader.open(paths.events_db) as reader:
         history = decoded(reader.read_all())
-    view = Replayed(replay(history, factory), history, read_progress(paths))
+    view = Replayed(replay(history, factory), history, read_progress(paths), factory)
     last = history[-1][0] if history else None
     status: dict[str, Any] = {
         "format": FORMAT,
@@ -64,8 +64,9 @@ def run_status(paths: RunPaths) -> dict[str, Any]:
 def all_statuses(env: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     """状態の置き場にある全ランの `status --json`（ラン名の順）。HUD が一覧に使う。
 
-    読めないラン（ラン名の規則に合わない所・events.db の無い所・この版が読めないイベント）は飛ばす。
-    1 本が読めないだけで、HUD の一覧を全部消さないためである。
+    events.db の無い所はランではないので載せない。読めないラン（ラン名の規則に合わない・events.db が
+    壊れた・この版が読めないイベント・欄を作る所の不具合）は、消さずに `{"name", "error"}` で残す。
+    消すと、欄を作る所の不具合で全ランが読めないときに、HUD が「ランが無い」と見せる。
     """
     root = state_root(env)
     if not root.is_dir():
@@ -76,9 +77,10 @@ def all_statuses(env: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
             continue
         try:
             found.append(run_status(RunPaths(RunName(folder.name), folder)))
-        except Exception:
-            # どの読み損じでも、そのランだけを飛ばす
-            log.debug("ラン %s を読めない", folder.name, exc_info=True)
+        except Exception as error:
+            # 1 本が読めないだけで、ほかのランの一覧まで落とさない
+            log.warning("ラン %s を読めない", folder.name, exc_info=True)
+            found.append({"name": folder.name, "error": f"{type(error).__name__}: {error}"})
     return found
 
 

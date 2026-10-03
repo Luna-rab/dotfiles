@@ -193,12 +193,13 @@
 
 ### status --json の形（段 6）
 
-HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形。組み立てるのは `infra/status.py`（`run_status`・`all_statuses`）と `infra/status_sections.py` で、集約をそのまま JSON にしない。状態の見せ方の判断（ランがどこにいるか・段がどこまで進んだか など）は、集約の問い（`Run.phase`・`Task.step_states`・`Task.current_executions`・`Design.proposal_state`・`Questions.open_questions`・`Stack.entry_of`・`Run.applied_design`）が答える。
+HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形。組み立てるのは `infra/status.py`（`run_status`・`all_statuses`）と `infra/status_sections.py` で、集約をそのまま JSON にしない。状態の見せ方の判断（ランがどこにいるか・段がどこまで進んだか など）は、集約の問い（`Run.phase`・`Task.step_states`・`Task.flow_finished`・`Task.current_executions`・`Design.proposal_state`・`Questions.open_questions`・`Stack.entry_of`・`Run.applied_design`）が答える。
 
-- `run_status` は 1 つのランのオブジェクト（ランが無ければ FileNotFoundError）、`all_statuses` は状態の置き場にある全ランの配列（ラン名の順。読めないランは飛ばす）を返す。どちらを CLI のどの呼び方に当てるかは `cli.py` が決める
+- `run_status` は 1 つのランのオブジェクト（ランが無ければ FileNotFoundError）、`all_statuses` は状態の置き場にある全ランの配列（ラン名の順）を返す。どちらを CLI のどの呼び方に当てるかは `cli.py` が決める
+- `all_statuses` は、`events.db` のある所が読めなければ（ラン名の規則に合わない・壊れた・この版が読めないイベント・欄を作る所の不具合）、そのランを `{"name": "<ディレクトリ名>", "error": "<例外の種類>: <文>"}` で残す。`error` のある要素には、ほかの欄が無い。`events.db` の無い所はランではないので載せない
 - 欄を足すだけなら `format` は上げない。読む側は知らない欄を無視する
 - 時刻はすべて UTC の ISO 8601（`2026-10-03T01:02:03.456789Z`）。イベントを確定した時刻で、ステージが走り始めた正確な時刻ではない
-- driver が生きているかは、この形からは分からない。`updated_at` と `progress.updated` が古ければ止まっているとみなす
+- **driver が生きているかは、この形からは分からない。** `updated_at` はイベントを確定した時刻、`progress.updated` は進み具合を最後に書いた時刻で、どちらも生存の目安にしない。決定的なステージは進み具合を始めに 1 回しか書かず、LLM のステージも長い Bash の間は書かないので、走っていても古くなる
 
 ```json
 {
@@ -217,7 +218,7 @@ HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形�
               "steps": [{"stage": "TestGen", "state": "done"},
                         {"stage": "ReviewLoop", "state": "current", "inner": "Judge", "round": 2},
                         {"stage": "Gate", "state": "pending"}]},
-     "executions": [{"id": "task1-Judge-r2-a1", "stage": "Judge", "round": 2, "attempt": 1, "step": 1,
+     "executions": [{"id": "task1-Judge-r2-a1", "stage": "Judge", "round": 2, "attempt": 1, "flow_version": 1, "step": 1,
                      "status": "running", "started_at": "…",
                      "progress": {"stage": "Judge", "state": "running", "turns": 7, "lastTool": "Read",
                                   "hookDenials": 0, "events": 41, "updated": "…"}}],
@@ -248,15 +249,15 @@ HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形�
 | `tasks[].kind` | タスクの種類 | `planning`・`implementation`・`git` |
 | `tasks[].status` | Run が持つ状態（ADDENDUM §2・§11） | `pending`・`running`・`escalated`・`gated`・`stacking`・`stacked`・`dropped`（止めた）・`superseded`（引き継がれた）・`discarded`（積んだ後に破棄した）・`finished`（計画・git 管理タスクの終わり） |
 | `tasks[].terminal` | 終端の状態か。`stacked` も終端に数える | |
-| `tasks[].pr`・`branch` | 今スタックに積んである PR の番号（積んでいなければ `null`）と、タスクのブランチ | |
+| `tasks[].pr`・`branch` | 今スタックに積んである PR の番号（積んでいなければ `null`）と、タスクのブランチ。計画タスクと git 管理タスクは常に `null`（概要 PR は `stack.overview`） | |
 | `tasks[].awaiting_requeue` | 破棄した所より上にあり、閉じ終えたら積み直すのを待っている（`stacked` のまま） | |
 | `tasks[].flow` | 今のフロー。無ければ `null`（始めていない・範囲が変わって組み直しを待つ） | |
 | `flow.steps[].state` | 段の進み具合。`current` の段が合成ステージなら、`inner`（中のステージ）と `round` が付く | `done`・`skipped`（飛ばした。衝突しなかった Rebase の後など）・`current`・`pending` |
 | `flow.finished`・`flow.halted` | フローを終えた・捨てた（置き換えを待つ） | |
 | `flow.job` | git 管理タスクの処理している仕事（`id`・`kind`・`task`・`branch`）。ほかは `null` | `kind`: `cut-overview`・`cut-task`・`cut-stack-top`・`open-overview`・`rewrite-overview`・`stack`・`discard`・`finish` |
-| `tasks[].executions[]` | 今のフローの実行と、書き直す前のフローでまだ走っている実行（始めた順）。`stage` は `StageKind` の値 | `status`: `requested`（始めるのを待つ）・`running`・`completed`・`reported`（報告で終えた）・`failed`・`interrupted`・`deferred`（ask の回答待ち）・`abandoned`・`restarted`・`refused`（結果を受けてもらえなかった） |
+| `tasks[].executions[]` | 今のフローの実行と、書き直す前のフローでまだ走っている実行（始めた順）。`stage` は `StageKind` の値。`step` は `flow_version` の版のフローの段の添字で、`flow_version` が `flow.version` と違えば今の `flow.steps` の段ではない | `status`: `requested`（始めるのを待つ）・`running`・`completed`・`reported`（報告で終えた）・`failed`・`interrupted`・`deferred`（ask の回答待ち）・`abandoned`・`restarted`・`refused`（結果を受けてもらえなかった） |
 | `executions[].started_at` | 最後に StageStarted を確定した時刻（再開したら再開した時刻）。まだなら `null` | |
-| `executions[].progress` | 実行器が数秒ごとに書く進み具合（`progress/<id>.json`）。走っていない・ファイルが無ければ `null`。`turns`・`lastTool`・`hookDenials`・`events` は LLM のステージだけ | |
+| `executions[].progress` | 実行器が書く進み具合（`progress/<id>.json`）。`status` が `running` でない・ファイルが無ければ `null`。`updated` は最後に書いた時刻で、生存の目安にしない。`turns`・`lastTool`・`hookDenials`・`events` は LLM のステージだけ | |
 | `tasks[].escalations[]` | タスクの側で開いているエスカレーション（`id`・`kind`・`origin` の実行） | `kind`: 下の `escalations[].kind` と同じ |
 | `stack.overview`・`entries[]` | 概要 PR と積んだ PR（下から）。`task`・`branch`・`pr`・`base` | |
 | `stack.queue`・`current`・`parked` | git 管理タスクの仕事の列・処理中の仕事・戻す回数の上限で止めた仕事（形は `flow.job`） | |

@@ -59,6 +59,7 @@ from autodevlib.domain.values import (
     TaskSpec,
     TaskStatus,
 )
+from autodevlib.infra import status_sections
 from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.paths import RunPaths, state_root
 from autodevlib.infra.rejections import Rejection, RejectionLog, read_rejections
@@ -447,11 +448,11 @@ def test_StartRunを拒まれてイベントが無いランも読める(paths: R
     )
 
 
-def test_全ランをラン名の順に返し読めないランは飛ばす(tmp_path: Path):
+def test_全ランをラン名の順に返し読めないランはerrorで残す(tmp_path: Path):
     env = {"AUTODEV_STATE_DIR": str(tmp_path)}
     for name in ("zeta", "alpha"):
         Seed(RunPaths.of(RunName(name), env))(RUN, started(name))
-    # events.db の無い所・ラン名の規則に合わない所・壊れた events.db
+    # events.db の無い所はランではない
     (tmp_path / "pr-body-markers").mkdir()
     (tmp_path / "Bad_Name").mkdir()
     (tmp_path / "Bad_Name" / "events.db").write_bytes(b"")
@@ -459,5 +460,70 @@ def test_全ランをラン名の順に返し読めないランは飛ばす(tmp_
     broken.mkdir()
     (broken / "events.db").write_bytes(b"not sqlite")
 
-    assert [s["name"] for s in all_statuses(env)] == ["alpha", "zeta"]
+    found = all_statuses(env)
+    assert [(s["name"], "error" in s) for s in found] == [
+        ("Bad_Name", True),
+        ("alpha", False),
+        ("broken", True),
+        ("zeta", False),
+    ]
+    assert found[0]["error"].startswith("InvalidValue: ")
     assert all_statuses({"AUTODEV_STATE_DIR": str(tmp_path / "none")}) == []
+
+
+def test_欄を作る所の不具合では全ランをerrorで残して警告する(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    env = {"AUTODEV_STATE_DIR": str(tmp_path)}
+    for name in ("alpha", "beta"):
+        Seed(RunPaths.of(RunName(name), env))(RUN, started(name))
+
+    def broken_section(view: Replayed) -> None:
+        raise KeyError("x")
+
+    monkeypatch.setitem(status_sections.SECTIONS, "run", broken_section)
+
+    assert all_statuses(env) == [
+        {"name": "alpha", "error": "KeyError: 'x'"},
+        {"name": "beta", "error": "KeyError: 'x'"},
+    ]
+    assert [r.levelname for r in caplog.records] == ["WARNING", "WARNING"]
+
+
+def test_型の違う集約を空の集約に置き換えない(paths: RunPaths):
+    loop = MainLoop(
+        EventStore.open(paths.events_db), factory, [], on_rejected=RejectionLog(paths.rejections)
+    )
+    loop.process(enqueue(1, "c1"))
+    with pytest.raises(TypeError, match="Queue"):
+        build_status(paths, factory, {"stack": lambda view: view.stack})
+
+
+def test_書き直す前のフローで走っている実行はフローの版で見分けられる(paths: RunPaths):
+    seed = Seed(paths)
+    seed(RUN, started(), TaskStarted(T1, TaskKind.IMPLEMENTATION, spec=PLAN[0].spec))
+    old = ex(T1, StageKind.IMPL)
+    seed(
+        StreamId.task(T1),
+        TaskOpened(TaskKind.IMPLEMENTATION, PLAN[0].spec),
+        FlowAccepted(
+            Flow((FlowStep(StageKind.TEST_GEN), FlowStep(StageKind.IMPL)), 1), cursor=Cursor(1)
+        ),
+        StageRequested(old, 1),
+        StageStarted(old, HEAD),
+        FlowAccepted(Flow((FlowStep(StageKind.TEST_GEN),), 2)),
+        StageRequested(ex(T1, StageKind.TEST_GEN), 0),
+        StageCompleted(ex(T1, StageKind.TEST_GEN), cursor=Cursor(1)),
+    )
+    # 完了した実行の進み具合のファイルが残っていても見せない
+    write_progress(paths, old, {"turns": 3})
+    write_progress(paths, ex(T1, StageKind.TEST_GEN), {"turns": 9})
+
+    (task1,) = run_status(paths)["tasks"]
+    assert [
+        (e["id"], e["flow_version"], e["step"], e["progress"]) for e in task1["executions"]
+    ] == [
+        ("task1-Impl-r0-a1", 1, 1, {"turns": 3}),
+        ("task1-TestGen-r0-a1", 2, 0, None),
+    ]
+    assert task1["flow"]["version"] == 2

@@ -19,9 +19,9 @@ from ..domain.questions import Questions
 from ..domain.run import Run, TaskEntry
 from ..domain.stack import Stack
 from ..domain.streams import aggregate_for
-from ..domain.task import Execution, Task
+from ..domain.task import Execution, ExecutionStatus, Task
 from ..domain.values import GitJob, StackEntry, StreamId, TaskId
-from .eventstore import StoredEvent
+from .eventstore import AggregateFactory, StoredEvent
 
 A = TypeVar("A", bound=Aggregate)
 
@@ -34,15 +34,19 @@ class Replayed:
     history: Sequence[tuple[StoredEvent, Event]]
     #: `ExecutionId` の文字列 → 進み具合のファイルの中身
     progress: Mapping[str, Any]
+    #: 再生に使ったもの。イベントがまだ無いストリームの集約も、これで作る
+    factory: AggregateFactory = aggregate_for
 
     def get(self, stream: StreamId, kind: type[A]) -> A:
-        """イベントがまだ無いストリームは、イベントが無いときの集約で答える。"""
+        """型が違えば TypeError。空の集約で置き換えると、欄が黙って空になる。"""
         found = self.aggregates.get(stream)
-        if isinstance(found, kind):
-            return found
-        fresh = aggregate_for(stream)
-        assert isinstance(fresh, kind)
-        return fresh
+        if found is None:
+            found = self.factory(stream)
+        if not isinstance(found, kind):
+            raise TypeError(
+                f"{stream} の集約は {type(found).__name__} で、{kind.__name__} ではない"
+            )
+        return found
 
     @property
     def run(self) -> Run:
@@ -112,10 +116,12 @@ def _execution(execution: Execution, view: Replayed, started: Mapping[str, str])
         "stage": execution.id.stage.value,
         "round": execution.id.round,
         "attempt": execution.id.attempt,
+        "flow_version": execution.flow_version,
         "step": execution.step,
         "status": execution.status.value,
         "started_at": started.get(key),
-        "progress": view.progress.get(key),
+        # 実行器が消し損ねた・止めた後に残ったファイルを、走っていない実行に見せない
+        "progress": view.progress.get(key) if execution.status is ExecutionStatus.RUNNING else None,
     }
 
 
@@ -134,7 +140,7 @@ def _flow(task: Task) -> dict[str, Any] | None:
     return {
         "version": flow.version,
         "steps": steps,
-        "finished": task.finished_version == flow.version,
+        "finished": task.flow_finished,
         "halted": task.halted,
         "job": _job(flow.job),
     }
@@ -231,7 +237,6 @@ def plan_section(view: Replayed) -> dict[str, Any]:
     run = view.run
     design = view.get(StreamId.design(), Design)
     proposal = design.proposal
-    state = design.proposal_state
     return {
         "planning": run.planning,
         "planned": run.planned_once,
@@ -241,10 +246,10 @@ def plan_section(view: Replayed) -> dict[str, Any]:
             "versions": [version.value for version in design.versions],
             "settled": _value(design.settled.design) if design.settled is not None else None,
             "proposal": None
-            if proposal is None or state is None
+            if proposal is None
             else {
                 "version": proposal.design.value,
-                "state": state.value,
+                "state": _value(design.proposal_state),
                 "round": design.round,
                 "awaiting": _value(design.awaiting),
             },

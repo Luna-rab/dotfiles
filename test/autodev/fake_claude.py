@@ -207,8 +207,30 @@ def session_not_found() -> None:
 
 
 def max_turns() -> None:
+    """claude 2.1.288 で `--max-turns 1` を超えた形。`result` の欄は無く、理由は `errors` に載る。"""
     read_line()
-    result(subtype="error_max_turns", is_error=True, terminal_reason="max_turns")
+    init()
+    emit(
+        {
+            "type": "result",
+            "subtype": "error_max_turns",
+            "is_error": True,
+            "num_turns": 2,
+            "stop_reason": "tool_use",
+            "terminal_reason": "max_turns",
+            "usage": {"input_tokens": 10, "output_tokens": 190},
+            "total_cost_usd": 0.02,
+            "permission_denials": [],
+            "errors": ["Reached maximum number of turns (1)"],
+        }
+    )
+    drain()
+    sys.exit(1)
+
+
+def result_and_errors() -> None:
+    read_line()
+    result(is_error=True, result="本文", errors=["診断"])
     drain()
     sys.exit(1)
 
@@ -266,6 +288,7 @@ SCENARIOS = {
     "init-then-crash": init_then_crash,
     "session-not-found": session_not_found,
     "max-turns": max_turns,
+    "result-and-errors": result_and_errors,
     "rate-limited": rate_limited,
     "rate-event-then-success": rate_event_then_success,
     "interruptible": interruptible,

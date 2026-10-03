@@ -159,7 +159,7 @@ class AgentOutcome:
     stop_reason: str | None = None
     terminal_reason: str | None = None
     num_turns: int = 0
-    #: result の `result`（最後の応答の本文）
+    #: result の `result`（最後の応答の本文）。無ければ `errors` をつないだもの
     text: str = ""
     #: `structured_output`。返らなかった・object でなければ None（AR-16）
     structured: Mapping[str, Any] | None = None
@@ -582,7 +582,7 @@ class _Collector:
                 initialized=self.initialized,
             )
         structured = final.get("structured_output")
-        text = str(final.get("result") or "")
+        text = str(final.get("result") or "") or _errors(final.get("errors"))
         is_error = final.get("is_error") is True
         api_status = final.get("api_error_status")
         status = (
@@ -646,6 +646,14 @@ def _text(content: Any) -> str:
     if isinstance(content, Sequence):
         return "".join(str(b.get("text") or "") for b in content if isinstance(b, Mapping))
     return ""
+
+
+def _errors(value: Any) -> str:
+    """result の `errors`。`error_max_turns`・`error_during_execution` の result は `result` の欄を
+    持たず、理由はここにだけ載る（claude 2.1.288 で確かめた）。"""
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return ""
+    return "\n".join(str(e) for e in value if isinstance(e, str) and e)
 
 
 def _deferred(value: Any) -> DeferredToolUse | None:

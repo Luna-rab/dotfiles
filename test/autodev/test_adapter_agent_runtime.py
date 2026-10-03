@@ -248,6 +248,8 @@ def test_見つからないセッションを続けるとinitを受けずにresu
     assert got.subtype == "error_during_execution" and got.is_error
     assert got.num_turns == 0
     assert not got.initialized
+    # result の欄は無く、理由は `errors` に載る
+    assert got.text == f"No conversation found with session ID: {SESSION}"
 
 
 def test_ターンの上限で終わった事実を返す(
@@ -258,6 +260,15 @@ def test_ターンの上限で終わった事実を返す(
     assert got.exit_code == 1
     assert got.subtype == "error_max_turns"
     assert got.terminal_reason == "max_turns"
+    assert got.text == "Reached maximum number of turns (1)"
+
+
+def test_resultの本文があればerrorsより本文を返す(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    scenario(monkeypatch, tmp_path, "result-and-errors")
+    got = runtime(claude).run(make_call(tmp_path))
+    assert got.text == "本文"
 
 
 def test_利用枠の上限に当たった事実を返す(

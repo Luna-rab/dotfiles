@@ -765,7 +765,7 @@ class Executor:
         """証拠と、結果の JSON（無ければ None）。形が違っても結果は返し、results/ に残す。
 
         `resumed` は `--resume` で起こしたか。続けられなかったか（作り直すか）は、これと init を受けたか・
-        こちらが kill したかから Task が決める。
+        こちらが止めたか・result のターンの数・defer で止まったかから Task が決める。
         """
         schema = load_schema(
             self._skill / "schemas" / f"{asset_name(context.execution.stage)}.json"
@@ -807,7 +807,8 @@ class Executor:
             hook_denials=outcome.hook_denials,
             resumed=resumed,
             initialized=outcome.initialized,
-            killed=outcome.ending is Ending.KILLED,
+            stopped_by_us=outcome.interrupted is not None or outcome.ending is Ending.KILLED,
+            num_turns=outcome.num_turns if outcome.ending is Ending.RESULT else None,
         )
         return evidence, result
 

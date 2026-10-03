@@ -1182,8 +1182,10 @@ class Evidence:
     resumed: bool = False
     #: claude が `system/init` を出した（セッションを開いてターンを始めた）
     initialized: bool = False
-    #: result が来ないので、こちらが claude を kill した
-    killed: bool = False
+    #: こちらが claude を止めた（interrupt を送った、または result が来ないので kill した）
+    stopped_by_us: bool = False
+    #: result の `num_turns`。result が無ければ None
+    num_turns: int | None = None
 
 
 # --- 計画 ---

@@ -114,8 +114,8 @@ IMPL_FLOW = (
 )
 PASSED = GateReport(tuple(GateItemResult(item, True) for item in GateItem))
 #: `--resume` で起こした claude が、init を出さずに自分で終わった証拠。claude 2.1.288 は
-#: `error_during_execution` の result を返して終わる（result の有無は印にしない）
-LOST_SESSION: dict[str, Any] = {"resumed": True, "initialized": False}
+#: `error_during_execution`・`num_turns: 0` の result を返して終わる
+LOST_SESSION: dict[str, Any] = {"resumed": True, "initialized": False, "num_turns": 0}
 
 
 def gate(*failed: GateItem) -> GateReport:
@@ -1006,8 +1006,14 @@ def test_再開に失敗したら始めた時点のコミットから新しい�
         {**LOST_SESSION, "initialized": True},
         # --resume で起こしていない
         {**LOST_SESSION, "resumed": False},
-        # init の前にこちらが kill した（セッションが在るかは分からない。作り直すと前の仕事を捨てる）
-        {**LOST_SESSION, "killed": True},
+        # init の前にこちらが kill した・interrupt して result が返った（セッションが在るかは
+        # 分からない。作り直すと前の仕事を捨てる）
+        {**LOST_SESSION, "num_turns": None, "stopped_by_us": True},
+        {**LOST_SESSION, "stopped_by_us": True},
+        # defer の再開でもう一度 defer した（止めた呼び出しは init より前に走る）
+        {**LOST_SESSION, "deferred": DeferredCall("toolu_1", "?")},
+        # result があり、ターンを進めていた
+        {**LOST_SESSION, "num_turns": 1},
     ],
 )
 def test_続けられなかった印が揃わなければ作り直さず失敗に数える(task: TaskLoop, facts: dict):
@@ -1017,6 +1023,16 @@ def test_続けられなかった印が揃わなければ作り直さず失敗�
         ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, error="落ちた", **facts
     )
     assert of_type(events, StageFailed) and not of_type(events, ExecutionRestarted)
+
+
+def test_resultが無く自分で終わった続けられなかった証拠なら作り直す(task: TaskLoop):
+    task.flow(*IMPL_FLOW)
+    task.begin(ex(S.IMPL))
+    facts: dict[str, Any] = {**LOST_SESSION, "num_turns": None}
+    events = task.report(
+        ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, error="落ちた", **facts
+    )
+    assert of_type(events, ExecutionRestarted)
 
 
 # --- 範囲の変更と止める ---

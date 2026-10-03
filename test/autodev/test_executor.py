@@ -412,8 +412,25 @@ def lost_session(call: AgentCall, process: FakeProcess):
     )
 
 
-def test_続けたセッションでinitの前にkillしたら続けられなかったとは数えず失敗にする(env: Env):
-    """init の前に kill したのでは、セッションが在ったかは分からない。作り直すと前の仕事を捨てる。"""
+@pytest.mark.parametrize(
+    "stopped",
+    [
+        # result が来ないので kill した
+        {"ending": Ending.KILLED, "exit_code": -9},
+        # interrupt を送り、result が返った
+        {
+            "subtype": "error_during_execution",
+            "is_error": True,
+            "num_turns": 0,
+            "exit_code": 1,
+            "interrupted": "制限時間を超えた",
+        },
+    ],
+)
+def test_続けたセッションでinitの前にこちらが止めたら続けられなかったとは数えず失敗にする(
+    env: Env, stopped: dict
+):
+    """init の前に止めたのでは、セッションが在ったかは分からない。作り直すと前の仕事を捨てる。"""
     impl_task(env)
     env.begin(ex(S.IMPL))
     env.world(
@@ -428,16 +445,7 @@ def test_続けたセッションでinitの前にkillしたら続けられなか
     env.world(
         ResumeStage(command_id=new_id(), issuer=Issuer.driver(), task=T1, execution=ex(S.IMPL))
     )
-    env.runtime.behaviors.append(
-        lambda call, p: outcome(
-            call,
-            None,
-            ending=Ending.KILLED,
-            exit_code=-9,
-            interrupted="制限時間を超えた",
-            initialized=False,
-        )
-    )
+    env.runtime.behaviors.append(lambda call, p: outcome(call, None, initialized=False, **stopped))
     events = env.run(ex(S.IMPL))
     assert env.runtime.calls[-1].resume is True
     assert of_type(events, StageFailed) and not of_type(events, ExecutionRestarted)

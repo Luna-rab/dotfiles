@@ -44,7 +44,7 @@ from autodevlib.domain.values import (
     TaskSpec,
 )
 from autodevlib.infra.paths import RunPaths
-from test_task import HEAD, IMPL_FLOW, T1, TaskLoop, ex, gate
+from test_task import HEAD, IMPL_FLOW, LOST_SESSION, T1, TaskLoop, ex, gate
 
 S = StageKind
 A = ArtifactKind
@@ -121,7 +121,7 @@ def test_続きから始めた実行は元の状態を覚え続けられなか�
         ex(S.IMPL),
         exit=StageExit.ERROR,
         result_valid=False,
-        session_lost=True,
+        **LOST_SESSION,
         error="--resume で続けられなかった",
     )
     assert of_type(events, ExecutionRestarted)
@@ -151,7 +151,7 @@ def test_resumeで続けられなかった証拠なら失敗に数えず作り�
         ex(S.IMPL),
         exit=StageExit.ERROR,
         result_valid=False,
-        session_lost=True,
+        **LOST_SESSION,
         hook_denials=denials,
         error="No conversation",
     )
@@ -166,9 +166,7 @@ def test_作り直した後に始められなかった試みを挟んでも次�
 ):
     """作り直しの反応が待ち切れずに戻さず、次の試みの begin も落ちた。その次の試みは戻さずに始めない。"""
     begin(task, ex(S.IMPL), 1)
-    task.report(
-        ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, session_lost=True, error="lost"
-    )
+    task.report(ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, error="lost", **LOST_SESSION)
     task(
         ReportBeginFailure(
             command_id=new_id(),
@@ -186,9 +184,7 @@ def test_作り直した後に始められなかった試みを挟んでも次�
 def test_作り直した後に始めて落ちた試みの次は戻さない(task: TaskLoop):
     """遡るのは始めていない試みだけ。始めた試みは戻した時点から走ったので、落ちた後はそこから続ける。"""
     begin(task, ex(S.IMPL), 1)
-    task.report(
-        ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, session_lost=True, error="lost"
-    )
+    task.report(ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, error="lost", **LOST_SESSION)
     begin(task, ex(S.IMPL, attempt=2), 1)
     task.report(ex(S.IMPL, attempt=2), result_valid=False)
     agg = task.aggregate
@@ -202,7 +198,7 @@ def test_フックに止められ続けて打ち切ったなら続けられな�
         ex(S.IMPL),
         exit=StageExit.ERROR,
         result_valid=False,
-        session_lost=True,
+        **LOST_SESSION,
         hook_denials=11,
         error="フックに 11 回止められた",
     )

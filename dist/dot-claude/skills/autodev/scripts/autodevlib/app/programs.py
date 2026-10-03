@@ -22,6 +22,7 @@ from ..adapters.git import Git
 from ..domain.services.gate import ChangedFile, GateEvaluator, GateEvidence
 from ..domain.services.union import UnionChecker
 from ..domain.services.verify import VerifySelector
+from ..domain.stages import has_own_commits
 from ..domain.values import (
     ArtifactKind,
     ArtifactRef,
@@ -258,9 +259,10 @@ def rebase(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
     載せ直すのは、根元（`Task.base_commit`）から HEAD までのコミットだけ（`git rebase --onto <一番上>
     <根元>`）。積み直すブランチは前に積んだブランチから切るので、破棄した下のタスクのコミットも含むが、
-    それは根元より下にあるので載せない（ADDENDUM §10）。載せ直すコミットが無ければ、ブランチを一番上へ
-    動かさずに落ちる（タスクの仕事を黙って消さない）。流す前に実行器が、途中の rebase を取りやめ、始めた
-    時点へ戻している（`StageSpec.abandons_rebase`・`restores_start`）。
+    それは根元より下にあるので載せない（ADDENDUM §10）。載せ直すものがあるかはドメインに聞き
+    （`has_own_commits`）、無ければブランチを一番上へ動かさずに数だけ返す（落とすのは Task）。流す前に
+    実行器が、途中の rebase を取りやめ、始めた時点へ戻している（`StageSpec.abandons_rebase`・
+    `restores_start`）。
     """
     job = _job(ctx)
     git, tree = tools.git, ctx.tree
@@ -269,15 +271,14 @@ def rebase(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     onto = git.rev_parse(git.repo, str(job.base))
     if onto is None:
         raise RuntimeError(f"一番上の {job.base} が無い")
-    if not own_commits(ctx, tools, tree):
-        raise RuntimeError(
-            f"載せ直すコミットが無い（根元 {ctx.base_commit} から HEAD まで 0 件）。"
-            "ブランチは動かしていない"
-        )
+    # 載せ直した後の HEAD は古い根元から辿れないので、載せ直す前に数える
+    commits = len(own_commits(ctx, tools, tree))
+    if not has_own_commits(commits):
+        return ProgramOutcome(commits=commits)
     # 載せ直した先は、タスクのブランチの新しい根元になる（Task.base_commit）
     result = {"onto": str(onto)}
     outcome = git.rebase(tree, str(onto), str(ctx.base_commit))
-    return ProgramOutcome(result=result, conflicts=outcome.conflicts)
+    return ProgramOutcome(result=result, conflicts=outcome.conflicts, commits=commits)
 
 
 def check_union(ctx: StageContext, tools: Tools) -> ProgramOutcome:

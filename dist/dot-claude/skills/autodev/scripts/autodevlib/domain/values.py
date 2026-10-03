@@ -1155,8 +1155,9 @@ class Evidence:
     result_valid: bool
     #: `produces` の実物を確かめられた成果物
     products: tuple[ArtifactRef, ...] = ()
-    #: 親ブランチからのコミットの数
-    commits: int = 0
+    #: タスクのブランチの根元（`Task.base_commit`）から HEAD までのコミットの数。根元が無く数えられ
+    #: なければ None（0 件と取り違えない）
+    commits: int | None = None
     verify: tuple[VerifyResult, ...] = ()
     deferred: DeferredCall | None = None
     #: Gate のときだけ在る
@@ -1169,8 +1170,12 @@ class Evidence:
     error: str | None = None
     #: ガードのフックに拒まれた呼び出しの数（LEDGER AR-26・AR-27）。LLM のステージだけが持つ
     hook_denials: int = 0
-    #: `--resume` で起こした claude が、result を返さずに終わった（セッションが見つからない など）
-    session_lost: bool = False
+    #: claude を `--resume` で起こした（LLM のステージだけ）
+    resumed: bool = False
+    #: claude が `system/init` を出した（セッションを開いてターンを始めた）
+    initialized: bool = False
+    #: claude が result を返さずに自分で終わった（こちらが kill したのは含めない）
+    ended_without_result: bool = False
 
 
 # --- 計画 ---

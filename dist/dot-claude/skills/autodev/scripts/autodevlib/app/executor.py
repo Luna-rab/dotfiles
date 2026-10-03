@@ -31,7 +31,8 @@ sequenceDiagram
 - 呼び直し（配り直した StageRequested・StageStarted）で、もう始めた・済んだ実行を走らせない。実行の
   状態が求めるものと違えば、札を返さずに cancel する
 - 利用枠の上限に当たったら、証拠ではなく `Panic` を返す（ARCHITECTURE §9。インフラのエラー）
-- `--resume` で続けられなかったことも証拠（`Evidence.session_lost`）で返す。作り直すかは Task が決める
+- `--resume` で起こしたか・claude が init を出したか・result を返さずに自分で終わったかを、証拠で
+  返す。続けられなかったか（作り直すか）は Task が決める
 - プロンプトを組む・走らせる途中で実行器が落ちても、エラーの証拠を札で返す（札が返らないと、
   メインループは結果を待ち続ける）
 """
@@ -644,9 +645,9 @@ class Executor:
             result=dict(result) if result is not None else None,
         )
 
-    def _commits(self, context: StageContext) -> int:
+    def _commits(self, context: StageContext) -> int | None:
         if not (context.tree / ".git").exists() or context.base_commit is None:
-            return 0
+            return None
         return len(own_commits(context, self._tools, context.tree))
 
     # --- 決定的なステージ ---
@@ -756,8 +757,8 @@ class Executor:
     ) -> tuple[Evidence, dict[str, Any] | None]:
         """証拠と、結果の JSON（無ければ None）。形が違っても結果は返し、results/ に残す。
 
-        `resumed` は `--resume` で起こしたか。そのうえで init も result も無ければ、続けられなかった
-        証拠にする（作り直すかは Task が決める）。
+        `resumed` は `--resume` で起こしたか。続けられなかったか（作り直すか）は、これと init・result の
+        有無から Task が決める。
         """
         schema = load_schema(
             self._skill / "schemas" / f"{asset_name(context.execution.stage)}.json"
@@ -797,8 +798,9 @@ class Executor:
             deferred=deferred,
             error=error,
             hook_denials=outcome.hook_denials,
-            # 続けた後で落ちたのまで続けられなかったと数えると、続けた実行の仕事を捨てて作り直す
-            session_lost=resumed and outcome.ending is Ending.NO_RESULT and not outcome.initialized,
+            resumed=resumed,
+            initialized=outcome.initialized,
+            ended_without_result=outcome.ending is Ending.NO_RESULT,
         )
         return evidence, result
 

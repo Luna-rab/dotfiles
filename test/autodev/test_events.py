@@ -91,7 +91,7 @@ def test_補足で足したコマンドがある():
         "ConcludeGateRound",
     ):
         assert name in COMMAND_TYPES
-    # --resume で続けられなかったことは証拠（Evidence.session_lost）で渡し、作り直すかは Task が決める
+    # --resume で続けられなかったかは、証拠の事実（resumed・initialized など）から Task が決める
     assert "RestartExecution" not in COMMAND_TYPES
     # 次のステージは Task が決める。止めを外すのは ConcludeGateRound だけ
     assert "RequestStage" not in COMMAND_TYPES

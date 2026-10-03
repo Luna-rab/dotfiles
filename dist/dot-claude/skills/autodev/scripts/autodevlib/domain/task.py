@@ -101,6 +101,7 @@ from .stages import (
     StageMode,
     StageSpec,
     StepArgument,
+    has_own_commits,
     inner_with,
 )
 from .values import (
@@ -410,7 +411,7 @@ class Task(Aggregate):
         `agent_started` は、この実行の claude をもう起こした跡（ログ）があるか。初めて始めたはずの
         実行に跡があるのは、StageStarted を配り直して走らせ直すときで、前の起動が同じセッション id を
         使っている。新しく立てると重なるので、止めた実行として `--resume` で続ける。続けられなければ、
-        結果の証拠（`Evidence.session_lost`）を見て作り直す（`_judge_result`）。
+        結果の証拠を見て作り直す（`_session_lost`）。
         """
         record = self.executions[execution]
         mode = _START_MODES.get(record.resumed_from, StartMode.FRESH)
@@ -798,8 +799,8 @@ class Task(Aggregate):
         evidence = command.evidence
         spec = STAGE_SPECS[execution.id.stage]
         # ⓪ `--resume` で続けられなかった。失敗に数えず、始めた時点から新しい実行で作り直す
-        # （DOMAIN_MODEL §9.2）。フックに止められ続けて打ち切ったのなら、続けられなかったのではない
-        if evidence.session_lost and not cut_off_by_denials(evidence.hook_denials):
+        # （DOMAIN_MODEL §9.2）
+        if _session_lost(evidence):
             reason = evidence.error or "--resume で続けられなかった"
             events: list[Event] = [ExecutionRestarted(execution.id, reason, execution.start_commit)]
             return events + self._follow_up(events)
@@ -832,13 +833,14 @@ class Task(Aggregate):
         if spec.expects is not None:
             verdict = _check(spec.expects, evidence)
             if verdict is _Verdict.MISSING:
-                return self._failed(execution, command, f"{spec.kind.value} の結果が無い")
+                return self._failed(execution, command, _missing(spec))
             if verdict is _Verdict.MISMATCH:
                 if spec.expects is EvidenceCheck.GATE_PASSES:
                     assert evidence.gate is not None
                     return self._gate_failed(execution, command, evidence.gate)
-                assert spec.on_mismatch is not None
                 reason = _mismatch(spec.expects, evidence)
+                if spec.on_mismatch is None:
+                    return self._failed(execution, command, reason)
                 return self._reported(execution, command, spec.on_mismatch, reason=reason)
         # ⑤ 結果の中身と実物。成果物は、それを produces に持つステージが完了したときだけ増える（§6.2）
         try:
@@ -1559,13 +1561,41 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
         if evidence.gate is None:
             return _Verdict.MISSING
         holds = evidence.gate.passed
+    elif check is EvidenceCheck.OWN_COMMITS:
+        if evidence.commits is None:
+            return _Verdict.MISSING
+        holds = has_own_commits(evidence.commits)
     else:
         raise AssertionError(f"照らし方を書いていない: {check}")
     return _Verdict.HOLDS if holds else _Verdict.MISMATCH
 
 
+def _session_lost(evidence: Evidence) -> bool:
+    """`--resume` で起こした claude が、続けるセッションを開けなかったか（ADDENDUM §12 の実行器）。
+
+    印は、init を出さずに result も返さずに自分で終わったことだけ。init を出した後に落ちたのは続けた
+    後で落ちたので、作り直すとその実行の仕事を捨てる。標準エラーの文言は版で変わりうるので見ない。
+    フックに止められ続けて打ち切ったのなら、続けられなかったのではない。
+    """
+    return (
+        evidence.resumed
+        and evidence.ended_without_result
+        and not evidence.initialized
+        and not cut_off_by_denials(evidence.hook_denials)
+    )
+
+
+def _missing(spec: StageSpec) -> str:
+    """期待した証拠が無かった理由（失敗の理由）。"""
+    if spec.expects is EvidenceCheck.OWN_COMMITS:
+        return "タスクのブランチの根元が無く、根元から上のコミットを数えられない"
+    return f"{spec.kind.value} の結果が無い"
+
+
 def _mismatch(check: EvidenceCheck, evidence: Evidence) -> str:
     """期待した証拠と食い違った所（報告の中身）。本文や出力そのものは載せない。"""
+    if check is EvidenceCheck.OWN_COMMITS:
+        return "根元から上のコミットが無い（0 件）。ブランチは動かしていない"
     if check is EvidenceCheck.UNION_KEPT and evidence.union is not None:
         files = [f.path for f in evidence.union.files if not f.kept_both]
         return "両側の変更を残していない: " + ", ".join(files)

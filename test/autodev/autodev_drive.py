@@ -191,7 +191,8 @@ class FakeExecutor:
             )
         )
         products = tuple(self._product(kind, result) for kind in sorted(made, key=str))
-        evidence: dict[str, Any] = {"exit": StageExit.OK, "result_valid": True}
+        # 根元から上のコミットがある（Rebase は 0 件・数えられないと落ちる）
+        evidence: dict[str, Any] = {"exit": StageExit.OK, "result_valid": True, "commits": 1}
         evidence |= self._evidence(execution)
         evidence |= outcome.evidence
         return ReportStageResult(

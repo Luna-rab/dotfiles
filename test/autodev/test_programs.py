@@ -416,15 +416,27 @@ def test_上のタスクを切ったブランチを積み直しても仕事が�
     assert sh(tree, "rev-parse", "HEAD^").strip() == sh(top, "rev-parse", "HEAD").strip()
 
 
-def test_載せ直すコミットが無ければRebaseはブランチを動かさずに落ちる(env: Env):
+def test_載せ直すコミットが無ければRebaseはブランチを動かさずに0件を返す(env: Env):
+    """落とすかは Task が決める（EvidenceCheck.OWN_COMMITS）。中身は流さずに数を渡すだけ。"""
     top = overview(env)
     tree = task_tree(env)
     before = sh(tree, "rev-parse", "HEAD").strip()
     commit(top, "c.txt", "top\n")
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
-    with pytest.raises(RuntimeError, match="載せ直すコミットが無い"):
-        rebase(env, job)
+    outcome = rebase(env, job)
+    assert (outcome.commits, outcome.result) == (0, None)
     assert sh(tree, "rev-parse", "HEAD").strip() == before
+
+
+def test_Rebaseは載せ直す前に数えたコミットの数を返す(env: Env):
+    """載せ直した後の HEAD は古い根元から辿れないので、実行器に後から数えさせない。"""
+    top = overview(env)
+    tree = task_tree(env)
+    commit(tree, "b.txt", "task\n")
+    commit(tree, "d.txt", "task\n")
+    commit(top, "c.txt", "top\n")
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    assert rebase(env, job).commits == 2
 
 
 def test_切り直したブランチは切り直した所から上だけを数えて載せ直す(env: Env):

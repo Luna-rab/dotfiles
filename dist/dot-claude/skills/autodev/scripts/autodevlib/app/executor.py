@@ -516,7 +516,9 @@ class Executor:
         いるか止めている途中なら、その git の lock かもしれないので消さず、印も残す。
         """
         with self._lock:
-            waiting = [live for live in self._stopping if live.tree == tree]
+            # 走り出した直後に止めた実行は、自分を待つ前に `_stopping` に入っている。自分の終わりは
+            # 自分が待ちを抜けるまで来ないので、待つと上限まで待ち、同じ worktree の次の仕事も待たせる
+            waiting = [live for live in self._stopping if live.tree == tree and live is not besides]
         for live in waiting:
             if not live.done.wait(STOP_WAIT_SECONDS):
                 log.warning("%s で止めた実行が %s 秒で終わらなかった", tree, STOP_WAIT_SECONDS)

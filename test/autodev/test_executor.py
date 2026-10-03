@@ -558,6 +558,33 @@ def stuck_stop(env: Env, tree: Path) -> executor_module._Live:
     return live
 
 
+def test_走り出した直後に止めた実行は自分の終わりを待たず同じworktreeの次の仕事も待たせない(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+):
+    """run のスレッドが止めた実行を待つ前に止めると、その走りは止めている実行の一覧に入っている。"""
+    impl_task(env)
+    monkeypatch.setattr(executor_module, "STOP_WAIT_SECONDS", 5.0)
+    env.begin(ex(S.IMPL))
+    entered, release = threading.Event(), threading.Event()
+    progress = env.executor._progress
+
+    def held(context, body):
+        entered.set()
+        release.wait(10)
+        progress(context, body)
+
+    monkeypatch.setattr(env.executor, "_progress", held)
+    env.executor.run(ex(S.IMPL), env.world.inbox.expect(ex(S.IMPL)))
+    assert entered.wait(10)
+    env.executor.interrupt(ex(S.IMPL))
+    begun = time.monotonic()
+    release.set()
+    env.executor.abort_rebase(T1)
+    env.executor.join(10)
+    assert time.monotonic() - begun < 2
+    assert env.executor._stopping == [] and env.world.submitted() == []
+
+
 def test_止めた実行を待つのはそのworktreeだけでほかのworktreeのbeginは待たせない(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ):

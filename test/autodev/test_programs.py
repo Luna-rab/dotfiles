@@ -311,6 +311,24 @@ def test_途中のrebaseが残っていてもRebaseは取りやめてから流�
     assert env.git.conflict_sides(tree, "a.txt").base is not None
 
 
+def test_rebaseを終えた後に流し直しても始めた時点へ戻してから載せ直す(env: Env):
+    """driver が、rebase を終えてから結果（BranchRebased）が載る前に落ち、呼び直した driver が同じ実行を
+    根元が古いまま流し直す。戻さずに流すと、一番上のコミットまで載せ直して、ありもしない衝突を作る。"""
+    top = overview(env)
+    tree = task_tree(env)
+    commit(tree, "mine.py", "task\n")
+    commit(top, "a.txt", "1\n")
+    head = commit(top, "a.txt", "2\n")
+    start = CommitSha(sh(tree, "rev-parse", "HEAD").strip())
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    ctx = context(env, S.REBASE, job=job, start_commit=start)
+    assert programs.run_program(ctx, tools(env)).conflicts == ()
+    outcome = programs.run_program(ctx, tools(env))
+    assert outcome.conflicts == () and outcome.result == {"onto": head}
+    assert sh(tree, "rev-parse", "HEAD^").strip() == head
+    assert (tree / "mine.py").is_file()
+
+
 def test_rebase途中のworktreeにCutBranchを当てても落ちない(env: Env):
     tree, _ = conflicting(env)
     renamed = BranchName("stack/r--task-1-r1")

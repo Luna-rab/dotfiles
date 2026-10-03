@@ -249,6 +249,11 @@ class StageSpec:
     #: 流す前に、cwd の worktree に残った途中の rebase を取りやめる（実行器が流す前にする）。流し直しで
     #: 前の rebase の解きかけ（`git add` して衝突の段が消えたもの）から続けず、移るブランチも取り違えない
     abandons_rebase: bool = False
+    #: 流す前に、cwd の worktree を始めた時点（`start_commit`）へ戻す（実行器が、途中の rebase を
+    #: 取りやめた後にする）。driver が、中身を終えてから結果が載る前に落ちると、呼び直した driver は同じ
+    #: 実行を流し直す。そのとき Task の事実（根元）は古いままなので、中身が動かした後の HEAD から流すと
+    #: 同じ操作を二度かける。始めた時点から流せば、何度流しても同じ結果になる
+    restores_start: bool = False
     model: str | None = None
     effort: str | None = None
     #: ターンの上限（LEDGER AR-14）。値は実装のときに決める
@@ -283,6 +288,9 @@ class StageSpec:
             raise ValueError(f"{name}: 変えずに終えてよいのは、成果物を作るステージだけ")
         if self.expects is not None and self.mode is not StageMode.PROGRAM:
             raise ValueError(f"{name}: 期待する証拠を持つのは決定的なステージだけ")
+        if self.restores_start and self.mode is not StageMode.PROGRAM:
+            # LLM のステージは interrupt から続けるので、戻すと続ける仕事を捨てる
+            raise ValueError(f"{name}: 始めた時点へ戻して流し直すのは決定的なステージだけ")
         if self.on_mismatch is not None and self.expects is None:
             raise ValueError(f"{name}: 外れたときの報告は、期待する証拠と一緒に書く")
         if (self.body is not None) != (ResultField.BODY in self.result):
@@ -399,6 +407,7 @@ def _program(
     hands_to: Handoff | None = None,
     finishes_rebase: bool = False,
     abandons_rebase: bool = False,
+    restores_start: bool = False,
 ) -> StageSpec:
     return StageSpec(
         kind,
@@ -415,6 +424,7 @@ def _program(
         hands_to=hands_to,
         finishes_rebase=finishes_rebase,
         abandons_rebase=abandons_rebase,
+        restores_start=restores_start,
     )
 
 
@@ -624,7 +634,14 @@ _SPECS: tuple[StageSpec, ...] = (
         result=frozenset({_F.WORKTREE_TASK, _F.TREE, _F.BRANCH, _F.BASE}),
         abandons_rebase=True,
     ),
-    _program(_S.REBASE, _GIT, result=frozenset({_F.ONTO}), abandons_rebase=True),
+    # 終えた rebase の後で結果が載らずに流し直すときは、載せ直す前の HEAD から古い根元で載せ直す
+    _program(
+        _S.REBASE,
+        _GIT,
+        result=frozenset({_F.ONTO}),
+        abandons_rebase=True,
+        restores_start=True,
+    ),
     _program(
         _S.CHECK_UNION,
         _GIT,

@@ -93,7 +93,7 @@ def run_complete(aggregates: Mapping[StreamId, Aggregate]) -> bool:
 
 
 def panic_cause(aggregates: Mapping[StreamId, Aggregate]) -> str | None:
-    return "パニックした" if _run(aggregates).panicked else None
+    return _run(aggregates).panic_cause
 
 
 def exit_code(outcome: Outcome, aggregates: Mapping[StreamId, Aggregate]) -> ExitCode:

@@ -1155,8 +1155,9 @@ class Evidence:
     result_valid: bool
     #: `produces` の実物を確かめられた成果物
     products: tuple[ArtifactRef, ...] = ()
-    #: 親ブランチからのコミットの数
-    commits: int = 0
+    #: タスクのブランチの根元（`Task.base_commit`）から HEAD までのコミットの数。根元が無く数えられ
+    #: なければ None（0 件と取り違えない）
+    commits: int | None = None
     verify: tuple[VerifyResult, ...] = ()
     deferred: DeferredCall | None = None
     #: Gate のときだけ在る

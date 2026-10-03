@@ -253,6 +253,16 @@ def test_フックに止められ続けたら打ち切ってエラーの証拠�
     assert "フックに 11 回止められた" in (report.evidence.error or "")
 
 
+def test_根元が無いタスクのコミットの数は0件ではなく数えられないとして渡す(env: Env):
+    planning_task(env)
+    prepare = ex(S.PREPARE, task=PLANNING)
+    env.begin(prepare)
+    env.executor.run(prepare, env.world.inbox.expect(prepare))
+    env.executor.join()
+    (report,) = reports(env)
+    assert report.evidence.commits is None
+
+
 # --- 計画ステージの ask（defer）と再開 ---
 
 

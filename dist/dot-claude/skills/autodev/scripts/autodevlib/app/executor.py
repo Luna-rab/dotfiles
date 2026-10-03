@@ -644,9 +644,9 @@ class Executor:
             result=dict(result) if result is not None else None,
         )
 
-    def _commits(self, context: StageContext) -> int:
+    def _commits(self, context: StageContext) -> int | None:
         if not (context.tree / ".git").exists() or context.base_commit is None:
-            return 0
+            return None
         return len(own_commits(context, self._tools, context.tree))
 
     # --- 決定的なステージ ---

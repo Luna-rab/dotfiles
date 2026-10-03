@@ -55,9 +55,11 @@ from autodevlib.domain.events.task import (
     TaskGated,
     WorktreeReady,
 )
-from autodevlib.domain.flow import Cursor, FlowStep, Reviewers, git_job_flow
+from autodevlib.domain.flow.flow import Cursor, FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow
 from autodevlib.domain.services.escalation_router import EscalationRouter
-from autodevlib.domain.stages import STAGE_SPECS, Handoff, InnerRole, StageMode
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import Handoff, InnerRole, StageMode
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

@@ -19,8 +19,9 @@ from ..domain.aggregates.run import Run
 from ..domain.aggregates.stack import Stack
 from ..domain.aggregates.task import ExecutionStatus, StartMode, Task
 from ..domain.events.run import RunStarted
-from ..domain.flow import FlowStep
-from ..domain.stages import STAGE_SPECS, StageSpec, StepArgument
+from ..domain.flow.flow import FlowStep
+from ..domain.stages.catalog import STAGE_SPECS, StageSpec
+from ..domain.stages.kinds import StepArgument
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef
 from ..domain.value_objects.branch_name import BranchName

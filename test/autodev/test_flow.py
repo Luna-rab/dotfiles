@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from autodevlib.domain.flow import (
-    Cursor,
-    Flow,
-    FlowStep,
-    FlowValidator,
-    Reviewers,
-    git_job_flow,
-    planning_flow,
-)
-from autodevlib.domain.stages import STAGE_SPECS, SessionScope, StageMode
+from autodevlib.domain.flow.flow import Cursor, Flow, FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow, planning_flow
+from autodevlib.domain.flow.validator import FlowValidator
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import SessionScope, StageMode
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.base import InvalidValue
 from autodevlib.domain.value_objects.branch_name import BranchName

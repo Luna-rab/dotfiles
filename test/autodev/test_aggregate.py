@@ -16,7 +16,7 @@ from autodevlib.domain.commands.task import AcceptFlow, ReportStageResult
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.registry import EVENTS_BY_AGGREGATE
 from autodevlib.domain.events.run import RunPanicked
-from autodevlib.domain.flow import FlowStep
+from autodevlib.domain.flow.flow import FlowStep
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind

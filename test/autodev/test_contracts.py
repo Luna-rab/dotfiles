@@ -19,15 +19,10 @@ from autodevlib.app.decisions import RUN_DECISIONS, TASK_DECISIONS, payload_key
 from autodevlib.app.prompts import SOURCES, contract_inputs
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.review_ledger import JudgeFinding, RaiseFinding
-from autodevlib.domain.flow import FlowStep, Reviewers
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
 from autodevlib.domain.services.escalation_router import RAISED_IN_TASK, RELAYED_TO_RUN
-from autodevlib.domain.stages import (
-    REVIEWER_STAGES,
-    STAGE_SPECS,
-    ResultField,
-    StageMode,
-    StageSpec,
-)
+from autodevlib.domain.stages.catalog import REVIEWER_STAGES, STAGE_SPECS, StageSpec
+from autodevlib.domain.stages.kinds import ResultField, StageMode
 from autodevlib.domain.supervision import Notice
 from autodevlib.domain.value_objects.base import InvalidValue
 from autodevlib.domain.value_objects.design_cause import DesignCause

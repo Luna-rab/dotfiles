@@ -86,23 +86,22 @@ from ..events.task import (
     TaskStopped,
     WorktreeReady,
 )
-from ..flow import Cursor, Flow, FlowStep, FlowValidator
+from ..flow.flow import Cursor, Flow, FlowStep
+from ..flow.validator import FlowValidator
 from ..guard import cut_off_by_denials
-from ..results import has_report, parse_result, read_report
 from ..services.escalation_router import EscalationRouter, task_of_stream
 from ..services.gate import GateEvaluator
-from ..stages import (
-    STAGE_SPECS,
+from ..stages.catalog import STAGE_SPECS, StageSpec, inner_with
+from ..stages.kinds import (
     EvidenceCheck,
     Handoff,
     InnerRole,
     SessionScope,
     StageMode,
-    StageSpec,
     StepArgument,
     has_own_commits,
-    inner_with,
 )
+from ..stages.results import has_report, parse_result, read_report
 from ..value_objects.artifact_kind import RUN_SHARED_ARTIFACTS, ArtifactKind
 from ..value_objects.artifact_ref import ArtifactRef
 from ..value_objects.base import InvalidValue

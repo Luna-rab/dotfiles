@@ -21,7 +21,7 @@ from ..adapters.git import Git
 from ..domain.services.gate import ChangedFile, GateEvaluator, GateEvidence
 from ..domain.services.union import UnionChecker
 from ..domain.services.verify import VerifySelector
-from ..domain.stages import has_own_commits
+from ..domain.stages.kinds import has_own_commits
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef
 from ..domain.value_objects.branch_name import BranchName

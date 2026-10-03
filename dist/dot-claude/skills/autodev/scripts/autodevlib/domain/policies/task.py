@@ -39,8 +39,8 @@ from ..events.task import (
     TaskGated,
     WorktreeReady,
 )
-from ..flow import planning_flow
-from ..stages import Handoff
+from ..flow.standard import planning_flow
+from ..stages.kinds import Handoff
 from ..value_objects.escalation_kind import EscalationKind
 from ..value_objects.event_id import EventId
 from ..value_objects.flow_ending import FlowEnding

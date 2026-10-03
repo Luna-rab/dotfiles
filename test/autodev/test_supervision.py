@@ -35,7 +35,7 @@ from autodevlib.domain.events.task import (
     TaskStopped,
     WorktreeReady,
 )
-from autodevlib.domain.flow import Flow, FlowStep
+from autodevlib.domain.flow.flow import Flow, FlowStep
 from autodevlib.domain.supervision import Notice, Supervisor, Wake, wake_for
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId

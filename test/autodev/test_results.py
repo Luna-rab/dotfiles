@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 from autodev_samples import stage_result
-from autodevlib.domain.results import has_report, parse_result, read_report
-from autodevlib.domain.stages import STAGE_SPECS
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.results import has_report, parse_result, read_report
 from autodevlib.domain.value_objects.base import InvalidValue
 from autodevlib.domain.value_objects.design_cause import DesignCause
 from autodevlib.domain.value_objects.design_judgement import DesignJudgement

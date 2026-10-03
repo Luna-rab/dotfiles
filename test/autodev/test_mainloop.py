@@ -33,7 +33,7 @@ from autodevlib.domain.commands.task import (
 )
 from autodevlib.domain.events.stack import GitJobQueued
 from autodevlib.domain.events.task import StageInterrupted, StageStarted
-from autodevlib.domain.flow import FlowStep, Reviewers
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

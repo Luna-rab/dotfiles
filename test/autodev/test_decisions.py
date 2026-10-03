@@ -23,7 +23,7 @@ from autodevlib.domain.commands.run import (
     StopTasks,
 )
 from autodevlib.domain.commands.task import AcceptFlow
-from autodevlib.domain.flow import FlowStep, Reviewers
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.design_version import DesignVersion
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind

@@ -23,7 +23,7 @@ from ..events.stack import (
     TaskStacked,
 )
 from ..events.task import EscalationClosed, EscalationResolved
-from ..flow import git_job_flow
+from ..flow.standard import git_job_flow
 from ..value_objects.escalation_kind import EscalationKind
 from ..value_objects.event_id import EventId
 from ..value_objects.execution_id import ExecutionId

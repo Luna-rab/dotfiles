@@ -37,8 +37,8 @@ from ..domain.events.run import (
     EscalationRaised,
     ReplanRequested,
 )
-from ..domain.flow import FlowStep
-from ..domain.stages import STAGE_SPECS
+from ..domain.flow.flow import FlowStep
+from ..domain.stages.catalog import STAGE_SPECS
 from ..domain.supervision import Notice, Supervisor, Wake, wake_for
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef

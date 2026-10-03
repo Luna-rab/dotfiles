@@ -64,7 +64,8 @@ from ..events.review_ledger import (
 )
 from ..services.gate import GateEvaluator
 from ..services.stall import StallPolicy
-from ..stages import STAGE_SPECS, Handoff
+from ..stages.catalog import STAGE_SPECS
+from ..stages.kinds import Handoff
 from ..value_objects.design_judgement import DesignJudgement
 from ..value_objects.design_version import DesignVersion
 from ..value_objects.execution_id import ExecutionId

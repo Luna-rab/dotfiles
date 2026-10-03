@@ -18,33 +18,34 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, TypeVar
 
-from .stages import ResultField, StageSpec
-from .value_objects.artifact_kind import ArtifactKind
-from .value_objects.base import InvalidValue
-from .value_objects.branch_name import BranchName
-from .value_objects.commit_sha import CommitSha
-from .value_objects.design_cause import DesignCause
-from .value_objects.design_judgement import DesignJudgement
-from .value_objects.design_version import DesignVersion
-from .value_objects.escalation_kind import EscalationKind
-from .value_objects.evidence import Evidence
-from .value_objects.finding_comment import FindingComment
-from .value_objects.finding_id import FindingId
-from .value_objects.finding_status import FindingStatus
-from .value_objects.finding_transfer import FindingTransfer
-from .value_objects.finding_verdict import FindingVerdict
-from .value_objects.location import Location
-from .value_objects.planned_task import PlannedTask
-from .value_objects.pr_number import PrNumber
-from .value_objects.proposal import Proposal
-from .value_objects.rating import Rating
-from .value_objects.reported_finding import ReportedFinding
-from .value_objects.stage_result import StageResult
-from .value_objects.stall_cause import StallCause
-from .value_objects.task_id import TaskId
-from .value_objects.task_spec import TaskSpec
-from .value_objects.verify_command import VerifyCommand
-from .value_objects.worktree_cut import WorktreeCut
+from ..value_objects.artifact_kind import ArtifactKind
+from ..value_objects.base import InvalidValue
+from ..value_objects.branch_name import BranchName
+from ..value_objects.commit_sha import CommitSha
+from ..value_objects.design_cause import DesignCause
+from ..value_objects.design_judgement import DesignJudgement
+from ..value_objects.design_version import DesignVersion
+from ..value_objects.escalation_kind import EscalationKind
+from ..value_objects.evidence import Evidence
+from ..value_objects.finding_comment import FindingComment
+from ..value_objects.finding_id import FindingId
+from ..value_objects.finding_status import FindingStatus
+from ..value_objects.finding_transfer import FindingTransfer
+from ..value_objects.finding_verdict import FindingVerdict
+from ..value_objects.location import Location
+from ..value_objects.planned_task import PlannedTask
+from ..value_objects.pr_number import PrNumber
+from ..value_objects.proposal import Proposal
+from ..value_objects.rating import Rating
+from ..value_objects.reported_finding import ReportedFinding
+from ..value_objects.stage_result import StageResult
+from ..value_objects.stall_cause import StallCause
+from ..value_objects.task_id import TaskId
+from ..value_objects.task_spec import TaskSpec
+from ..value_objects.verify_command import VerifyCommand
+from ..value_objects.worktree_cut import WorktreeCut
+from .catalog import StageSpec
+from .kinds import ResultField
 
 _F = ResultField
 T = TypeVar("T")

@@ -110,8 +110,8 @@ def test_ドメイン層のファイルがある():
         "value_objects/base.py",
         "events/base.py",
         "commands/base.py",
-        "stages.py",
-        "flow.py",
+        "stages/catalog.py",
+        "flow/flow.py",
         "aggregates/base.py",
     } <= names
 

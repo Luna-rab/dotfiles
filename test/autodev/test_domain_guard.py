@@ -10,7 +10,7 @@ from autodevlib.domain.guard import (
     WriteTarget,
     WriteZone,
 )
-from autodevlib.domain.stages import STAGE_SPECS
+from autodevlib.domain.stages.catalog import STAGE_SPECS
 from autodevlib.domain.value_objects.guard import Guard
 from autodevlib.domain.value_objects.write_scope import WriteScope
 

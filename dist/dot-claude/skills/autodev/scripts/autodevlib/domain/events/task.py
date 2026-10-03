@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..flow import Cursor, Flow, FlowStep
-from ..stages import Handoff
+from ..flow.flow import Cursor, Flow, FlowStep
+from ..stages.kinds import Handoff
 from ..value_objects.artifact_kind import ArtifactKind
 from ..value_objects.artifact_ref import ArtifactRef
 from ..value_objects.branch_name import BranchName

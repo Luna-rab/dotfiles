@@ -35,7 +35,7 @@ from autodevlib.domain.events.task import (
     StageStarted,
     TaskOpened,
 )
-from autodevlib.domain.flow import Cursor, Flow, FlowStep
+from autodevlib.domain.flow.flow import Cursor, Flow, FlowStep
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

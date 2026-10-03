@@ -70,7 +70,7 @@ from ..events.design import (
     DesignSettled,
 )
 from ..events.review_ledger import ResultReceived, ResultRefused
-from ..stages import spec_of
+from ..stages.catalog import spec_of
 from ..value_objects.artifact_kind import ArtifactKind
 from ..value_objects.artifact_ref import ArtifactRef
 from ..value_objects.design_version import DesignVersion

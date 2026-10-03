@@ -63,7 +63,8 @@ from ..domain.commands.base import Command
 from ..domain.commands.run import Panic
 from ..domain.commands.task import BeginStage, ReportBeginFailure, ReportStageResult
 from ..domain.guard import cut_off_by_denials
-from ..domain.stages import BodyTarget, ResultField, StageMode, StageSpec
+from ..domain.stages.catalog import StageSpec
+from ..domain.stages.kinds import BodyTarget, ResultField, StageMode
 from ..domain.value_objects.artifact_kind import ArtifactKind
 from ..domain.value_objects.artifact_ref import ArtifactRef
 from ..domain.value_objects.base import InvalidValue

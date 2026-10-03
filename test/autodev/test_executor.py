@@ -36,7 +36,8 @@ from autodevlib.domain.events.task import (
     StageRequested,
     StageStarted,
 )
-from autodevlib.domain.flow import FlowStep, Reviewers, git_job_flow, planning_flow
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow, planning_flow
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

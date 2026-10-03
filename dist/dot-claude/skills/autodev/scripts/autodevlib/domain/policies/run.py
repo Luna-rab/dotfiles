@@ -41,7 +41,7 @@ from ..events.run import (
     TaskStatusChanged,
 )
 from ..events.task import EscalationClosed
-from ..flow import planning_flow
+from ..flow.standard import planning_flow
 from ..services.escalation_router import EscalationRouter, SupervisorLevel
 from ..services.task_scheduler import TaskScheduler
 from ..value_objects.branch_name import BranchName

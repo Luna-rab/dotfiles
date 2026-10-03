@@ -26,8 +26,9 @@ from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.run import Panic, StartRun
 from autodevlib.domain.commands.task import BeginStage, ReportStageResult
 from autodevlib.domain.events.base import Event
-from autodevlib.domain.flow import FlowStep
-from autodevlib.domain.stages import STAGE_SPECS, StageMode
+from autodevlib.domain.flow.flow import FlowStep
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import StageMode
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

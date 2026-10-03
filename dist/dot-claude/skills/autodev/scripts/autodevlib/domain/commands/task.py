@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
-from ..flow import FlowStep
+from ..flow.flow import FlowStep
 from ..value_objects.artifact_ref import ArtifactRef
 from ..value_objects.branch_name import BranchName
 from ..value_objects.commit_sha import CommitSha

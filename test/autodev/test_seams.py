@@ -176,9 +176,11 @@ from autodevlib.domain.events.task import (
     TaskGated,
     WorktreeReady,
 )
-from autodevlib.domain.flow import FlowStep, Reviewers, git_job_flow, planning_flow
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow, planning_flow
 from autodevlib.domain.services.escalation_router import task_of_stream
-from autodevlib.domain.stages import STAGE_SPECS, Handoff, StageMode
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import Handoff, StageMode
 from autodevlib.domain.supervision import wake_for
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef

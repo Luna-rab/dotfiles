@@ -25,7 +25,8 @@ from autodevlib.app.stage_context import (
 )
 from autodevlib.domain.commands.task import AcceptFlow, BeginStage, OpenTask
 from autodevlib.domain.events.task import StageCompleted, StageStarted, WorktreeReady
-from autodevlib.domain.flow import FlowStep, git_job_flow
+from autodevlib.domain.flow.flow import FlowStep
+from autodevlib.domain.flow.standard import git_job_flow
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName

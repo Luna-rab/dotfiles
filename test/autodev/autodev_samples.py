@@ -13,7 +13,8 @@ import typing
 from enum import Enum
 from typing import Any, Union
 
-from autodevlib.domain.stages import STAGE_SPECS, ResultField
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import ResultField
 from autodevlib.domain.value_objects.base import Number, Text
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId

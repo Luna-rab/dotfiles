@@ -1,4 +1,4 @@
-"""集約の土台（`domain/aggregate.py`）。小さな集約を 1 つ組んで、振り分け・再生・拒否を確かめる。"""
+"""集約の土台（`domain/aggregates/base.py`）。小さな集約を 1 つ組んで、振り分け・再生・拒否を確かめる。"""
 
 from __future__ import annotations
 
@@ -8,40 +8,30 @@ from dataclasses import dataclass
 
 import pytest
 from autodevlib import domain
-from autodevlib.domain.aggregate import Aggregate, Rejected, UnknownEvent, applies, handles
-from autodevlib.domain.commands import (
-    COMMANDS_BY_AGGREGATE,
-    AcceptFlow,
-    AppendEntry,
-    EnqueueStack,
-    EscalateToRun,
-    ReportStageResult,
-    StartTask,
-    TakeNextGitJob,
-)
-from autodevlib.domain.events import (
-    EVENTS_BY_AGGREGATE,
-    Event,
-    RunPanicked,
-)
-from autodevlib.domain.flow import FlowStep
-from autodevlib.domain.values import (
-    BranchName,
-    CommandId,
-    EscalationKind,
-    EventId,
-    Evidence,
-    ExecutionId,
-    Issuer,
-    Pointers,
-    PrNumber,
-    SessionId,
-    StackEntry,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.aggregates.base import Aggregate, Rejected, UnknownEvent, applies, handles
+from autodevlib.domain.commands.registry import COMMANDS_BY_AGGREGATE
+from autodevlib.domain.commands.run import EscalateToRun, StartTask
+from autodevlib.domain.commands.stack import AppendEntry, EnqueueStack, TakeNextGitJob
+from autodevlib.domain.commands.task import AcceptFlow, ReportStageResult
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.registry import EVENTS_BY_AGGREGATE
+from autodevlib.domain.events.run import RunPanicked
+from autodevlib.domain.flow.flow import FlowStep
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 
 STACK = StreamId.stack()
 GIT = Issuer.task_supervisor(TaskId.git())

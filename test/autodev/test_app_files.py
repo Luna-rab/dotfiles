@@ -12,16 +12,14 @@ from autodevlib.app.files import (
     write_design,
     write_question,
 )
-from autodevlib.domain.values import (
-    DesignVersion,
-    EventId,
-    FindingId,
-    FindingSummary,
-    Location,
-    QuestionId,
-    Rating,
-    RunName,
-)
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_summary import FindingSummary
+from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.run_name import RunName
 from autodevlib.infra.paths import RunPaths
 
 V2 = DesignVersion(2)

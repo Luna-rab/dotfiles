@@ -1,7 +1,7 @@
 """反応: イベントに書かれた副作用を、ポートを呼んで起こす受け手。
 
 反応は判断しない。起こすかどうか・何を起こすかは、イベントが出た時点でドメインが決めている
-（統括を起こすのは `domain.supervision.wake_for`、ask の続きは `domain.policies.FOLLOW_UPS`）。
+（統括を起こすのは `domain.supervision.wake_for`、ask の続きは `domain.policies.registry.FOLLOW_UPS`）。
 反応は 2 回呼ばれても同じ結果になるように作る（落ちた後に、チェックポイントの後ろから配り直される）。
 
 | 受け手 | 受けるイベント | すること |
@@ -24,25 +24,23 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from ..domain.aggregate import Aggregate
-from ..domain.commands import Command
-from ..domain.events import (
-    DesignSettled,
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.questions import Questions
+from ..domain.aggregates.task import Task
+from ..domain.commands.base import Command
+from ..domain.events.design import DesignSettled
+from ..domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from ..domain.events.stack import IntegrationFailed
+from ..domain.events.task import (
     EscalationResolved,
     ExecutionRestarted,
-    IntegrationFailed,
-    QuestionAnswered,
-    QuestionPosted,
-    QuestionWithdrawn,
     StageInterrupted,
     StageRequested,
     StageStarted,
 )
-from ..domain.policies import FOLLOW_UPS
-from ..domain.questions import Questions
+from ..domain.policies.registry import FOLLOW_UPS
 from ..domain.supervision import wake_for
-from ..domain.task import Task
-from ..domain.values import StreamId
+from ..domain.value_objects.stream_id import StreamId
 from ..infra.paths import RunPaths
 from .executor import StageExecutor
 from .files import append_appendix, write_answer, write_question

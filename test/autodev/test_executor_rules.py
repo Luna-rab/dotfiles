@@ -15,35 +15,34 @@ from autodevlib.app.executor import from_parts
 from autodevlib.app.mainloop import Delivery
 from autodevlib.app.markers import fill
 from autodevlib.app.stage_context import ResumeMode, RunSetting, snapshot
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.review_ledger import ReviewLedger
+from autodevlib.domain.aggregates.task import ExecutionStatus, StageStart, StartMode
+from autodevlib.domain.commands.task import (
     BeginStage,
     ChangeScope,
     MarkInterrupted,
     ReportBeginFailure,
     ResumeStage,
 )
-from autodevlib.domain.events import ExecutionRestarted, RunStarted, StageCompleted, StageFailed
-from autodevlib.domain.review import ReviewLedger
-from autodevlib.domain.task import ExecutionStatus, StageStart, StartMode
-from autodevlib.domain.values import (
-    ArtifactKind,
-    BranchName,
-    CommandId,
-    EventId,
-    ExecutionId,
-    GateItem,
-    Instruction,
-    Issuer,
-    ParallelLimit,
-    Pointers,
-    Repository,
-    RunName,
-    SessionId,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskSpec,
-)
+from autodevlib.domain.events.run import RunStarted
+from autodevlib.domain.events.task import ExecutionRestarted, StageCompleted, StageFailed
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 from autodevlib.infra.paths import RunPaths
 from conftest import SKILL_ROOT
 from test_task import HEAD, IMPL_FLOW, LOST_SESSION, T1, TaskLoop, ex, gate

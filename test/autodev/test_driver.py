@@ -29,42 +29,41 @@ from autodevlib.app.mainloop import LoopExit
 from autodevlib.app.mainloop import Outcome as Outcome_
 from autodevlib.app.prompts import asset_name, contract_inputs
 from autodevlib.app.supervisors import MAX_ATTEMPTS, MAX_CORRECTIONS
-from autodevlib.domain.commands import AnswerQuestion
-from autodevlib.domain.events import (
-    BaseRecorded,
-    BranchRebased,
-    DesignSettled,
+from autodevlib.domain.aggregates.questions import Questions
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.stack import Stack
+from autodevlib.domain.aggregates.task import Task
+from autodevlib.domain.commands.questions import AnswerQuestion
+from autodevlib.domain.events.design import DesignSettled
+from autodevlib.domain.events.questions import QuestionPosted
+from autodevlib.domain.events.run import (
     EscalationAnswered,
     EscalationRaised,
-    EscalationResolved,
-    GitJobDropped,
-    GitJobRetried,
-    QuestionPosted,
     RunPanicked,
     RunResumed,
+)
+from autodevlib.domain.events.stack import GitJobDropped, GitJobRetried
+from autodevlib.domain.events.task import (
+    BaseRecorded,
+    BranchRebased,
+    EscalationResolved,
     WorktreeReady,
 )
-from autodevlib.domain.questions import Questions
-from autodevlib.domain.run import Run
-from autodevlib.domain.stack import Stack
-from autodevlib.domain.task import Task
-from autodevlib.domain.values import (
-    MAX_SUPERVISOR_FAILURES,
-    ArtifactKind,
-    CommandId,
-    CommitSha,
-    DeferredCall,
-    DesignVersion,
-    EscalationKind,
-    ExecutionId,
-    GitJobKind,
-    InterruptCause,
-    QuestionId,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskStatus,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.deferred_call import DeferredCall
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.limits import MAX_SUPERVISOR_FAILURES
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_status import TaskStatus
 from autodevlib.infra.requests import RequestBox
 from test_seams import (
     STUCK_PREFIX,

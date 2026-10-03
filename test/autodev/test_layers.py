@@ -105,23 +105,25 @@ DOMAIN_FILES = sorted(DOMAIN.rglob("*.py"))
 
 
 def test_ドメイン層のファイルがある():
-    names = {path.name for path in DOMAIN_FILES}
+    names = {path.relative_to(DOMAIN).as_posix() for path in DOMAIN_FILES}
     assert {
-        "values.py",
-        "events.py",
-        "commands.py",
-        "stages.py",
-        "flow.py",
-        "aggregate.py",
+        "value_objects/base.py",
+        "events/base.py",
+        "commands/base.py",
+        "stages/catalog.py",
+        "flow/flow.py",
+        "aggregates/base.py",
     } <= names
 
 
-@pytest.mark.parametrize("path", DOMAIN_FILES, ids=[p.name for p in DOMAIN_FILES])
+@pytest.mark.parametrize(
+    "path", DOMAIN_FILES, ids=[p.relative_to(DOMAIN).as_posix() for p in DOMAIN_FILES]
+)
 def test_ドメイン層はIOをせず外に依らない(path: Path):
     assert violations(path.read_text(encoding="utf-8"), module_of(path)) == []
 
 
-DOMAIN_MODULE = "autodevlib.domain.values"
+DOMAIN_MODULE = "autodevlib.domain.codec"
 
 
 @pytest.mark.parametrize(
@@ -177,7 +179,7 @@ def test_検査はIOと外への依存を見つける(source: str):
     "source",
     [
         "from . import codec",
-        "from .values import TaskId",
+        "from .value_objects.task_id import TaskId",
         "from autodevlib.domain.flow import Flow",
         "import autodevlib.domain",
         "import re\nimport json\nfrom dataclasses import dataclass",
@@ -191,6 +193,9 @@ def test_検査はドメインの中と許したライブラリを通す(source:
 
 
 def test_サブパッケージの相対importも名前を解く():
-    node = ast.parse("from ..values import TaskId").body[0]
+    node = ast.parse("from ..value_objects.task_id import TaskId").body[0]
     assert isinstance(node, ast.ImportFrom)
-    assert resolve("autodevlib.domain.services.scheduler", node) == "autodevlib.domain.values"
+    assert (
+        resolve("autodevlib.domain.services.scheduler", node)
+        == "autodevlib.domain.value_objects.task_id"
+    )

@@ -16,9 +16,13 @@ from autodevlib.adapters.guard import GUARD_ENV
 from autodevlib.app.mainloop import Inbox
 from autodevlib.app.stage_context import StagePrompt
 from autodevlib.app.supervisors import SupervisorRunner, SupervisorSetting
-from autodevlib.domain.commands import AcceptFlow, Panic, ReportSupervisorFailure
+from autodevlib.domain.commands.run import Panic, ReportSupervisorFailure
+from autodevlib.domain.commands.task import AcceptFlow
 from autodevlib.domain.supervision import Supervisor
-from autodevlib.domain.values import CommandId, EventId, RunName, TaskId
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.infra.paths import RunPaths
 
 T1 = TaskId("task1")

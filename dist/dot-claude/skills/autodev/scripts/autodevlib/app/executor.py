@@ -57,28 +57,29 @@ from ..adapters.git import Git
 from ..adapters.guard import ask_question, guard_context, stage_env, write_hook_settings
 from ..adapters.process import ProcessRunner
 from ..adapters.schema import load_schema, normalize_nulls, violations
-from ..domain.aggregate import Aggregate
-from ..domain.commands import BeginStage, Command, Panic, ReportBeginFailure, ReportStageResult
+from ..domain.aggregates.base import Aggregate
+from ..domain.aggregates.task import ExecutionStatus
+from ..domain.commands.base import Command
+from ..domain.commands.run import Panic
+from ..domain.commands.task import BeginStage, ReportBeginFailure, ReportStageResult
 from ..domain.guard import cut_off_by_denials
-from ..domain.stages import BodyTarget, ResultField, StageMode, StageSpec
-from ..domain.task import ExecutionStatus
-from ..domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    CommandId,
-    CommitSha,
-    DeferredCall,
-    Evidence,
-    ExecutionId,
-    InvalidValue,
-    Issuer,
-    Pointers,
-    SessionId,
-    StageExit,
-    StreamId,
-    TaskId,
-    overview_pr_title,
-)
+from ..domain.stages.catalog import StageSpec
+from ..domain.stages.kinds import BodyTarget, ResultField, StageMode
+from ..domain.value_objects.artifact_kind import ArtifactKind
+from ..domain.value_objects.artifact_ref import ArtifactRef
+from ..domain.value_objects.base import InvalidValue
+from ..domain.value_objects.command_id import CommandId
+from ..domain.value_objects.commit_sha import CommitSha
+from ..domain.value_objects.deferred_call import DeferredCall
+from ..domain.value_objects.evidence import Evidence
+from ..domain.value_objects.execution_id import ExecutionId
+from ..domain.value_objects.issuer import Issuer
+from ..domain.value_objects.overview_pr_title import overview_pr_title
+from ..domain.value_objects.pointers import Pointers
+from ..domain.value_objects.session_id import SessionId
+from ..domain.value_objects.stage_exit import StageExit
+from ..domain.value_objects.stream_id import StreamId
+from ..domain.value_objects.task_id import TaskId
 from ..infra.files import utc_now
 from ..infra.status import remove_progress, write_progress
 from . import files, outputs

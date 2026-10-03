@@ -29,13 +29,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..domain.values import (
-    DEFAULT_TEST_GLOBS,
-    GlobPattern,
-    InvalidValue,
-    Repository,
-    VerifyCommand,
-)
+from ..domain.value_objects.base import InvalidValue
+from ..domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
+from ..domain.value_objects.repository import Repository
+from ..domain.value_objects.verify_command import VerifyCommand
 
 #: JSON の欄 → `RepoConfig` の欄
 FIELDS = {

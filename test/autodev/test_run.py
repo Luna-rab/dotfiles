@@ -1,4 +1,4 @@
-"""Run 集約（`domain/run.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
+"""Run 集約（`domain/aggregates/run.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ from dataclasses import replace
 
 import pytest
 from autodev_harness import CLI, DRIVER, POLICY, RUN_SUPERVISOR, Loop, names, new_id, of_type
-from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.commands.run import (
     AnswerEscalation,
     ApplyPlan,
     ApplyReplan,
@@ -31,11 +32,10 @@ from autodevlib.domain.commands import (
     StopTasks,
     UpdateTaskStatus,
 )
-from autodevlib.domain.events import (
+from autodevlib.domain.events.run import (
     AllTasksSettled,
     AnswerRecorded,
     EscalationAnswered,
-    EscalationClosed,
     EscalationRaised,
     IntegrationFailureCleared,
     IntegrationFailureRecorded,
@@ -49,33 +49,33 @@ from autodevlib.domain.events import (
     TaskStarted,
     TaskSuperseded,
 )
-from autodevlib.domain.run import Run
+from autodevlib.domain.events.task import EscalationClosed
 from autodevlib.domain.services.escalation_router import SupervisorLevel
 from autodevlib.domain.supervision import wake_for
-from autodevlib.domain.values import (
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import (
     MAX_REPLANS_WITHOUT_STACK,
     MAX_SUPERVISOR_FAILURES,
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    Instruction,
-    Issuer,
-    ParallelLimit,
-    PlannedTask,
-    Pointers,
-    PrNumber,
-    Proposal,
-    QuestionId,
-    Repository,
-    RunName,
-    StreamId,
-    TaskId,
-    TaskSpec,
-    TaskStatus,
 )
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.planned_task import PlannedTask
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
 
 S = TaskStatus
 E = EscalationKind

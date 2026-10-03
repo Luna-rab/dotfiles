@@ -4,7 +4,7 @@
 `wake_for` に聞き、返った統括を、返った知らせで起こすだけにする。うまく進んでいる間は統括を起こさない
 （統括の文脈に何も積もらない）ので、ここに無いイベントでは誰も起きない。
 
-計画タスクと git 管理タスクの統括はプログラムで、ポリシーの表（`policies.py`）に入っている。
+計画タスクと git 管理タスクの統括はプログラムで、ポリシーの表（`policies/registry.py`）に入っている。
 """
 
 from __future__ import annotations
@@ -12,21 +12,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .events import (
+from .events.base import Event
+from .events.run import (
     AllTasksSettled,
     AnswerRecorded,
     EscalationAnswered,
     EscalationRaised,
-    Event,
-    FlowAbandoned,
-    FlowRejected,
-    ScopeChanged,
     SettledPlanRecorded,
     TasksPlanned,
-    WorktreeReady,
 )
+from .events.task import FlowAbandoned, FlowRejected, ScopeChanged, WorktreeReady
 from .services.escalation_router import EscalationRouter, SupervisorLevel, task_of_stream
-from .values import EventId, GitJobKind, Guard, StreamId, TaskId, TaskKind, WriteScope
+from .value_objects.event_id import EventId
+from .value_objects.git_job_kind import GitJobKind
+from .value_objects.guard import Guard
+from .value_objects.stream_id import StreamId
+from .value_objects.task_id import TaskId
+from .value_objects.task_kind import TaskKind
+from .value_objects.write_scope import WriteScope
 
 #: 統括の書き込みの範囲。統括は読むだけで、決めたことは判断の JSON で返す
 SUPERVISOR_GUARD = Guard(WriteScope.NONE)

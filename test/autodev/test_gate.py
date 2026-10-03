@@ -7,16 +7,14 @@ import dataclasses
 import pytest
 from autodevlib.domain.services.gate import ChangedFile, GateEvaluator, GateEvidence
 from autodevlib.domain.services.verify import VerifyScope, VerifySelector
-from autodevlib.domain.values import (
-    EscalationKind,
-    FindingId,
-    FindingSummary,
-    GateItem,
-    Rating,
-    StageKind,
-    VerifyCommand,
-    VerifyResult,
-)
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_summary import FindingSummary
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
+from autodevlib.domain.value_objects.verify_result import VerifyResult
 
 PYTEST = VerifyCommand("uv run pytest -q")
 RUFF = VerifyCommand("uv run ruff check .")

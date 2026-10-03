@@ -18,24 +18,18 @@ from typing import Any
 
 import pytest
 from autodevlib import cli
-from autodevlib.domain.commands import AnswerQuestion
-from autodevlib.domain.events import (
-    QuestionAnswered,
-    QuestionPosted,
-    QuestionWithdrawn,
-    RunStarted,
-)
-from autodevlib.domain.values import (
-    BranchName,
-    CommandId,
-    EventId,
-    Instruction,
-    ParallelLimit,
-    QuestionId,
-    Repository,
-    RunName,
-    StreamId,
-)
+from autodevlib.domain.commands.questions import AnswerQuestion
+from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from autodevlib.domain.events.run import RunStarted
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.infra import status as status_module
 from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.lock import DriverLock

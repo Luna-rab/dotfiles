@@ -44,10 +44,16 @@ from types import MappingProxyType, TracebackType
 from typing import Protocol, runtime_checkable
 
 from ..domain import codec
-from ..domain.aggregate import Aggregate, Rejected
-from ..domain.commands import Command, MarkInterrupted
-from ..domain.events import Event
-from ..domain.values import CommandId, EventId, ExecutionId, InterruptCause, Issuer, StreamId
+from ..domain.aggregates.base import Aggregate, Rejected
+from ..domain.commands.base import Command
+from ..domain.commands.task import MarkInterrupted
+from ..domain.events.base import Event
+from ..domain.value_objects.command_id import CommandId
+from ..domain.value_objects.event_id import EventId
+from ..domain.value_objects.execution_id import ExecutionId
+from ..domain.value_objects.interrupt_cause import InterruptCause
+from ..domain.value_objects.issuer import Issuer
+from ..domain.value_objects.stream_id import StreamId
 from ..infra.eventstore import AggregateFactory, EventStore, StoredEvent, decoded, replay
 from ..infra.paths import RunPaths
 from ..infra.rejections import Rejection

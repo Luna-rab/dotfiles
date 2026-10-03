@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from autodevlib.domain.values import RunName
+from autodevlib.domain.value_objects.run_name import RunName
 from autodevlib.infra.paths import RunPaths
 from autodevlib.infra.status import all_statuses
 from conftest import CLAUDE_SCRIPTS, REPO_ROOT

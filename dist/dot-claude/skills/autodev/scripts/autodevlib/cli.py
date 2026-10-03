@@ -31,8 +31,9 @@ from .adapters.git import Git
 from .adapters.guard import ANSWER_FILE_OPTION
 from .app import assembly, cleanup
 from .app.driver import ExitCode, StartRequest
-from .domain.commands import AnswerQuestion, StartRun
-from .domain.events import RunStarted
+from .domain.commands.questions import AnswerQuestion
+from .domain.commands.run import StartRun
+from .domain.events.run import RunStarted
 from .domain.services.housekeeping import (
     Blocker,
     Leftovers,
@@ -41,16 +42,14 @@ from .domain.services.housekeeping import (
     purge_blockers,
     start_blockers,
 )
-from .domain.values import (
-    BranchName,
-    CommandId,
-    Instruction,
-    InvalidValue,
-    Issuer,
-    QuestionId,
-    Repository,
-    RunName,
-)
+from .domain.value_objects.base import InvalidValue
+from .domain.value_objects.branch_name import BranchName
+from .domain.value_objects.command_id import CommandId
+from .domain.value_objects.instruction import Instruction
+from .domain.value_objects.issuer import Issuer
+from .domain.value_objects.question_id import QuestionId
+from .domain.value_objects.repository import Repository
+from .domain.value_objects.run_name import RunName
 from .infra.eventstore import EventReader
 from .infra.lock import DriverBusy, DriverLock
 from .infra.paths import RunPaths

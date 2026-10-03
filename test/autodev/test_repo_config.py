@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 
 import pytest
-from autodevlib.domain.values import DEFAULT_TEST_GLOBS, GlobPattern, Repository, VerifyCommand
+from autodevlib.domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 from autodevlib.infra.repo_config import (
     RepoConfig,
     RepoConfigError,

@@ -23,32 +23,31 @@ from autodevlib.app.stage_context import (
     TargetFacts,
     TaskRow,
 )
-from autodevlib.domain.commands import AcceptFlow, BeginStage, OpenTask
-from autodevlib.domain.events import StageCompleted, StageStarted, WorktreeReady
-from autodevlib.domain.flow import FlowStep, git_job_flow
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommitSha,
-    Decision,
-    DecisionOrigin,
-    ExecutionId,
-    GateItem,
-    GitJob,
-    GitJobKind,
-    GlobPattern,
-    Issuer,
-    PrNumber,
-    QuestionId,
-    StackEntry,
-    StageKind,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-    VerifyCommand,
-)
+from autodevlib.domain.commands.task import AcceptFlow, BeginStage, OpenTask
+from autodevlib.domain.events.task import StageCompleted, StageStarted, WorktreeReady
+from autodevlib.domain.flow.flow import FlowStep
+from autodevlib.domain.flow.standard import git_job_flow
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.decision import Decision
+from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.glob_pattern import GlobPattern
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 from executor_fakes import Env, commit, make_env, sh
 
 S = StageKind

@@ -20,17 +20,15 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ..values import (
-    EscalationKind,
-    FindingId,
-    FindingSummary,
-    GateItem,
-    GateItemResult,
-    GateReport,
-    Rating,
-    StageKind,
-    VerifyResult,
-)
+from ..value_objects.escalation_kind import EscalationKind
+from ..value_objects.finding_id import FindingId
+from ..value_objects.finding_summary import FindingSummary
+from ..value_objects.gate_item import GateItem
+from ..value_objects.gate_item_result import GateItemResult
+from ..value_objects.gate_report import GateReport
+from ..value_objects.rating import Rating
+from ..value_objects.stage_kind import StageKind
+from ..value_objects.verify_result import VerifyResult
 
 
 @dataclass(frozen=True)

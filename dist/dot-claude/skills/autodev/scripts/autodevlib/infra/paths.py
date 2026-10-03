@@ -12,7 +12,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.values import DesignVersion, ExecutionId, QuestionId, RunName, TaskId, TaskKind
+from ..domain.value_objects.design_version import DesignVersion
+from ..domain.value_objects.execution_id import ExecutionId
+from ..domain.value_objects.question_id import QuestionId
+from ..domain.value_objects.run_name import RunName
+from ..domain.value_objects.task_id import TaskId
+from ..domain.value_objects.task_kind import TaskKind
 
 #: `RunPaths.design` が作るファイル名
 _DESIGN_FILE = re.compile(r"v([1-9][0-9]*)\.md")

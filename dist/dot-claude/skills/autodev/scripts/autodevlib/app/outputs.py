@@ -12,7 +12,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ..domain.values import DesignVersion, TaskId
+from ..domain.value_objects.design_version import DesignVersion
+from ..domain.value_objects.task_id import TaskId
 from ..infra.files import write_atomic
 from ..infra.paths import RunPaths
 

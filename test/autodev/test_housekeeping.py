@@ -11,7 +11,10 @@ from autodevlib.domain.services.housekeeping import (
     purge_blockers,
     start_blockers,
 )
-from autodevlib.domain.values import BranchName, ExecutionId, StageKind, TaskId
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.task_id import TaskId
 
 PLAN = ExecutionId(TaskId.planning(), StageKind.PLAN, 0, 1)
 BRANCH = BranchName("stack/r--task-0")

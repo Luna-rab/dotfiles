@@ -16,7 +16,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from enum import Enum
 
-from ..values import StageKind, VerifyCommand
+from ..value_objects.stage_kind import StageKind
+from ..value_objects.verify_command import VerifyCommand
 
 
 class VerifyScope(Enum):

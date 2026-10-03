@@ -9,7 +9,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ..values import ParallelLimit, TaskId, TaskKind, TaskStatus
+from ..value_objects.parallel_limit import ParallelLimit
+from ..value_objects.task_id import TaskId
+from ..value_objects.task_kind import TaskKind
+from ..value_objects.task_status import TaskStatus
 
 
 @dataclass(frozen=True)

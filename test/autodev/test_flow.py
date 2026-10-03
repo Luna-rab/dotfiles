@@ -1,28 +1,21 @@
-"""フローの検査と、フロー・cursor の値（`domain/flow.py`・`domain/stages.py`）。"""
+"""フローの検査と、フロー・cursor の値（`domain/flow/`・`domain/stages/`）。"""
 
 from __future__ import annotations
 
 import pytest
-from autodevlib.domain.flow import (
-    Cursor,
-    Flow,
-    FlowStep,
-    FlowValidator,
-    Reviewers,
-    git_job_flow,
-    planning_flow,
-)
-from autodevlib.domain.stages import STAGE_SPECS, SessionScope, StageMode
-from autodevlib.domain.values import (
-    ArtifactKind,
-    BranchName,
-    GitJob,
-    GitJobKind,
-    InvalidValue,
-    StageKind,
-    TaskId,
-    TaskKind,
-)
+from autodevlib.domain.flow.flow import Cursor, Flow, FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow, planning_flow
+from autodevlib.domain.flow.validator import FlowValidator
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import SessionScope, StageMode
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
 
 S = StageKind
 A = ArtifactKind

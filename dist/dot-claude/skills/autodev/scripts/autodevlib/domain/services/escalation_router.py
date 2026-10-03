@@ -11,7 +11,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 
-from ..values import MAX_SUPERVISOR_FAILURES, EscalationKind, StreamId, TaskId, TaskKind
+from ..value_objects.escalation_kind import EscalationKind
+from ..value_objects.limits import MAX_SUPERVISOR_FAILURES
+from ..value_objects.stream_id import StreamId
+from ..value_objects.task_id import TaskId
+from ..value_objects.task_kind import TaskKind
 
 _E = EscalationKind
 

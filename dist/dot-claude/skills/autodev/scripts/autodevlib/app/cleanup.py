@@ -14,7 +14,8 @@ from ..adapters import children
 from ..adapters._proc import CommandFailed
 from ..adapters.git import Git
 from ..domain.services.housekeeping import Leftovers, LiveProcess, WorktreeState
-from ..domain.values import BranchName, Repository
+from ..domain.value_objects.branch_name import BranchName
+from ..domain.value_objects.repository import Repository
 from ..infra.paths import RunPaths
 from .assembly import running_executions
 

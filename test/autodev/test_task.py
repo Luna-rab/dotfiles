@@ -1,4 +1,4 @@
-"""Task 集約（`domain/task.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
+"""Task 集約（`domain/aggregates/task.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ from typing import Any
 import pytest
 from autodev_harness import CLI, DRIVER, POLICY, SESSION, Loop, names, new_id, of_type
 from autodev_samples import stage_result
-from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.task import ExecutionStatus, Task
+from autodevlib.domain.commands.task import (
     AbandonFlow,
     AcceptFlow,
     BeginStage,
@@ -29,11 +30,11 @@ from autodevlib.domain.commands import (
     ResumeStage,
     StopTask,
 )
-from autodevlib.domain.events import (
+from autodevlib.domain.events.run import EscalationRaised
+from autodevlib.domain.events.task import (
     BaseRecorded,
     BranchRebased,
     EscalationClosed,
-    EscalationRaised,
     EscalationResolved,
     ExecutionRestarted,
     FlowAbandoned,
@@ -54,49 +55,48 @@ from autodevlib.domain.events import (
     TaskGated,
     WorktreeReady,
 )
-from autodevlib.domain.flow import Cursor, FlowStep, Reviewers, git_job_flow
+from autodevlib.domain.flow.flow import Cursor, FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow
 from autodevlib.domain.services.escalation_router import EscalationRouter
-from autodevlib.domain.stages import STAGE_SPECS, Handoff, InnerRole, StageMode
-from autodevlib.domain.task import ExecutionStatus, Task
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommitSha,
-    Decision,
-    DecisionOrigin,
-    DeferredCall,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    Evidence,
-    ExecutionId,
-    FindingId,
-    GateItem,
-    GateItemResult,
-    GateReport,
-    GitJob,
-    GitJobKind,
-    InterruptCause,
-    Issuer,
-    Location,
-    Pointers,
-    PrNumber,
-    QuestionId,
-    Rating,
-    ReportedFinding,
-    StageExit,
-    StageKind,
-    StallCause,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    UnionFileVerdict,
-    UnionVerdict,
-    VerifyCommand,
-    VerifyResult,
-)
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import Handoff, InnerRole, StageMode
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.decision import Decision
+from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
+from autodevlib.domain.value_objects.deferred_call import DeferredCall
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.gate_item_result import GateItemResult
+from autodevlib.domain.value_objects.gate_report import GateReport
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.reported_finding import ReportedFinding
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stall_cause import StallCause
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.union_file_verdict import UnionFileVerdict
+from autodevlib.domain.value_objects.union_verdict import UnionVerdict
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
+from autodevlib.domain.value_objects.verify_result import VerifyResult
 
 S = StageKind
 A = ArtifactKind

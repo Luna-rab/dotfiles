@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from .aggregate import Aggregate
-from .design import Design
-from .questions import Questions
-from .review import ReviewLedger
-from .run import Run
-from .stack import Stack
-from .task import Task
-from .values import StreamId
+from .aggregates.base import Aggregate
+from .aggregates.design import Design
+from .aggregates.questions import Questions
+from .aggregates.review_ledger import ReviewLedger
+from .aggregates.run import Run
+from .aggregates.stack import Stack
+from .aggregates.task import Task
+from .value_objects.stream_id import StreamId
 
 
 def aggregate_for(stream: StreamId) -> Aggregate:

@@ -23,7 +23,10 @@ from autodevlib.adapters import guard
 from autodevlib.adapters.guard import GuardContext, guard_context
 from autodevlib.app.files import write_answer
 from autodevlib.domain.guard import RefusalReason, WriteZone
-from autodevlib.domain.values import DEFAULT_TEST_GLOBS, Guard, RunName, WriteScope
+from autodevlib.domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS
+from autodevlib.domain.value_objects.guard import Guard
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.write_scope import WriteScope
 from autodevlib.infra.paths import RunPaths
 from conftest import SKILL_ROOT
 

@@ -1,53 +1,57 @@
-"""イベントとコマンドの名前の表と、JSON との往復（`domain/events.py`・`domain/commands.py`・`domain/codec.py`）。"""
+"""イベントとコマンドの名前の表と、JSON との往復（`domain/events/`・`domain/commands/`・`domain/codec.py`）。"""
 
 from __future__ import annotations
 
+import importlib
 import inspect
 import json
+import pkgutil
 from typing import Any
 
 import pytest
 from autodev_samples import sample
 from autodevlib.domain import codec, commands, events
-from autodevlib.domain.commands import COMMAND_TYPES, COMMANDS_BY_AGGREGATE, Command
-from autodevlib.domain.events import (
-    EVENT_TYPES,
-    EVENTS_BY_AGGREGATE,
-    AllTasksSettled,
-    Event,
-    EventRecord,
-    RunPanicked,
-    TaskStarted,
-    UnknownEventType,
-    from_record,
-    to_record,
-)
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    StreamId,
-    TaskId,
-    TaskKind,
-)
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.design import DesignCommand
+from autodevlib.domain.commands.questions import QuestionsCommand
+from autodevlib.domain.commands.registry import COMMAND_TYPES, COMMANDS_BY_AGGREGATE
+from autodevlib.domain.commands.review_ledger import ReviewCommand
+from autodevlib.domain.commands.run import RunCommand
+from autodevlib.domain.commands.stack import StackCommand
+from autodevlib.domain.commands.task import TaskCommand
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.record import EventRecord, UnknownEventType, from_record, to_record
+from autodevlib.domain.events.registry import EVENT_TYPES, EVENTS_BY_AGGREGATE
+from autodevlib.domain.events.run import AllTasksSettled, RunPanicked, TaskStarted
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
 
 #: 宛先の集約ごとの土台。表には入れない
 COMMAND_BASES = {
-    commands.Command,
-    commands.RunCommand,
-    commands.TaskCommand,
-    commands.ReviewCommand,
-    commands.DesignCommand,
-    commands.StackCommand,
-    commands.QuestionsCommand,
+    Command,
+    RunCommand,
+    TaskCommand,
+    ReviewCommand,
+    DesignCommand,
+    StackCommand,
+    QuestionsCommand,
 }
 
 
-def defined_in(module: Any, base: type) -> set[type]:
-    return {
-        obj
-        for obj in vars(module).values()
-        if inspect.isclass(obj) and issubclass(obj, base) and obj.__module__ == module.__name__
-    }
+def defined_in(package: Any, base: type) -> set[type]:
+    """パッケージの中のモジュールで定義した、`base` の部分クラス。"""
+    found: set[type] = set()
+    for info in pkgutil.iter_modules(package.__path__, prefix=f"{package.__name__}."):
+        module = importlib.import_module(info.name)
+        found |= {
+            obj
+            for obj in vars(module).values()
+            if inspect.isclass(obj) and issubclass(obj, base) and obj.__module__ == module.__name__
+        }
+    return found
 
 
 def test_eventsで定義したイベントはすべて名前の表にある():

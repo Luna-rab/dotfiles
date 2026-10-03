@@ -12,58 +12,55 @@ import pytest
 from autodev_fakes import Queue, enqueue, execution, factory, task
 from autodevlib.adapters import children
 from autodevlib.app.mainloop import MainLoop
-from autodevlib.domain.events import (
-    DesignAmbiguous,
-    DesignProposed,
-    DesignSettled,
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import DesignAmbiguous, DesignProposed, DesignSettled
+from autodevlib.domain.events.questions import QuestionPosted
+from autodevlib.domain.events.run import (
     EscalationRaised,
-    Event,
-    FlowAccepted,
-    OverviewRecorded,
-    QuestionPosted,
     RunFinished,
     RunPanicked,
     RunResumed,
     RunStarted,
-    StageCompleted,
-    StageRequested,
-    StageStarted,
     TaskMarkedStacked,
-    TaskOpened,
     TasksPlanned,
     TasksStopped,
-    TaskStacked,
     TaskStarted,
     TaskStatusChanged,
 )
-from autodevlib.domain.flow import Cursor, Flow, FlowStep
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommandId,
-    CommitSha,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    ExecutionId,
-    Instruction,
-    ParallelLimit,
-    PlannedTask,
-    Pointers,
-    PrNumber,
-    Proposal,
-    QuestionId,
-    Repository,
-    RunName,
-    StackEntry,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
+from autodevlib.domain.events.stack import OverviewRecorded, TaskStacked
+from autodevlib.domain.events.task import (
+    FlowAccepted,
+    StageCompleted,
+    StageRequested,
+    StageStarted,
+    TaskOpened,
 )
+from autodevlib.domain.flow.flow import Cursor, Flow, FlowStep
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.planned_task import PlannedTask
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
 from autodevlib.infra import status as status_module
 from autodevlib.infra import status_sections
 from autodevlib.infra.eventstore import EventStore

@@ -1,13 +1,14 @@
-"""Design（`domain/design.py`）。コマンドとイベントの列だけで確かめる。"""
+"""Design（`domain/aggregates/design.py`）。コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 
 import itertools
 
 import pytest
-from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
-    Command,
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.design import Design
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.design import (
     DiscardProposal,
     MarkAmbiguous,
     MarkReverted,
@@ -16,8 +17,8 @@ from autodevlib.domain.commands import (
     ReviseDesign,
     SettleDesign,
 )
-from autodevlib.domain.design import Design
-from autodevlib.domain.events import (
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import (
     DesignAmbiguous,
     DesignProposalAbandoned,
     DesignProposed,
@@ -27,30 +28,26 @@ from autodevlib.domain.events import (
     DesignRoundsExhausted,
     DesignRoundsReset,
     DesignSettled,
-    Event,
-    ResultReceived,
-    ResultRefused,
 )
-from autodevlib.domain.values import (
-    MAX_DESIGN_ROUNDS,
-    ArtifactKind,
-    ArtifactRef,
-    CommandId,
-    DesignVersion,
-    EscalationKind,
-    EventId,
-    ExecutionId,
-    FindingId,
-    FindingSummary,
-    Issuer,
-    PlannedTask,
-    Proposal,
-    Rating,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskSpec,
-)
+from autodevlib.domain.events.review_ledger import ResultReceived, ResultRefused
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_summary import FindingSummary
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import MAX_DESIGN_ROUNDS
+from autodevlib.domain.value_objects.planned_task import PlannedTask
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 
 STREAM = StreamId.design()
 PLANNING = TaskId.planning()

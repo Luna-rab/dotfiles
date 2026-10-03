@@ -9,14 +9,12 @@ from autodevlib.domain.services.escalation_router import (
     task_of_stream,
 )
 from autodevlib.domain.services.task_scheduler import SchedulingEntry, TaskScheduler
-from autodevlib.domain.values import (
-    EscalationKind,
-    ParallelLimit,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskStatus,
-)
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_status import TaskStatus
 
 S = TaskStatus
 E = EscalationKind

@@ -20,36 +20,35 @@ from autodev_fakes import (
     task,
 )
 from autodevlib.app.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
-from autodevlib.domain.aggregate import Aggregate
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.base import Aggregate
+from autodevlib.domain.aggregates.task import Task
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.task import (
     AcceptFlow,
     BeginStage,
-    Command,
     MarkInterrupted,
     OpenTask,
     ResumeInterrupted,
     ResumeStage,
 )
-from autodevlib.domain.events import GitJobQueued, StageInterrupted, StageStarted
-from autodevlib.domain.flow import FlowStep, Reviewers
-from autodevlib.domain.task import Task
-from autodevlib.domain.values import (
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommandId,
-    EventId,
-    ExecutionId,
-    InterruptCause,
-    Issuer,
-    IssuerKind,
-    RunName,
-    SessionId,
-    StageKind,
-    StreamId,
-    TaskKind,
-    TaskSpec,
-)
+from autodevlib.domain.events.stack import GitJobQueued
+from autodevlib.domain.events.task import StageInterrupted, StageStarted
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.issuer_kind import IssuerKind
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 from autodevlib.infra import db
 from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.paths import RunPaths

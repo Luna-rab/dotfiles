@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from autodevlib.domain.services.union import UnionChecker
-from autodevlib.domain.values import UnionFileVerdict, UnionVerdict
+from autodevlib.domain.value_objects.union_file_verdict import UnionFileVerdict
+from autodevlib.domain.value_objects.union_verdict import UnionVerdict
 
 
 def lines(*rows: str) -> str:

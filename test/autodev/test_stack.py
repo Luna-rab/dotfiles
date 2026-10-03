@@ -1,14 +1,15 @@
-"""Stack（`domain/stack.py`）。スタックの形と git 管理タスクの仕事の列を、コマンドとイベントの列だけで確かめる。"""
+"""Stack（`domain/aggregates/stack.py`）。スタックの形と git 管理タスクの仕事の列を、コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 
 import itertools
 
 import pytest
-from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.stack import Stack
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.stack import (
     AppendEntry,
-    Command,
     DropGitJob,
     EnqueueGitJob,
     EnqueueStack,
@@ -24,8 +25,9 @@ from autodevlib.domain.commands import (
     UnstackFrom,
     WithdrawRequest,
 )
-from autodevlib.domain.events import (
-    Event,
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.review_ledger import ResultReceived, ResultRefused
+from autodevlib.domain.events.stack import (
     GitJobDropped,
     GitJobFinished,
     GitJobQueued,
@@ -36,32 +38,27 @@ from autodevlib.domain.events import (
     IntegrationRetried,
     OverviewRecorded,
     RebaseConflicted,
-    ResultReceived,
-    ResultRefused,
     StackCutBack,
     StackingPaused,
     StackingResumed,
     TaskStacked,
 )
-from autodevlib.domain.stack import Stack
-from autodevlib.domain.values import (
-    MAX_JOB_RETURNS,
-    BranchName,
-    CommandId,
-    EventId,
-    ExecutionId,
-    FlowEnding,
-    GitJob,
-    GitJobKind,
-    GitJobOutcome,
-    Issuer,
-    PrNumber,
-    RunName,
-    StackEntry,
-    StageKind,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.flow_ending import FlowEnding
+from autodevlib.domain.value_objects.git_job import GitJob
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.git_job_outcome import GitJobOutcome
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import MAX_JOB_RETURNS
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 
 STREAM = StreamId.stack()
 RUN = RunName("add-cache")

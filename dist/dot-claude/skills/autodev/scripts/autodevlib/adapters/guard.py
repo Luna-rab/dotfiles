@@ -37,7 +37,9 @@ from pathlib import Path
 from typing import Any
 
 from ..domain.guard import AskVerdict, Operation, Refusal, RefusalReason, WriteTarget, WriteZone
-from ..domain.values import DEFAULT_TEST_GLOBS, GlobPattern, Guard, WriteScope
+from ..domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
+from ..domain.value_objects.guard import Guard
+from ..domain.value_objects.write_scope import WriteScope
 from . import globs
 from .shell import Where, bash_facts, expand, is_literal, name_of, simple_commands, strip_heredocs
 

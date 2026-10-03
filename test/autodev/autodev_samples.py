@@ -13,33 +13,31 @@ import typing
 from enum import Enum
 from typing import Any, Union
 
-from autodevlib.domain.stages import STAGE_SPECS, ResultField
-from autodevlib.domain.values import (
-    BranchName,
-    CommandId,
-    CommitSha,
-    Decision,
-    DecisionOrigin,
-    DesignVersion,
-    EventId,
-    FindingId,
-    GlobPattern,
-    Instruction,
-    Location,
-    Number,
-    ParallelLimit,
-    PrNumber,
-    QuestionId,
-    Repository,
-    RunName,
-    Seq,
-    SessionId,
-    StageKind,
-    StreamId,
-    TaskId,
-    Text,
-    VerifyCommand,
-)
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import ResultField
+from autodevlib.domain.value_objects.base import Number, Text
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.decision import Decision
+from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.glob_pattern import GlobPattern
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.pr_number import PrNumber
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.seq import Seq
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 
 TASK = TaskId("task2")
 

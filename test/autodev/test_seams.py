@@ -20,106 +20,132 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal
 
 from autodev_samples import stage_result
-from autodevlib.domain.aggregate import Aggregate, Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.base import Aggregate, Rejected
+from autodevlib.domain.aggregates.design import DESIGN_WAITS, Design
+from autodevlib.domain.aggregates.questions import Questions
+from autodevlib.domain.aggregates.review_ledger import JudgeCapability, ReviewLedger
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.stack import Stack
+from autodevlib.domain.aggregates.task import ExecutionStatus, Task
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.design import (
+    DiscardProposal,
+    MarkAmbiguous,
+    MarkReverted,
+    ProposeDesign,
+    ResumeDesign,
+    ReviseDesign,
+    SettleDesign,
+)
+from autodevlib.domain.commands.questions import AnswerQuestion, PostQuestion, WithdrawQuestions
+from autodevlib.domain.commands.review_ledger import (
+    CarryFinding,
+    CommentFinding,
+    CountFix,
+    JudgeFinding,
+    RaiseFinding,
+    RecordFindings,
+    RecordGateResult,
+    RecordJudgement,
+    TrackProposal,
+)
+from autodevlib.domain.commands.run import (
+    AnswerEscalation,
+    ApplyPlan,
+    ApplyReplan,
+    ClearIntegrationFailure,
+    CloseRelayedEscalation,
+    EscalateToRun,
+    FinishRun,
+    InsertTask,
+    MarkStacked,
+    Panic,
+    RecordAnswer,
+    RecordIntegrationFailure,
+    RecordSettledPlan,
+    RequestReplan,
+    ResumeRun,
+    ReturnToQueue,
+    StartReadyTasks,
+    StartRun,
+    StartTask,
+    StopTasks,
+    UpdateTaskStatus,
+)
+from autodevlib.domain.commands.stack import (
+    AppendEntry,
+    DropGitJob,
+    EnqueueGitJob,
+    EnqueueStack,
+    FinishGitJob,
+    PauseStacking,
+    RecordConflict,
+    RecordOverview,
+    RejectRequest,
+    ResumeStacking,
+    RetryGitJob,
+    RetryIntegration,
+    TakeNextGitJob,
+    UnstackFrom,
+    WithdrawRequest,
+)
+from autodevlib.domain.commands.task import (
     AbandonFlow,
     AcceptFlow,
     AddNote,
-    AnswerEscalation,
-    AnswerQuestion,
-    AppendEntry,
-    ApplyPlan,
-    ApplyReplan,
     BeginStage,
-    CarryFinding,
     ChangeScope,
-    ClearIntegrationFailure,
     CloseEscalation,
-    CloseRelayedEscalation,
-    Command,
-    CommentFinding,
     ConcludeDesignRound,
     ConcludeGateRound,
     ConcludeReviewRound,
     ConfirmHandoff,
-    CountFix,
-    DiscardProposal,
-    DropGitJob,
-    EnqueueGitJob,
-    EnqueueStack,
     Escalate,
-    EscalateToRun,
-    FinishGitJob,
-    FinishRun,
-    InsertTask,
-    JudgeFinding,
-    MarkAmbiguous,
     MarkInterrupted,
-    MarkReverted,
-    MarkStacked,
     OpenTask,
-    Panic,
-    PauseStacking,
-    PostQuestion,
-    ProposeDesign,
-    RaiseFinding,
-    RecordAnswer,
     RecordBase,
-    RecordConflict,
-    RecordFindings,
-    RecordGateResult,
-    RecordIntegrationFailure,
-    RecordJudgement,
-    RecordOverview,
-    RecordSettledPlan,
-    RejectRequest,
     ReportStageResult,
-    RequestReplan,
     ResolveEscalation,
-    ResumeDesign,
     ResumeInterrupted,
-    ResumeRun,
-    ResumeStacking,
     ResumeStage,
-    RetryGitJob,
-    RetryIntegration,
-    ReturnToQueue,
-    ReviseDesign,
-    SettleDesign,
-    StartReadyTasks,
-    StartRun,
-    StartTask,
     StopTask,
-    StopTasks,
-    TakeNextGitJob,
-    TrackProposal,
-    UnstackFrom,
-    UpdateTaskStatus,
-    WithdrawQuestions,
-    WithdrawRequest,
 )
-from autodevlib.domain.design import DESIGN_WAITS, Design
-from autodevlib.domain.events import (
-    AllTasksSettled,
-    AnswerRecorded,
-    BranchRebased,
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import (
     DesignAmbiguous,
     DesignProposed,
     DesignReverted,
     DesignRevisionStarted,
     DesignRoundsExhausted,
     DesignSettled,
-    EscalationAnswered,
-    EscalationClosed,
-    EscalationRaised,
-    EscalationResolved,
-    Event,
+)
+from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from autodevlib.domain.events.review_ledger import (
     FindingCarried,
     FindingsEvaluated,
-    FlowAbandoned,
-    FlowAccepted,
-    FlowFinished,
-    GateFailed,
+    ResultReceived,
+    ResultRefused,
+)
+from autodevlib.domain.events.run import (
+    AllTasksSettled,
+    AnswerRecorded,
+    EscalationAnswered,
+    EscalationRaised,
+    ReplanRequested,
+    RunFinished,
+    RunResumed,
+    RunStarted,
+    SettledPlanRecorded,
+    TaskInserted,
+    TaskMarkedStacked,
+    TasksDiscarded,
+    TasksPlanned,
+    TasksReturnedToQueue,
+    TasksStopped,
+    TaskStarted,
+    TaskStatusChanged,
+)
+from autodevlib.domain.events.stack import (
     GitJobDropped,
     GitJobFinished,
     GitJobQueued,
@@ -128,93 +154,79 @@ from autodevlib.domain.events import (
     GitJobWithdrawn,
     IntegrationFailed,
     IntegrationRetried,
-    NoteAdded,
-    QuestionAnswered,
-    QuestionPosted,
-    QuestionWithdrawn,
     RebaseConflicted,
-    ReplanRequested,
-    ResultReceived,
-    ResultRefused,
-    RunFinished,
-    RunResumed,
-    RunStarted,
-    ScopeChanged,
-    SettledPlanRecorded,
     StackCutBack,
     StackingResumed,
+    TaskStacked,
+)
+from autodevlib.domain.events.task import (
+    BranchRebased,
+    EscalationClosed,
+    EscalationResolved,
+    FlowAbandoned,
+    FlowAccepted,
+    FlowFinished,
+    GateFailed,
+    NoteAdded,
+    ScopeChanged,
     StageCompleted,
     StageReported,
     StageRequested,
     StageStarted,
     TaskGated,
-    TaskInserted,
-    TaskMarkedStacked,
-    TasksDiscarded,
-    TasksPlanned,
-    TasksReturnedToQueue,
-    TasksStopped,
-    TaskStacked,
-    TaskStarted,
-    TaskStatusChanged,
     WorktreeReady,
 )
-from autodevlib.domain.flow import FlowStep, Reviewers, git_job_flow, planning_flow
-from autodevlib.domain.questions import Questions
-from autodevlib.domain.review import JudgeCapability, ReviewLedger
-from autodevlib.domain.run import Run
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
+from autodevlib.domain.flow.standard import git_job_flow, planning_flow
 from autodevlib.domain.services.escalation_router import task_of_stream
-from autodevlib.domain.stack import Stack
-from autodevlib.domain.stages import STAGE_SPECS, Handoff, StageMode
+from autodevlib.domain.stages.catalog import STAGE_SPECS
+from autodevlib.domain.stages.kinds import Handoff, StageMode
 from autodevlib.domain.supervision import wake_for
-from autodevlib.domain.task import ExecutionStatus, Task
-from autodevlib.domain.values import (
-    MAX_JOB_RETURNS,
-    ArtifactKind,
-    ArtifactRef,
-    BranchName,
-    CommandId,
-    CommitSha,
-    Decision,
-    DecisionOrigin,
-    DeferredCall,
-    DesignCause,
-    EscalationKind,
-    EventId,
-    Evidence,
-    ExecutionId,
-    FindingOrigin,
-    FindingStatus,
-    FlowEnding,
-    GateItem,
-    GateItemResult,
-    GateReport,
-    GitJobKind,
-    GitJobOutcome,
-    Hint,
-    Instruction,
-    InterruptCause,
-    Issuer,
-    ParallelLimit,
-    Pointers,
-    QuestionId,
-    Rating,
-    Repository,
-    RunName,
-    SessionId,
-    StackEntry,
-    StageExit,
-    StageKind,
-    StreamId,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-    TaskStatus,
-    UnionFileVerdict,
-    UnionVerdict,
-    VerifyCommand,
-    VerifyResult,
-)
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.decision import Decision
+from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
+from autodevlib.domain.value_objects.deferred_call import DeferredCall
+from autodevlib.domain.value_objects.design_cause import DesignCause
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.evidence import Evidence
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_origin import FindingOrigin
+from autodevlib.domain.value_objects.finding_status import FindingStatus
+from autodevlib.domain.value_objects.flow_ending import FlowEnding
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.gate_item_result import GateItemResult
+from autodevlib.domain.value_objects.gate_report import GateReport
+from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.git_job_outcome import GitJobOutcome
+from autodevlib.domain.value_objects.hint import Hint
+from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import MAX_JOB_RETURNS
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stack_entry import StackEntry
+from autodevlib.domain.value_objects.stage_exit import StageExit
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.task_status import TaskStatus
+from autodevlib.domain.value_objects.union_file_verdict import UnionFileVerdict
+from autodevlib.domain.value_objects.union_verdict import UnionVerdict
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
+from autodevlib.domain.value_objects.verify_result import VerifyResult
 
 S = StageKind
 J = GitJobKind

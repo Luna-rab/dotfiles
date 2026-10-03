@@ -13,7 +13,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..values import BranchName, ExecutionId
+from ..value_objects.branch_name import BranchName
+from ..value_objects.execution_id import ExecutionId
 
 
 @dataclass(frozen=True)

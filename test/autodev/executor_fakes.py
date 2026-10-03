@@ -21,20 +21,18 @@ from autodevlib.adapters.process import ProcessRunner
 from autodevlib.app.executor import Executor, StagePrompt
 from autodevlib.app.mainloop import Inbox
 from autodevlib.app.stage_context import RunSetting, StageContext
-from autodevlib.domain.aggregate import Aggregate
-from autodevlib.domain.commands import Command
-from autodevlib.domain.events import Event
-from autodevlib.domain.review import ReviewLedger
-from autodevlib.domain.run import Run
-from autodevlib.domain.stack import Stack
-from autodevlib.domain.task import Task
-from autodevlib.domain.values import (
-    BranchName,
-    ExecutionId,
-    RunName,
-    SessionId,
-    StreamId,
-)
+from autodevlib.domain.aggregates.base import Aggregate
+from autodevlib.domain.aggregates.review_ledger import ReviewLedger
+from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.stack import Stack
+from autodevlib.domain.aggregates.task import Task
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.infra.paths import RunPaths
 from test_adapter_forge import FakeGh
 

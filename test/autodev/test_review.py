@@ -1,14 +1,15 @@
-"""ReviewLedger（`domain/review.py`）。コマンドとイベントの列だけで確かめる。"""
+"""ReviewLedger（`domain/aggregates/review_ledger.py`）。コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 
 import itertools
 
 import pytest
-from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.review_ledger import JudgeCapability, ReviewLedger
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.review_ledger import (
     CarryFinding,
-    Command,
     CommentFinding,
     CountFix,
     JudgeFinding,
@@ -18,10 +19,10 @@ from autodevlib.domain.commands import (
     RecordJudgement,
     TrackProposal,
 )
-from autodevlib.domain.events import (
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.review_ledger import (
     CarryRefused,
     CommentRefused,
-    Event,
     FindingCarried,
     FindingClosed,
     FindingCommented,
@@ -35,33 +36,30 @@ from autodevlib.domain.events import (
     ResultReceived,
     ResultRefused,
 )
-from autodevlib.domain.review import JudgeCapability, ReviewLedger
 from autodevlib.domain.services.stall import StallPolicy
-from autodevlib.domain.values import (
-    STALL_AFTER_FIXES,
-    CommandId,
-    DesignCause,
-    DesignJudgement,
-    DesignVersion,
-    EventId,
-    ExecutionId,
-    FindingId,
-    FindingOrigin,
-    FindingStatus,
-    FindingSummary,
-    FindingVerdict,
-    GateItem,
-    GateItemResult,
-    InvalidValue,
-    Issuer,
-    Location,
-    Rating,
-    ReportedFinding,
-    StageKind,
-    StallCause,
-    StreamId,
-    TaskId,
-)
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.design_cause import DesignCause
+from autodevlib.domain.value_objects.design_judgement import DesignJudgement
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_origin import FindingOrigin
+from autodevlib.domain.value_objects.finding_status import FindingStatus
+from autodevlib.domain.value_objects.finding_summary import FindingSummary
+from autodevlib.domain.value_objects.finding_verdict import FindingVerdict
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.gate_item_result import GateItemResult
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import STALL_AFTER_FIXES
+from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.reported_finding import ReportedFinding
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stall_cause import StallCause
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
 
 TASK = TaskId("task2")
 PLANNING = TaskId.planning()

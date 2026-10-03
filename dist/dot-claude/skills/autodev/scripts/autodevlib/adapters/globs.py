@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import PurePosixPath
 
-from ..domain.values import GlobPattern
+from ..domain.value_objects.glob_pattern import GlobPattern
 
 
 def normalize(path: str) -> str:

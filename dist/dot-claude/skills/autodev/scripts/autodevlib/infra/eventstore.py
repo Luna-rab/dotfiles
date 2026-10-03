@@ -20,9 +20,12 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, TypeVar
 
-from ..domain.aggregate import Aggregate
-from ..domain.events import Event, EventRecord, from_record, to_record
-from ..domain.values import CommandId, EventId, StreamId
+from ..domain.aggregates.base import Aggregate
+from ..domain.events.base import Event
+from ..domain.events.record import EventRecord, from_record, to_record
+from ..domain.value_objects.command_id import CommandId
+from ..domain.value_objects.event_id import EventId
+from ..domain.value_objects.stream_id import StreamId
 from . import db
 from .files import utc_now
 

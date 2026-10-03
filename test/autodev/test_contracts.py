@@ -17,38 +17,32 @@ from typing import Any
 import pytest
 from autodevlib.app.decisions import RUN_DECISIONS, TASK_DECISIONS, payload_key
 from autodevlib.app.prompts import SOURCES, contract_inputs
-from autodevlib.domain.commands import Command, JudgeFinding, RaiseFinding
-from autodevlib.domain.flow import FlowStep, Reviewers
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.review_ledger import JudgeFinding, RaiseFinding
+from autodevlib.domain.flow.flow import FlowStep, Reviewers
 from autodevlib.domain.services.escalation_router import RAISED_IN_TASK, RELAYED_TO_RUN
-from autodevlib.domain.stages import (
-    REVIEWER_STAGES,
-    STAGE_SPECS,
-    ResultField,
-    StageMode,
-    StageSpec,
-)
+from autodevlib.domain.stages.catalog import REVIEWER_STAGES, STAGE_SPECS, StageSpec
+from autodevlib.domain.stages.kinds import ResultField, StageMode
 from autodevlib.domain.supervision import Notice
-from autodevlib.domain.values import (
-    DesignCause,
-    EventId,
-    FindingId,
-    FindingStatus,
-    FindingTransfer,
-    GateItem,
-    Hint,
-    InvalidValue,
-    IssuerKind,
-    Pointers,
-    Proposal,
-    QuestionId,
-    Rating,
-    SessionId,
-    StageKind,
-    StallCause,
-    TaskId,
-    TaskKind,
-    TaskSpec,
-)
+from autodevlib.domain.value_objects.base import InvalidValue
+from autodevlib.domain.value_objects.design_cause import DesignCause
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_status import FindingStatus
+from autodevlib.domain.value_objects.finding_transfer import FindingTransfer
+from autodevlib.domain.value_objects.gate_item import GateItem
+from autodevlib.domain.value_objects.hint import Hint
+from autodevlib.domain.value_objects.issuer_kind import IssuerKind
+from autodevlib.domain.value_objects.pointers import Pointers
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.question_id import QuestionId
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.session_id import SessionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stall_cause import StallCause
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 from conftest import SKILL_ROOT
 
 CONTRACTS = SKILL_ROOT / "contracts"

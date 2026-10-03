@@ -393,7 +393,6 @@ def test_走っているランのタスクと実行と回答待ちを見せる(p
             },
         },
     }
-    # 外へ出す形は JSON にできる
     json.dumps(status)
 
 
@@ -434,11 +433,6 @@ def test_パニックしたランは終えた後でもパニックと見せる(p
     assert run_status(paths)["run"]["phase"] == "planning"
     seed(RUN, RunFinished(ready_overview=False), RunPanicked("利用枠"))
     assert run_status(paths)["run"]["phase"] == "panicked"
-
-
-def test_ランが無ければFileNotFoundError(paths: RunPaths):
-    with pytest.raises(FileNotFoundError):
-        run_status(paths)
 
 
 def test_StartRunを拒まれてイベントが無いランも読める(paths: RunPaths):

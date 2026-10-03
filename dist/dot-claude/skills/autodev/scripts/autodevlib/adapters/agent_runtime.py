@@ -331,7 +331,14 @@ class AgentProcess:
             self._err.close()
             self._remove_gh_config_dir()
             raise
-        children.record(self._proc.pid, argv)
+        try:
+            children.record(self._proc.pid, argv)
+        except BaseException:
+            children.stop_unwatched(self._proc)
+            self._log.close()
+            self._err.close()
+            self._remove_gh_config_dir()
+            raise
         threading.Thread(target=self._pump, daemon=True).start()
         if call.prompt is None:
             self._close_stdin()

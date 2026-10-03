@@ -9,7 +9,11 @@ pid が生きているかだけでは別のプロセスを取り違える。開�
 からの clock tick）と boot_id が控えと同じときだけ、同じプロセスとみなす。
 
 置き場は driver が `track_in` で 1 つ決める（driver は 1 プロセスに 1 つ）。決めていなければ控えを
-置かない（検査で driver を組むとき・CLI の外から adapters を使うとき）。
+置かない（実行器や Git を driver の外で使うとき）。
+
+Linux の `/proc` が前提である。置き場を決めたのに控えを置けない（`/proc` が無い・書けない）ときは、
+黙って見張らずに走らせず、子を止めてから OSError を投げ直す。
+
 """
 
 from __future__ import annotations
@@ -17,10 +21,13 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import signal
+import subprocess
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _lock = threading.Lock()
 _directory: Path | None = None
@@ -39,11 +46,16 @@ def track_in(directory: Path | None) -> None:
         _directory = directory
 
 
+def _boot_id() -> str:
+    """起動の id。`/proc` が無い所（Linux でない）では OSError で、控えを置けない。"""
+    return Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+
+
 def _identity(pid: int) -> tuple[str, str] | None:
     """（boot_id, 開始時刻）。プロセスが無ければ None。"""
     try:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-        boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+        boot = _boot_id()
     except OSError:
         return None
     # 2 つ目の欄（コマンド名）は括弧の中に空白を含みうるので、最後の `)` から後ろを数える
@@ -55,12 +67,16 @@ def _identity(pid: int) -> tuple[str, str] | None:
 
 
 def record(pid: int, argv: Sequence[str]) -> None:
+    """控えを置く。置けなければ OSError（`/proc` が無い・書けない）。呼んだ側は、見張れない子を
+    走らせ続けず、止めてから投げ直す（`stop_unwatched`）。"""
     with _lock:
         directory = _directory
     if directory is None:
         return
+    _boot_id()
     identity = _identity(pid)
     if identity is None:
+        # もう終わった子。見張るものが無い
         return
     boot, start = identity
     body = {"pid": pid, "boot": boot, "start": start, "command": " ".join(argv[:3])}
@@ -71,7 +87,25 @@ def record(pid: int, argv: Sequence[str]) -> None:
     os.replace(temporary, path)
 
 
+def stop_unwatched(child: subprocess.Popen[Any]) -> None:
+    """控えを置けなかった子を、グループごと止めて待つ。見張れない子を走らせると、driver が落ちた後に
+    残っても誰も見分けられない。"""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(child.pid, signal.SIGKILL)
+    child.wait()
+
+
+def kill_survivors(directory: Path) -> list[Child]:
+    """控えのうち生きている子を、グループごと SIGKILL で止める（2 回目のシグナル）。止めたものを返す。"""
+    found = survivors(directory)
+    for child in found:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(child.pid, signal.SIGKILL)
+    return found
+
+
 def forget(pid: int) -> None:
+    """控えを消す。子を待ち終えた後だけ呼ぶ（待つ前に消すと、残った子を見分けられない）。"""
     with _lock:
         directory = _directory
     if directory is not None:

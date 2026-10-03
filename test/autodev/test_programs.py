@@ -22,7 +22,7 @@ from autodevlib.app.stage_context import (
     TargetFacts,
     TaskRow,
 )
-from autodevlib.domain.commands import AcceptFlow, OpenTask
+from autodevlib.domain.commands import AcceptFlow, BeginStage, OpenTask
 from autodevlib.domain.events import StageCompleted, StageStarted, WorktreeReady
 from autodevlib.domain.flow import FlowStep, git_job_flow
 from autodevlib.domain.values import (
@@ -327,6 +327,23 @@ def test_rebaseを終えた後に流し直しても始めた時点へ戻して�
     assert outcome.conflicts == () and outcome.result == {"onto": head}
     assert sh(tree, "rev-parse", "HEAD^").strip() == head
     assert (tree / "mine.py").is_file()
+
+
+def test_rebaseが衝突で止まったままのworktreeで始めたRebaseはタスクのコミットを消さない(env: Env):
+    """前の Rebase の衝突を取りやめないまま次の試みが始まった（abort_rebase が待ち切れなかった・
+    IntegrationFailed の後に driver が落ちた）。rebase 途中の HEAD を始めた時点にすると、流す前に
+    そこへ戻して、タスクのコミットをブランチから落とす。"""
+    tree, _ = conflicting(env)
+    tip = sh(tree, "rev-parse", str(B1)).strip()
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    ctx = context(env, S.REBASE, job=job)
+    env.executor._begin(ctx, env.world.inbox.expect(ctx.execution))
+    (begun,) = env.world.submitted()
+    assert isinstance(begun, BeginStage) and str(begun.head) == tip
+    assert not env.git.rebase_in_progress(tree)
+    ctx = context(env, S.REBASE, job=job, start_commit=begun.head)
+    assert programs.run_program(ctx, tools(env)).conflicts == ("a.txt",)
+    assert sh(tree, "rev-parse", str(B1)).strip() == tip
 
 
 def test_rebase途中のworktreeにCutBranchを当てても落ちない(env: Env):

@@ -430,6 +430,10 @@ class Executor:
             return
         with ticket:
             try:
+                if context.spec.abandons_rebase and (context.tree / ".git").exists():
+                    # 途中の rebase の HEAD（切り離した、載せ直しかけのコミット）を始めた時点にすると、
+                    # restores_start が流す前にそこへ戻し、タスクのコミットをブランチから落とす
+                    self._git.rebase_abort(context.tree)
                 if context.reset_to is not None:
                     # 作り直した実行の次の試み。restart の反応が戻す前に driver が落ちていても、戻して
                     # から HEAD を取る（戻していない HEAD から始めない）

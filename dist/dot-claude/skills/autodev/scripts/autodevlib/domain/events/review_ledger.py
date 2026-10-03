@@ -71,7 +71,7 @@ class FixCounted(Event):
 class FindingStalled(Event):
     """判定の後も、修正を STALL_AFTER_FIXES 回以上受けたまま open に残った。
 
-    判定を締めたとき（EvaluateStall・RecordGateResult）に、条件を満たす指摘ごとに 1 つ出る。
+    判定を締めたとき（RecordJudgement・RecordGateResult）に、条件を満たす指摘ごとに 1 つ出る。
     **ただの記録で、これを受けてエスカレーションを出さない。** 停滞のエスカレーションは、同じ
     コマンドの最後に出る FindingsEvaluated の `stalled` を受けて 1 回だけ上げる。
     台帳は `fixes` を覚え、そこから STALL_AFTER_FIXES 回の修正を受けるまで、同じ指摘を停滞に

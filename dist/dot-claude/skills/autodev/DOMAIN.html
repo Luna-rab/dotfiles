@@ -224,10 +224,10 @@ flowchart TB
 <table>
 <thead><tr><th>用語</th><th>意味</th></tr></thead>
 <tbody>
-<tr><td>ラン（Run）</td><td>指示 1 つを受けて PR を積み終えるまでの 1 回。名前を持ち、記録は <code>~/.local/state/autodev/&lt;ラン名&gt;/</code> に置く</td></tr>
+<tr><td>ラン（Run）</td><td>指示 1 つを受けて PR を積み終えるまでの 1 回。名前を持ち、記録は既定で <code>~/.local/state/autodev/&lt;ラン名&gt;/</code> に置く（<code>AUTODEV_STATE_DIR</code>・<code>XDG_STATE_HOME</code> で変わる）</td></tr>
 <tr><td>タスク（Task）</td><td>ランの中の仕事の単位。次の 3 種類がある</td></tr>
 <tr><td>計画タスク（<code>planning</code>）</td><td>受入条件・設計・実装タスクの一覧を書く。ランに 1 つ</td></tr>
-<tr><td>実装タスク（<code>task&lt;番号&gt;</code>）</td><td>PR 1 本分の変更を作る。同時に走るのは既定で 3 つまで</td></tr>
+<tr><td>実装タスク（<code>task&lt;番号&gt;</code>）</td><td>PR 1 本分の変更を作る。走っている・回答を待っている数は、合わせて既定で 3 つまで</td></tr>
 <tr><td>git 管理タスク（<code>git</code>）</td><td>ブランチを切る・積む・概要 PR を書くなど、git と GitHub の仕事を 1 つずつ片付ける。ランに 1 つ</td></tr>
 <tr><td>ステージ（Stage）</td><td>タスクの中の 1 手。LLM が務める（<code>claude -p</code> を 1 回）か、決まった処理を 1 回走らせる。例: Plan・TestGen・Impl・Review・Gate・Push</td></tr>
 <tr><td>合成ステージ・ラウンド</td><td>ReviewLoop と DesignLoop。1 ラウンドは「見る役（並列）→ 判定 → 直す役」で、指摘が残る間ラウンドを重ねる</td></tr>
@@ -249,7 +249,8 @@ flowchart TB
 <tr><td>破棄・積み直し</td><td>積んだタスクを再計画で捨てるのが破棄。破棄した所より上のタスクは、新しいブランチ名で積み直す</td></tr>
 <tr><td>統合の失敗・引き継ぎ</td><td>積むときの rebase の衝突を両側を残して解けなかったら統合の失敗。差し込んだ新しいタスクが衝突を解き直すのが引き継ぎ</td></tr>
 <tr><td>質問・回答</td><td>ラン統括が /autodev を通してユーザーに聞くこと。回答は 1 回だけ、聞いたエスカレーションにだけ使える</td></tr>
-<tr><td>パニック</td><td>利用枠の上限に当たったこと。呼び直されるまでタスクを始めない</td></tr>
+<tr><td>ランの段階（RunPhase）</td><td>ランがいまどこにいるか。not-started・planning・running・panicked・finishing・finished の 6 つで、<code>status --json</code> に出す</td></tr>
+<tr><td>パニック</td><td>利用枠の上限に当たったか、driver が停止のシグナル（SIGTERM・SIGINT）を受けたこと。呼び直されるまでタスクを始めない</td></tr>
 </tbody>
 </table>
 </div>
@@ -257,7 +258,7 @@ flowchart TB
 
 <section id="layers">
 <h2>3. 層とコンテキスト</h2>
-<p>コードは 4 つの層に分かれ、依存は外から domain へ向く。domain は I/O をせず、domain の外を import しない（<code>test/autodev/test_layers.py</code> が確かめる）。</p>
+<p>コードは 4 つの層に分かれ、依存は外から domain へ向く。domain は I/O をせず、domain の外を import しない。この domain の決まりは <code>test/autodev/test_layers.py</code> が確かめる。</p>
 
 <figure>
 <pre class="mermaid">
@@ -281,20 +282,27 @@ flowchart TB
   APP --> DOMAIN
   INFRA --> DOMAIN
   ADP --> DOMAIN
+  INFRA -.->|"注"| ADP
 </pre>
-<figcaption>依存の向き。矢印は「import する」。</figcaption>
+<figcaption>依存の向き。矢印は「import する」。点線の「注」: status --json が、前の driver の子プロセスが生きているかを見るため、infra から adapters を 1 か所だけ使う。</figcaption>
 </figure>
 
 <p><strong>ビジネスロジックは domain にだけ置く。</strong>ほかの層は判断せず、ドメインに聞いて、その答えを実行する。</p>
 <ul>
   <li>app のメインループは、ポリシーと反応を受け手として登録し、イベントを配るだけ。「何が起きたら何をするか」はドメインのポリシーが決める</li>
   <li>ステージの実行器は証拠（終了の仕方・HEAD・作ったファイル・検証の結果）を集めて渡すだけ。完了・失敗・エスカレーションのどれにするかは Task が決める</li>
-  <li>adapters は外の仕組みの事実を返すだけで、通すか止めるかは決めない。たとえばガードのフックはパスを場所に振り分け、書いてよいかはドメインのガードの規則が決める</li>
+  <li>adapters は外の仕組みの事実を返すだけで、通すか止めるかは決めない。たとえばガードのフック（adapters）はパスを場所に振り分けてからドメインのガードの規則に聞き、書いてよいかは規則が決める</li>
 </ul>
 </section>
 
 <section id="aggregates">
 <h2>4. 集約</h2>
+<dl class="io">
+  <dt>集約</dt><dd>規則を守りながら状態を変える単位。外からはコマンドでしか変えられない</dd>
+  <dt>コマンド</dt><dd>集約に「こうしてほしい」と頼む知らせ。集約は規則に合わなければ拒む</dd>
+  <dt>イベント</dt><dd>集約が受けたコマンドから決めた「起きたこと」。過去形の名前を持ち、書き換えない</dd>
+  <dt>ポリシー</dt><dd>あるイベントを受けて、別のコマンドを出す決まり</dd>
+</dl>
 <p>集約は 6 つあり、それぞれが自分のストリーム（イベントの列）を持つ。集約どうしは互いの状態を読まず、イベントとポリシーでつながる（<a href="#events">5 章</a>）。</p>
 
 <figure>
@@ -311,7 +319,10 @@ flowchart LR
   L -->|"ラウンドを締める"| T
   T -->|"提案"| D
   D -->|"確定した計画"| R
+  L -->|"確定・直す"| D
   T -->|"積んでほしい"| S
+  R -->|"git の仕事を頼む"| S
+  S -->|"取り出した仕事のフロー"| T
   S -->|"積んだ"| R
   R -->|"質問"| Q
   Q -->|"回答"| R
@@ -321,17 +332,17 @@ flowchart LR
 
 <div class="aggregate">
 <h3>Run — ランの全体</h3>
-<p>タスクの依存のグラフと各タスクの状態を持ち、タスクをいつ始め、いつ止めるかを決める。ラン統括の判断は、質問を除いてすべて Run が受ける。</p>
+<p>タスクの依存のグラフと各タスクの状態を持ち、タスクをいつ始め、いつ止めるかを決める。ラン統括の判断は、質問を除いてすべて Run が受ける。初めての計画の反映（<code>ApplyPlan</code>）はポリシーが出し、ラン統括の apply-plan は再計画の反映（<code>ApplyReplan</code>）になる。</p>
 <p>守ること:</p>
 <ul>
-  <li>実装タスクを始めるのは、まだ始めていない（pending）・待つタスクがすべて積み終わっている・走っている数が上限未満、のときだけ</li>
+  <li>実装タスクを始めるのは、まだ始めていない（pending）・待つタスクがすべて積み終わっている・走っている・回答を待っている数が上限未満、のときだけ</li>
   <li>依存のグラフに輪が無く、依存先は止めた・破棄したタスクではない。タスクの番号は使い回さない</li>
   <li>積んだタスクは止められない。外すなら、確定した再計画が提案した破棄だけ</li>
   <li>終端でない実装タスクが残る間・計画が進んでいる間・破棄の後片付けが済む前は、ランを終えられない。タスクを 1 本も積まないまま再計画できるのは 2 回までで、その先はユーザーの回答が要る</li>
 </ul>
 <dl class="io">
-  <dt>受ける</dt><dd><code>StartRun</code>・<code>ApplyPlan</code>・<code>RequestReplan</code>・<code>InsertTask</code>・<code>StopTasks</code>・<code>EscalateToRun</code>・<code>AnswerEscalation</code>・<code>FinishRun</code></dd>
-  <dt>出す</dt><dd><code>RunStarted</code>・<code>TaskStarted</code>・<code>TasksPlanned</code>・<code>ReplanRequested</code>・<code>TasksStopped</code>・<code>TaskMarkedStacked</code>・<code>AllTasksSettled</code>・<code>RunFinished</code></dd>
+  <dt>主に受ける</dt><dd><code>StartRun</code>・<code>ApplyPlan</code>・<code>ApplyReplan</code>・<code>RequestReplan</code>・<code>InsertTask</code>・<code>StopTasks</code>・<code>EscalateToRun</code>・<code>AnswerEscalation</code>・<code>FinishRun</code></dd>
+  <dt>主に出す</dt><dd><code>RunStarted</code>・<code>TaskStarted</code>・<code>TasksPlanned</code>・<code>ReplanRequested</code>・<code>TaskInserted</code>・<code>TasksStopped</code>・<code>TasksDiscarded</code>・<code>TaskStatusChanged</code>・<code>TaskMarkedStacked</code>・<code>AllTasksSettled</code>・<code>RunFinished</code></dd>
 </dl>
 <figure>
 <pre class="mermaid">
@@ -345,25 +356,25 @@ stateDiagram-v2
   state "dropped（止めた）" as dropped
   state "superseded（引き継がれた）" as superseded
   state "discarded（破棄した）" as discarded
-  [*] --> pending: 計画に載る・差し込まれる
-  pending --> running: 始める（上限と依存を確かめる）
+  [*] --> pending: 計画に載る（TasksPlanned）・差し込まれる（TaskInserted）
+  pending --> running: 始める（TaskStarted）
   running --> escalated: エスカレーションが上がった
-  escalated --> running: 回答・閉じた・範囲が変わった
+  escalated --> running: 回答・閉じた・範囲が変わった・応えるフローを受けた
   running --> gated: フローを終えた
   gated --> stacking: 積む仕事が取り出された
   stacking --> gated: 積むフローを捨てた
-  stacking --> stacked: 積み終えた
-  stacking --> superseded: 統合に失敗し、別のタスクが引き継いだ
-  gated --> pending: 再計画で範囲が変わった
-  stacked --> discarded: 確定した再計画が破棄した
-  stacked --> gated: 破棄した所より上にあった
+  stacking --> stacked: 積み終えた（TaskMarkedStacked）
+  stacking --> superseded: 統合に失敗し、別のタスクが引き継いだ（TaskSuperseded）
+  gated --> pending: 再計画で範囲が変わった（TasksPlanned）
+  stacked --> discarded: 確定した再計画が破棄した（TasksDiscarded）
+  stacked --> gated: 破棄した所より上にあった（TasksReturnedToQueue）
   pending --> dropped: 止めた
   running --> dropped: 止めた
   escalated --> dropped: 止めた
   gated --> dropped: 止めた
   stacking --> dropped: 止めた
 </pre>
-<figcaption>Run が持つ実装タスクの状態（TaskStatus）。stacked・dropped・superseded・discarded は終端。計画タスクと git 管理タスクは running と escalated を行き来し、計画タスクはランを終えたとき、git 管理タスクは仕上げを終えたときに finished になる。</figcaption>
+<figcaption>Run が持つ実装タスクの状態（TaskStatus）。「止めた」の矢印はどれも TasksStopped。ほかのイベント名の無い矢印は、ほかの集約のイベントを受けたポリシーが知らせ、Run が TaskStatusChanged を出す。stacked・dropped・superseded・discarded は終端。計画タスクと git 管理タスクは running と escalated を行き来し、計画タスクはランを終えたとき、git 管理タスクは仕上げを終えたときに finished になる。</figcaption>
 </figure>
 </div>
 
@@ -372,14 +383,14 @@ stateDiagram-v2
 <p>3 種類のタスクで形は同じ。フローと cursor を持ち、<strong>次にどのステージを走らせるかは Task が決める。</strong>実行器が集めた証拠から、完了・失敗・エスカレーションのどれにするかも Task が決める。</p>
 <p>守ること:</p>
 <ul>
-  <li>回答を待つエスカレーションがある間・フローを捨てた後・完了チェックの落ちの判定を待つ間は、次のステージを始めない</li>
-  <li>結果をほかの集約へ渡すステージ（指摘・判定・提案・積んだ 1 本）は、渡した先が受けたと分かるまで cursor を進めない。受けなかったら result-refused で上げる</li>
+  <li>回答を待つエスカレーションがある間・フローを捨てた後・完了チェックの落ちの判定を待つ間は、次に走らせるステージを決めない。すでに走らせると決めた（requested の）実行は始まる</li>
+  <li>結果をほかの集約へ渡すステージ（指摘・判定・提案・作った概要 PR・積んだ 1 本・閉じた所）は、渡した先が受けたと分かるまで cursor を進めない。受けなかったら result-refused で上げる</li>
   <li>同じ位置で 2 回続けて落ちたら stage-errors で上げる（1 回はやり直す）</li>
-  <li>回答を待つエスカレーションがあるときに受けるフローは、それに応えるものだけ。実装タスクのフローは、完了チェック済みと PR 本文を作って終わらなければならない</li>
+  <li>回答を待つエスカレーションがあるときに受けるフローは、それに応えるものだけ。実装タスクのフローに、完了チェック済みと PR 本文を作る段が無ければ受けない</li>
 </ul>
 <dl class="io">
-  <dt>受ける</dt><dd><code>OpenTask</code>・<code>AcceptFlow</code>・<code>BeginStage</code>・<code>ReportStageResult</code>・<code>ConfirmHandoff</code>・<code>ConcludeReviewRound</code>・<code>ResolveEscalation</code>・<code>StopTask</code></dd>
-  <dt>出す</dt><dd><code>FlowAccepted</code>・<code>StageRequested</code>・<code>StageStarted</code>・<code>StageCompleted</code>・<code>StageFailed</code>・<code>EscalationRaised</code>・<code>FlowFinished</code>・<code>TaskGated</code></dd>
+  <dt>主に受ける</dt><dd><code>OpenTask</code>・<code>AcceptFlow</code>・<code>BeginStage</code>・<code>ReportStageResult</code>・<code>ConfirmHandoff</code>・<code>ConcludeReviewRound</code>・<code>ResolveEscalation</code>・<code>StopTask</code></dd>
+  <dt>主に出す</dt><dd><code>FlowAccepted</code>・<code>StageRequested</code>・<code>StageStarted</code>・<code>StageCompleted</code>・<code>StageFailed</code>・<code>EscalationRaised</code>・<code>FlowFinished</code>・<code>TaskGated</code></dd>
 </dl>
 <figure>
 <pre class="mermaid">
@@ -397,19 +408,19 @@ stateDiagram-v2
   [*] --> requested: Task が次の一手を決めた
   requested --> running: 実行器が始めた
   requested --> failed: 始められなかった
-  requested --> abandoned: フローを捨てた
-  running --> completed: 結果が合格
+  requested --> abandoned: フローを捨てた（StageCancelled）
+  running --> completed: 結果が合格（StageCompleted）・完了チェックが落ちた（GateFailed）
   running --> failed: エラー・結果の形が違う・実物が無い
-  running --> reported: ステージが報告を返した
-  running --> deferred: ask で問いを出した
-  running --> interrupted: 止めた・driver が落ちた・パニック
-  running --> restarted: 続きのセッションを起こせなかった
-  completed --> refused: 結果を渡した先が受けなかった
+  running --> reported: ステージが報告を返した（StageReported）
+  running --> deferred: ask で問いを出した（StageDeferred）
+  running --> interrupted: 止めた・driver が落ちた・パニック（StageInterrupted）
+  running --> restarted: 続きのセッションを起こせなかった（ExecutionRestarted）
+  completed --> refused: 結果を渡した先が受けなかった（HandoffFailed）
   interrupted --> running: 続きから再開
   deferred --> running: 回答を受けて再開
-  deferred --> abandoned: 回答以外で閉じた
+  deferred --> abandoned: 回答以外で閉じた・応えるフローを受けた
 </pre>
-<figcaption>ステージの実行の状態（ExecutionStatus）。failed・refused・restarted の後は、同じ位置を新しい実行でやり直す。interrupted を呼び直しで自動で再開するのは、driver が落ちた・パニックで止めたときだけ。</figcaption>
+<figcaption>ステージの実行の状態（ExecutionStatus）。failed・reported・refused・restarted の後は、同じ位置を新しい実行でやり直す。interrupted を呼び直しで自動で再開するのは、driver が落ちた・パニックで止めたときだけ。</figcaption>
 </figure>
 </div>
 
@@ -424,8 +435,8 @@ stateDiagram-v2
   <li>再計画で別のタスクへ移した指摘（carried）は、移した先に 1 回だけ立てる</li>
 </ul>
 <dl class="io">
-  <dt>受ける</dt><dd><code>RecordFindings</code>・<code>RecordJudgement</code>・<code>RecordGateResult</code>・<code>CountFix</code>・<code>CarryFinding</code></dd>
-  <dt>出す</dt><dd><code>FindingRaised</code>・<code>FindingClosed</code>・<code>FindingRejected</code>・<code>FindingReopened</code>・<code>FindingStalled</code>・<code>FindingsEvaluated</code>・<code>ResultReceived</code>・<code>ResultRefused</code></dd>
+  <dt>主に受ける</dt><dd><code>RecordFindings</code>・<code>RecordJudgement</code>・<code>RecordGateResult</code>・<code>CountFix</code>・<code>CarryFinding</code></dd>
+  <dt>主に出す</dt><dd><code>FindingRaised</code>・<code>FindingClosed</code>・<code>FindingRejected</code>・<code>FindingReopened</code>・<code>FindingStalled</code>・<code>FindingsEvaluated</code>・<code>ResultReceived</code>・<code>ResultRefused</code></dd>
 </dl>
 <figure>
 <pre class="mermaid">
@@ -439,7 +450,7 @@ stateDiagram-v2
   open --> rejected: 判定する者が退けた
   closed --> open: 開き直した
   rejected --> open: 開き直した
-  open --> carried: 再計画で移した
+  open --> carried: 再計画で移した（FindingCarried）
 </pre>
 <figcaption>指摘の状態（FindingStatus）。carried だけが終端。</figcaption>
 </figure>
@@ -450,14 +461,14 @@ stateDiagram-v2
 <p>計画ステージ（Plan・Replan・Revise）が返した提案を、DesignLoop のラウンドで確定まで運ぶ。</p>
 <p>守ること:</p>
 <ul>
-  <li>確定してよいのは、今の提案の版を判定した DesignJudge が、open の must-fix を 0 件と締めたときだけ。must-fix 以外の open の指摘は設計ファイルの末尾に書き足して rejected にする</li>
+  <li>確定してよいのは、今の提案の版を判定した DesignJudge が、open の must-fix を 0 件と締めたときだけ。確定したら、must-fix 以外の open の指摘は、反応が設計ファイルの末尾に書き足し、ポリシーが rejected にする</li>
   <li>版は消さず、番号は増えるだけ</li>
   <li>1 つの提案で回せるラウンドは 5 まで</li>
   <li>回答を待つ間は直さず、確定もしない</li>
 </ul>
 <dl class="io">
-  <dt>受ける</dt><dd><code>ProposeDesign</code>・<code>ReviseDesign</code>・<code>SettleDesign</code>・<code>MarkReverted</code>・<code>MarkAmbiguous</code>・<code>ResumeDesign</code>・<code>DiscardProposal</code></dd>
-  <dt>出す</dt><dd><code>DesignProposed</code>・<code>DesignRevisionStarted</code>・<code>DesignRevised</code>・<code>DesignSettled</code>・<code>DesignRoundsExhausted</code>・<code>DesignReverted</code>・<code>DesignAmbiguous</code></dd>
+  <dt>主に受ける</dt><dd><code>ProposeDesign</code>・<code>ReviseDesign</code>・<code>SettleDesign</code>・<code>MarkReverted</code>・<code>MarkAmbiguous</code>・<code>ResumeDesign</code>・<code>DiscardProposal</code></dd>
+  <dt>主に出す</dt><dd><code>DesignProposed</code>・<code>DesignRevisionStarted</code>・<code>DesignRevised</code>・<code>DesignSettled</code>・<code>DesignRoundsExhausted</code>・<code>DesignReverted</code>・<code>DesignAmbiguous</code>・<code>DesignProposalAbandoned</code></dd>
 </dl>
 <figure>
 <pre class="mermaid">
@@ -475,7 +486,7 @@ stateDiagram-v2
   revising --> [*]: 再計画で捨てた
   awaiting --> [*]: 再計画で捨てた
 </pre>
-<figcaption>確定していない提案の状態（ProposalState）。</figcaption>
+<figcaption>確定していない提案の状態（ProposalState）。「再計画で捨てた」はどれも DesignProposalAbandoned。</figcaption>
 </figure>
 </div>
 
@@ -485,13 +496,13 @@ stateDiagram-v2
 <p>守ること:</p>
 <ul>
   <li>一番下は概要 PR。積むのは一番上にだけで、各 PR の base はすぐ下の PR のブランチ</li>
-  <li>処理中の仕事は同時に 1 つ。再計画が進む間は積む仕事を取り出さず、破棄した後は閉じ終えるまで一番上に載せる仕事を取り出さない</li>
+  <li>処理中の仕事は同時に 1 つ。概要 PR ができるまでは、概要ブランチを切る仕事と概要 PR を作る仕事しか取り出さない。再計画が進む間は積む仕事を取り出さず、破棄した後は閉じ終えるまで一番上に載せる仕事を取り出さない</li>
   <li>済ませないとランが終わらない仕事のフローが捨てられたら、列の先頭へ戻す。戻すのは 2 回までで、その先はラン統括が続けるかやめるかを決める</li>
   <li>一度積んだブランチ名と PR 番号は使い回さない。積み直すタスクは新しい名前で切り直す</li>
 </ul>
 <dl class="io">
-  <dt>受ける</dt><dd><code>EnqueueGitJob</code>・<code>EnqueueStack</code>・<code>TakeNextGitJob</code>・<code>AppendEntry</code>・<code>RejectRequest</code>・<code>UnstackFrom</code>・<code>FinishGitJob</code></dd>
-  <dt>出す</dt><dd><code>GitJobQueued</code>・<code>GitJobTaken</code>・<code>TaskStacked</code>・<code>IntegrationFailed</code>・<code>StackCutBack</code>・<code>GitJobFinished</code></dd>
+  <dt>主に受ける</dt><dd><code>EnqueueGitJob</code>・<code>EnqueueStack</code>・<code>TakeNextGitJob</code>・<code>AppendEntry</code>・<code>RejectRequest</code>・<code>UnstackFrom</code>・<code>FinishGitJob</code></dd>
+  <dt>主に出す</dt><dd><code>GitJobQueued</code>・<code>GitJobTaken</code>・<code>TaskStacked</code>・<code>IntegrationFailed</code>・<code>StackCutBack</code>・<code>GitJobFinished</code></dd>
 </dl>
 <figure>
 <pre class="mermaid">
@@ -501,12 +512,13 @@ stateDiagram-v2
   state "止めて待つ" as parked
   [*] --> queued: 列に入った
   queued --> current: 取り出した（取り出してよいときだけ）
-  current --> [*]: 終えた・相手を止めた・統合に失敗した・やめてよい仕事を捨てた
+  current --> [*]: 終えた・相手を止めた・統合に失敗した・済ませなくてよい仕事（概要 PR の書き直し）を捨てた
   current --> queued: フローを捨てた（列の先頭へ戻す）
   current --> parked: 戻した回数が上限に達した
-  parked --> queued: ラン統括が続けると決めた
-  parked --> [*]: ラン統括がやめると決めた
-  queued --> [*]: 相手のタスクを止めた
+  parked --> queued: ラン統括が続けると決めた（GitJobRetried）
+  parked --> [*]: ラン統括がやめると決めた（GitJobDropped）
+  parked --> [*]: 相手のタスクを止めた（GitJobWithdrawn）
+  queued --> [*]: 相手のタスクを止めた・範囲が変わった（GitJobWithdrawn）
 </pre>
 <figcaption>git の仕事の進み方。処理中の仕事を終えた形は GitJobOutcome（done・withdrawn・integration-failed・dropped・abandoned・stuck）。</figcaption>
 </figure>
@@ -522,8 +534,8 @@ stateDiagram-v2
   <li>回答できるのは open の質問だけ。質問のもとのエスカレーションが回答以外で閉じたら取り下げる</li>
 </ul>
 <dl class="io">
-  <dt>受ける</dt><dd><code>PostQuestion</code>・<code>AnswerQuestion</code>・<code>WithdrawQuestions</code></dd>
-  <dt>出す</dt><dd><code>QuestionPosted</code>・<code>QuestionAnswered</code>・<code>QuestionWithdrawn</code></dd>
+  <dt>主に受ける</dt><dd><code>PostQuestion</code>・<code>AnswerQuestion</code>・<code>WithdrawQuestions</code></dd>
+  <dt>主に出す</dt><dd><code>QuestionPosted</code>・<code>QuestionAnswered</code>・<code>QuestionWithdrawn</code></dd>
 </dl>
 <figure>
 <pre class="mermaid">
@@ -533,9 +545,9 @@ stateDiagram-v2
   state "withdrawn（取り下げた）" as withdrawn
   [*] --> open: 質問を出した
   open --> answered: ユーザーが答えた
-  open --> withdrawn: もとのエスカレーションが閉じた
+  open --> withdrawn: もとのエスカレーションが回答以外で閉じた
 </pre>
-<figcaption>質問の状態（QuestionStatus）。回答待ちの質問があり、進められるタスクが無いと、driver は終了コード 4 で止まる。</figcaption>
+<figcaption>質問の状態（QuestionStatus）。回答待ちの質問があり、進められるものが無いと、driver は終了コード 4 で止まる。</figcaption>
 </figure>
 </div>
 </section>
@@ -583,7 +595,9 @@ sequenceDiagram
   L-->>D: must-fix が 0 件 → SettleDesign
   D-->>R: DesignSettled → 計画を反映（TasksPlanned）
   R-->>S: 概要 PR を作る仕事を列へ
-  R-->>T: TaskStarted → OpenTask、タスクのブランチを切る仕事を列へ
+  Note over S: 概要 PR ができるまで、ほかの git の仕事は取り出さない
+  R-->>T: TaskStarted → OpenTask
+  R-->>S: TaskStarted → タスクのブランチを切る仕事を列へ
   Note over T: タスク統括がフローを組む（例）&lt;br/&gt;TestGen → ConfirmRed → Impl → ReviewLoop → Gate → WritePrBody
   T-->>L: Review の指摘・Judge の判定
   L-->>T: open の指摘が無い → ReviewLoop を抜ける
@@ -602,7 +616,7 @@ sequenceDiagram
 
 <section id="escalation">
 <h2>6. エスカレーション</h2>
-<p>エスカレーションは段を飛ばさない。ステージ → タスク統括 → ラン統括 → /autodev → ユーザーの順に 1 段ずつ上がり、回答は同じ経路を逆にたどって下りる。</p>
+<p>エスカレーションは段を飛ばさない。ステージ → タスク統括 → ラン統括 → /autodev → ユーザーの順に 1 段ずつ上がる。回答は、上げたタスクへ直に戻る。タスク統括を経由せず、Task が止めていたフローを続ける（ask で止まった実行なら、続きから再開する）。</p>
 
 <figure>
 <pre class="mermaid">
@@ -610,7 +624,7 @@ flowchart TB
   ST["ステージ&lt;br/&gt;報告・2 回続けて落ちた・停滞"] -->|"EscalationRaised（タスク）"| TS["タスク統括"]
   TS -->|"新しいフローで応える"| ST
   TS -->|"EscalateToRun&lt;br/&gt;needs-replan・needs-human など"| RS["ラン統括"]
-  RS -->|"answer"| TS
+  RS -->|"answer&lt;br/&gt;ResolveEscalation"| TK["Task&lt;br/&gt;止めたフローを続ける"]
   RS -->|"replan・insert-task・stop-tasks"| RUN["Run が計画とタスクを直す"]
   RS -->|"ask-user（PostQuestion）"| AD["/autodev"]
   AD -->|"質問"| USR["ユーザー"]
@@ -624,14 +638,14 @@ flowchart TB
   <li><strong>タスクの中で上がる。</strong>ステージの報告（設計の穴・テストの矛盾 など）、同じ位置で 2 回続けて落ちた、指摘の停滞、完了チェックで直せない落ち。上げてよい種類はタスクの種類ごとに決まっている</li>
   <li><strong>タスク統括が受ける。</strong>実装タスクの統括（LLM）は、新しいフローで応えるか、needs-replan・needs-human でラン統括へ上げる。計画タスクと git 管理タスクの統括はプログラムで、受けた種類のままラン統括へ上げる</li>
   <li><strong>ラン統括が受ける。</strong>自分で答える・再計画する・タスクを差し込む・止める、のどれかで応えるか、ユーザーに聞く</li>
-  <li><strong>統括が応じないとき。</strong>差し戻しと呼び直しを使い切った統括の分は、supervisor-failed として 1 段上が受ける。上が答えたら、応じなかった統括を新しいセッションで同じ知らせから起こし直す。タスク統括が続けて 2 回を超えて応じなかったら、ラン統括は自分で答えず、ユーザーの回答を添えて答える</li>
+  <li><strong>統括が応じないとき。</strong>差し戻しと呼び直しを使い切った統括の分は、supervisor-failed として 1 段上が受ける。ラン統括が応じなければ、1 回目からユーザーが受ける。上が答えたら、応じなかった統括を新しいセッションで同じ知らせから起こし直す。タスク統括が同じ知らせに続けて 2 回を超えて応じなかったら、ラン統括は自分で答えず、ユーザーの回答を添えて答える</li>
   <li><strong>回答以外で閉じたとき。</strong>タスクを止めた・再計画した、などで閉じたら、そのエスカレーションを上げたフローは捨てて、統括が組み直すのを待つ。もとの質問は取り下げる</li>
 </ul>
 </section>
 
 <section id="services">
 <h2>7. ドメインサービス</h2>
-<p>どの集約の状態にも属さない判断は、ドメインサービスに置く。集約は handle の中でこれに聞く。</p>
+<p>どの集約の状態にも属さない判断は、ドメインサービスに置く。集約は handle の中でこれに聞く。ドメインの外の層も、判断が要るときはこれに聞き、自分では決めない。</p>
 
 <figure>
 <pre class="mermaid">
@@ -643,13 +657,14 @@ flowchart LR
   T --> FV["FlowValidator"]
   L["ReviewLedger"] --> GE
   L --> SP["StallPolicy"]
-  X["実行器（app）"] -.->|"証拠を集めるときに聞く"| UC["UnionChecker"]
+  X["ステージの実行器と&lt;br/&gt;決まった処理（app）"] -.->|"証拠を集めるときに聞く"| UC["UnionChecker"]
   X -.-> VS["VerifySelector"]
-  X -.-> GD["ガードの規則"]
-  M["メインループ（app）"] -.-> WF["wake_for"]
-  M -.-> HK["housekeeping"]
+  X -.->|"Gate の項目ごとの合否"| GE
+  HOOK["ガードのフック（adapters）"] -.-> GD["ガードの規則"]
+  RE["反応（app）"] -.-> WF["wake_for"]
+  CLI["CLI の clean・purge・呼び直し"] -.-> HK["housekeeping"]
 </pre>
-<figcaption>どこから聞くか。実線は集約、点線はアプリケーション層から。</figcaption>
+<figcaption>どこから聞くか。実線は集約、点線はドメインの外から。</figcaption>
 </figure>
 
 <div class="table-wrap">
@@ -681,7 +696,7 @@ flowchart LR
   VO["値オブジェクト"] --> ID["識別子"]
   VO --> EN["列挙"]
   VO --> CP["組の値"]
-  VO --> LM["歯止めの値"]
+  VO --> LM["上限の値"]
   ID --> ID1["TaskId・StreamId・EventId&lt;br/&gt;ExecutionId・FindingId・QuestionId"]
   EN --> EN1["TaskStatus・StageKind&lt;br/&gt;EscalationKind・FindingStatus&lt;br/&gt;Rating・GitJobKind"]
   CP --> CP1["TaskSpec・Proposal・GitJob&lt;br/&gt;StackEntry・Decision・Issuer"]
@@ -694,10 +709,10 @@ flowchart LR
 <table>
 <thead><tr><th>分類</th><th>代表例と、知っておくこと</th></tr></thead>
 <tbody>
-<tr><td>識別子</td><td><code>ExecutionId</code> はタスク・ステージ・ラウンド・試行の回数の組で、タスクの一生を通して重ならない。<code>CommandId</code> はポリシーが出すとき、受けたイベントの id から決まる</td></tr>
+<tr><td>識別子</td><td><code>ExecutionId</code> はタスク・ステージ・ラウンド・試行の回数の組で、タスクの一生を通して重ならない。<code>CommandId</code> はポリシーと反応が出すとき、受けたイベントの id と自分の名前から決まる</td></tr>
 <tr><td>列挙</td><td><code>EscalationKind</code> は上げる理由の種類（stall・design-gap・needs-replan・supervisor-failed など）。<code>Rating</code> は指摘の重み（must-fix・should-fix・nit）</td></tr>
-<tr><td>組の値</td><td><code>TaskSpec</code> はタスクの中身（件名・完了の定義・受入条件・範囲・検証コマンド）。<code>Decision</code> は回答の文面と出どころ（ユーザーかラン統括か）。<code>Issuer</code> はコマンドを出した者で、driver が記録するのでステージや統括は名乗れない</td></tr>
-<tr><td>歯止めの値</td><td>タスクを積まない再計画は 2 回まで・停滞は修正 2 回・設計のラウンドは 5 まで・git の仕事を戻すのは 2 回まで・統括が続けて応じないのは 2 回まで。並列の上限は既定で 3</td></tr>
+<tr><td>組の値</td><td><code>TaskSpec</code> はタスクの中身（件名・完了の定義・受入条件・範囲・入口・境界の形・検証コマンド）。<code>Decision</code> は回答の文面と出どころ（ユーザーかラン統括か）。<code>Issuer</code> はコマンドを出した者で、driver が記録するのでステージや統括は名乗れない</td></tr>
+<tr><td>上限の値</td><td>タスクを積まない再計画は 2 回まで・停滞は修正 2 回・設計のラウンドは 5 まで・git の仕事を戻すのは 2 回まで・タスク統括が同じ知らせに続けて応じないのは 2 回まで（超えたらラン統括はユーザーの回答を添えて答える）。並列の上限は既定で 3（走っている・回答を待っている実装タスクの数）</td></tr>
 </tbody>
 </table>
 </div>
@@ -724,11 +739,11 @@ flowchart LR
 </figure>
 
 <ul>
-  <li><strong>handle は状態を変えず、外の世界に触らない。</strong>時刻・HEAD・セッション id は、コマンドの中身として受け取る。だから規則を I/O 無しで確かめられる</li>
+  <li><strong>handle は状態を変えず、外の世界に触らない。</strong>HEAD とセッション id は、実行器が出す BeginStage が持つ。時刻はドメインに入らず、イベントストアが追記するときに付ける。だから規則を I/O 無しで確かめられる</li>
   <li><strong>状態を変えるのは apply だけ。</strong>再生では apply だけを通り、判断を走らせ直さない。cursor の行き先のように規則で決めたことも、handle で決めてイベントに載せる</li>
   <li><strong>状態を変えるコマンドは必ずイベントを出す。</strong>イベントにしない変化は、再生すると消える</li>
   <li><strong>追記は版を確かめる。</strong>handle した時点の集約の版とストアの版が食い違えば、1 つも追記しない。同じコマンドの id を 2 回受けても、2 回目は何もしない</li>
-  <li><strong>拒否と受けなかったことを分ける。</strong>出した者の取り違え（判定する者でない など）は拒否でイベントを出さない。ステージの結果の中身の問題は ResultRefused というイベントで残し、Task がそれを受けて上げる</li>
+  <li><strong>拒否と受けなかったことを分ける。</strong>コマンドの形の誤り（回答が空 など）と出した者の取り違え（判定する者でない など）は拒否で、イベントを出さない。拒んだコマンドは正本に入らず、ランの記録の rejections に理由と一緒に残る。ステージの結果の中身の問題は ResultRefused というイベントで残し、Task がそれを受けて上げる</li>
 </ul>
 </section>
 </main>
@@ -754,6 +769,8 @@ flowchart LR
       startOnLoad: false,
       securityLevel: "strict",
       theme: isDark() ? "dark" : "default",
+      // 参加者が 8 つあるので、狭い画面でも縮めずに描き、figure の横スクロールで読ませる
+      sequence: { useMaxWidth: false },
       fontFamily: "Hiragino Sans, Noto Sans JP, Yu Gothic UI, sans-serif"
     });
     blocks.forEach(function (block) {

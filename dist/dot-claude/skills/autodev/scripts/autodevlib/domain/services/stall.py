@@ -1,7 +1,7 @@
 """StallPolicy: 停滞の判定。
 
 レビューの体数は決めない（ReviewLoop の reviewers でタスク統括が選ぶ）。停滞を見るのは、判定を
-締めた後だけ（EvaluateStall・RecordGateResult）で、修正を数える時点（CountFix）では見ない。数えた
+締めた後だけ（RecordJudgement・RecordGateResult）で、修正を数える時点（CountFix）では見ない。数えた
 時点で見ると、判定で閉じるはずの指摘まで停滞として上がる。
 """
 

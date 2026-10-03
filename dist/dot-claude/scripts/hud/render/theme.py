@@ -26,26 +26,44 @@ SIDE = Text("  │  ", style=DIM)
 #: ステージの並びの間
 ARROW = Text(" › ", style=DIM)
 
-#: タスクの状態ごとの記号・記号の色・件名の色。表に無い状態（pending）は ◻
+#: タスクの状態（`tasks[].status`）ごとの記号・記号の色・件名の色。表に無い状態（pending）は ◻
 STATUS_MARK: dict[str, tuple[str, Style, Style]] = {
-    "stacked": ("✔", GREEN, DIM),
     "running": ("◼", ACCENT, BOLD),
-    "blocked": ("✘", RED, RED),
-    "failed": ("✘", RED, RED),
+    "escalated": ("◼", YELLOW, YELLOW),
+    "gated": ("◼", ACCENT, Style()),
+    "stacking": ("◼", ACCENT, Style()),
+    "stacked": ("✔", GREEN, DIM),
+    "finished": ("✔", GREEN, DIM),
     "dropped": ("–", DIM, DIM),
+    "superseded": ("–", DIM, DIM),
+    "discarded": ("–", DIM, DIM),
 }
 PENDING_MARK = ("◻", DIM, Style())
 STATUS_LABEL = {
-    "stacked": "スタック済み",
-    "running": "実行中",
     "pending": "未着手",
-    "dropped": "取り下げ",
-    "blocked": "要確認",
-    "failed": "失敗",
+    "running": "実行中",
+    "escalated": "エスカレーション中",
+    "gated": "積む順番待ち",
+    "stacking": "積んでいる",
+    "stacked": "スタック済み",
+    "dropped": "止めた",
+    "superseded": "引き継がれた",
+    "discarded": "破棄した",
+    "finished": "終えた",
 }
-RATING_STYLE = {"must-fix": RED, "should-fix": YELLOW, "nit": DIM}
-#: 指摘の状態の表示名（`autodev/GLOSSARY.md`）
-FINDING_LABEL = {"open": "未解決", "closed": "解決済み", "rejected": "却下", "moved": "移管"}
+#: 実行の状態（`executions[].status`）の表示名
+EXECUTION_LABEL = {
+    "requested": "始めるのを待つ",
+    "running": "実行中",
+    "completed": "完了",
+    "reported": "報告で終えた",
+    "failed": "失敗",
+    "interrupted": "中断",
+    "deferred": "回答待ち",
+    "abandoned": "捨てた",
+    "restarted": "やり直した",
+    "refused": "結果を受けなかった",
+}
 
 
 def status_mark(status: str) -> tuple[str, Style, Style]:

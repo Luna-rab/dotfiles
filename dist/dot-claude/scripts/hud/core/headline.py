@@ -1,99 +1,96 @@
-"""ラン 1 つの見出し。いま何をしているかを 1 つに決める。"""
+"""ラン 1 つの見出し。いま何が走っているか、回答を待っているか。"""
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass, replace
 from enum import Enum
 
-from hud.core.pipeline import full_name, short_name
-from hud.core.runs import STAGE_TIMEOUT, Stage, name_of, tasks
-
-#: タスクに属さないステージ。見出しにだけ出す
-RUN_STAGES = {"plan": "計画中", "summary": "まとめ"}
+from hud.core.pipeline import short_name
+from hud.core.runs import (
+    NOT_COUNTED,
+    Running,
+    awaiting,
+    implementation,
+    name_of,
+    overview_pr,
+    phase,
+    phase_label,
+    questions,
+    running,
+    tasks,
+)
 
 
 class State(Enum):
-    #: ステージが回答を待って止まっている（`autodev answer` を待つ）
-    WAITING = "waiting"
-    #: ステージが走っている
+    #: 呼び直すまで進まない（`run.phase` が panicked）
+    PANICKED = "panicked"
+    #: 実行が走っている
     RUNNING = "running"
-    #: ステージとステージの間。driver が検証・push・PR 作成をしている
-    BETWEEN = "between"
-    #: 動いていない
-    STOPPED = "stopped"
+    #: 走っている実行が無い。driver が生きているかは分からないので、`run.phase` だけを出す
+    QUIET = "quiet"
 
 
 @dataclass(frozen=True)
 class Headline:
     run_name: str
     state: State
-    #: 何をしているか（「task2 レビュー r1」「計画中」「計画が回答待ち · range-empty」など）
+    #: 何をしているか（「task2 レビュー r1」「計画中」）
     doing: str
-    #: いちばん新しいステージが走り始めてからの秒数
+    #: `run.phase` の表示名
+    phase: str
+    #: 回答を待っている質問の id。ほかのタスクが走っていても入る
+    waiting: tuple[str, ...] = ()
+    #: いちばん新しく始めた実行からの秒数
     elapsed: float | None = None
-    #: ステージの制限時間を超えている
-    overdue: bool = False
-    #: ターン数と直前のツール。ステージが 1 つのときだけ入れる（並んでいるとどちらの数か分からない）
+    #: ターン数と直前のツール。実行が 1 つのときだけ入れる（並んでいるとどちらの数か分からない）
     turns: int = 0
     tool: str = ""
     overview_pr: int | None = None
     stacked: int = 0
     total: int = 0
-    held: int = 0
+    #: エスカレーション中のタスクの数
+    escalated: int = 0
 
 
-def build(st: dict, stages: list[Stage], active: bool) -> Headline:
-    # 再計画で取り下げたタスクはスタックに追加しないので、進み具合の分母に入れない
-    items = [t for t in tasks(st) if t.get("status") != "dropped"]
-    stopped = Headline(
+def build(st: dict, now: dt.datetime) -> Headline:
+    counted = [t for t in implementation(st) if t.get("status") not in NOT_COUNTED]
+    waiting = tuple(str(q.get("id") or "?") for q in questions(st)) if awaiting(st) else ()
+    base = Headline(
         run_name=name_of(st),
-        state=State.STOPPED,
-        doing="止まっている",
-        overview_pr=st.get("overviewPr") or None,
-        stacked=sum(1 for t in items if t.get("status") == "stacked"),
-        total=len(items),
-        held=sum(1 for t in items if t.get("status") in ("blocked", "failed")),
+        state=State.QUIET,
+        doing=phase_label(st),
+        phase=phase_label(st),
+        waiting=waiting,
+        overview_pr=overview_pr(st),
+        stacked=sum(1 for t in counted if t.get("status") == "stacked"),
+        total=len(counted),
+        escalated=sum(1 for t in tasks(st) if t.get("status") == "escalated"),
     )
-    deferred = st.get("deferred")
-    if isinstance(deferred, dict) and deferred:
-        questions = [q for q in (st.get("questions") or []) if isinstance(q, dict)]
-        keys = " ".join(str(q.get("id") or "?") for q in questions) or "?"
-        doing = f"{full_name(str(deferred.get('stage', '?')))}が回答待ち · {keys}"
-        return replace(stopped, state=State.WAITING, doing=doing)
-    if stages:
-        first = stages[0]
-        newest = min(s.seconds for s in stages)
-        if first.name in RUN_STAGES:
-            doing = RUN_STAGES[first.name]
-        else:
-            label = "+".join(dict.fromkeys(short_name(s.name) for s in stages))
-            doing = f"{first.task} {label} r{first.round}"
-        single = len(stages) == 1
-        return replace(
-            stopped,
-            state=State.RUNNING,
-            doing=doing,
-            elapsed=newest,
-            overdue=newest > STAGE_TIMEOUT,
-            turns=first.turns if single else 0,
-            tool=first.tool if single else "",
-        )
-    if active:
-        current = next((t for t in items if t.get("status") == "running"), {})
-        return replace(
-            stopped, state=State.BETWEEN, doing=f"{current.get('id', '?')} 完了チェックと公開"
-        )
-    return stopped
+    if phase(st) == "panicked":
+        return replace(base, state=State.PANICKED)
+    live = running(st, now)
+    if not live:
+        return base
+    seconds = [r.seconds for r in live if r.seconds is not None]
+    single = len(live) == 1
+    return replace(
+        base,
+        state=State.RUNNING,
+        doing=doing(live),
+        elapsed=min(seconds) if seconds else None,
+        turns=live[0].turns if single else 0,
+        tool=live[0].tool if single else "",
+    )
 
 
-def outcome(head: Headline) -> str:
-    """ランの状態の表示名（`autodev/GLOSSARY.md` の「ランの状態」）。"""
-    if head.state is State.WAITING:
-        return "回答待ち"
-    if head.state in (State.RUNNING, State.BETWEEN):
-        return "計画中" if head.total == 0 else "実行中"
-    if head.held:
-        return "要対応"
-    if head.total and head.stacked == head.total:
-        return "完了"
-    return "止まっている"
+def doing(live: list[Running]) -> str:
+    """タスクごとに「task2 レビュー r1」。同じタスクで並んで走るステージは 1 つにまとめる。"""
+    by_task: dict[str, list[Running]] = {}
+    for r in live:
+        by_task.setdefault(r.task, []).append(r)
+    parts = []
+    for task, items in by_task.items():
+        label = "+".join(dict.fromkeys(short_name(r.stage) for r in items))
+        parts.append(f"{task} {label} r{max(r.round for r in items)}")
+    return " · ".join(parts)

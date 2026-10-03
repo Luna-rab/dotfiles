@@ -11,20 +11,27 @@ import sys
 import time
 
 from conftest import CLAUDE_SCRIPTS
-from hud_samples import session, write_run, write_usage
+from hud.app import statusline
+from hud.ports import autodev
+from hud_samples import calls, quiet, session, stamp, status, write_fake_entry, write_usage
 
 SCRIPT = CLAUDE_SCRIPTS / "statusline.py"
 
 
-def raw(stdin: str, tmp_path, columns: int) -> subprocess.CompletedProcess[str]:
-    # 本物の OAuth トークンで利用状況を取りに行かないよう、Claude Code の設定とキャッシュを空の場所に向ける
+def raw(
+    stdin: str, tmp_path, columns: int, statuses: list[dict] | None = None, entry: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    # 本物の OAuth トークンで利用状況を取りに行かないよう、Claude Code の設定とキャッシュを空の場所に向ける。
+    # autodev の入口は偽物に替え、`statuses` を返させる
     env = {
         **os.environ,
+        **write_fake_entry(tmp_path, statuses or []),
         "COLUMNS": str(columns),
-        "AUTODEV_STATE_DIR": str(tmp_path),
         "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
         "XDG_CACHE_HOME": str(tmp_path / "cache"),
     }
+    if entry is not None:
+        env["AUTODEV_ENTRY"] = entry
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=stdin,
@@ -35,9 +42,15 @@ def raw(stdin: str, tmp_path, columns: int) -> subprocess.CompletedProcess[str]:
     )
 
 
-def run(tmp_path, columns: int = 100, data: dict | None = None) -> list[str]:
+def run(
+    tmp_path,
+    columns: int = 100,
+    data: dict | None = None,
+    statuses: list[dict] | None = None,
+    entry: str | None = None,
+) -> list[str]:
     """Claude Code が表示する行。Claude Code は各行の前後の空白を削り、空になった行を捨てる。"""
-    out = raw(json.dumps(data or session(time.time())), tmp_path, columns)
+    out = raw(json.dumps(data or session(time.time())), tmp_path, columns, statuses, entry)
     assert out.returncode == 0, out.stderr
     shown = [line.strip() for line in out.stdout.strip().split("\n") if line.strip()]
     return [re.sub(r"\x1b\[[0-9;]*m", "", line) for line in shown]
@@ -74,47 +87,95 @@ def test_入力が壊れていても落ちない(tmp_path):
     assert raw("not json", tmp_path, 100).returncode == 0
 
 
+HEADLINE = (
+    "autodev add-cache ▸ task1 ジャッジ r2 · 4m12s 7ターン Read"
+    " · 回答待ち q1 · エスカレーション 1 · 概要 PR #4"
+)
+
+
+def test_status_jsonは1回の描画で1回だけ呼ぶ(tmp_path):
+    run(tmp_path, statuses=[status(), quiet(name="other")])
+    assert calls(tmp_path) == ["status --json"]
+
+
 def test_幅が足りればタスクリストを右に置く(tmp_path):
-    write_run(tmp_path)
-    lines = run(tmp_path, columns=160)
+    lines = run(tmp_path, columns=220, statuses=[status()])
     assert len(lines) == 5
     left, right = lines[0].split("  │  ")
     assert left.startswith("Opus 5.5")
-    assert right == "autodev range-field ▸ task2 レビュー r1 · 4m12s 26ターン Read · 概要 PR #4"
-    assert lines[2].split("  │  ")[1].startswith("  ◼ task2 範囲指定")
-    assert lines[4].split("  │  ")[0].strip() == ""
+    assert right == HEADLINE
+    assert lines[1].split("  │  ")[1].startswith("  ◼ task1 パーサを足す")
+    assert lines[4].split("  │  ")[1] == "  ◼ task4 移行" + " " * 18 + "  stall"
 
 
 def test_利用枠が無くてもタスクリストの列はそろう(tmp_path):
     """Enterprise などでは rate_limits が渡されず、左の行が 2 行しかない。"""
-    write_run(tmp_path)
     data = session(time.time())
     del data["rate_limits"]
-    lines = run(tmp_path, columns=160, data=data)
+    lines = run(tmp_path, columns=220, data=data, statuses=[status()])
     assert len(lines) == 5
     side = lines[0].index("  │  ")
     assert all(line.index("  │  ") == side for line in lines)
 
 
 def test_幅が足りなければタスクリストを下に置く(tmp_path):
-    write_run(tmp_path)
-    lines = run(tmp_path, columns=100)
-    assert lines[4].startswith("autodev range-field ▸ task2 レビュー r1")
-    assert lines[5].startswith("  ✔ task1 パーサの土台")
-    assert lines[5].endswith("#5")
-    assert lines[6].endswith("テスト作成 ✔ › 実装 ✔ › レビュー ◼ › ジャッジ › PR 本文")
-    assert lines[7] == "  ◻ task3 CLI"
-    assert lines[8].endswith("受入条件が曖昧")
+    lines = run(tmp_path, columns=120, statuses=[status()])
+    assert lines[4] == HEADLINE
+    assert lines[5].endswith("テスト作成 ✔ › ジャッジ r2 ◼ › 完了チェック")
+    assert lines[6].startswith("  ✔ task2 キャッシュの土台")
+    assert lines[6].endswith("#5")
+    assert lines[7] == "  ◻ task3 CLI に出す"
+    assert lines[8].endswith("stall")
 
 
-def test_走っているステージが無くても実行中のタスクがあれば出す(tmp_path):
-    write_run(tmp_path, running={})
-    lines = run(tmp_path)
-    assert lines[4] == "autodev range-field ▸ task2 完了チェックと公開 · 概要 PR #4"
-    assert lines[6].endswith("レビュー ✔ › ジャッジ › PR 本文")
+def test_走っている実行が無ければフェーズと積んだ数を出す(tmp_path):
+    lines = run(tmp_path, statuses=[quiet()])
+    assert lines[4] == (
+        "autodev add-cache ▸ 実行中 · スタック済み 1/4 · エスカレーション 1 · 概要 PR #4"
+    )
 
 
-def test_更新が止まったランは出さない(tmp_path):
-    stale = (dt.datetime.now().astimezone() - dt.timedelta(hours=4)).isoformat()
-    write_run(tmp_path, running={}, updatedAt=stale)
-    assert len(run(tmp_path)) == 4
+def test_最後のイベントが古く回答も待たないランは出さない(tmp_path):
+    stale = stamp(dt.datetime.now().astimezone() - dt.timedelta(hours=4))
+    assert len(run(tmp_path, statuses=[quiet(updated_at=stale)])) == 4
+
+
+def test_読めないランは出さない(tmp_path):
+    """古いディレクトリ 1 つで毎回赤字が出ないように。読めないランは autodev-watch でだけ見せる。"""
+    assert len(run(tmp_path, statuses=[{"name": "old", "error": "ValueError: x"}])) == 4
+
+
+def test_パニックしたランは最後のイベントが古くても出す(tmp_path):
+    st = quiet(updated_at=stamp(dt.datetime.now().astimezone() - dt.timedelta(days=2)))
+    st["run"]["phase"] = "panicked"
+    assert run(tmp_path, statuses=[st])[4].startswith("autodev add-cache ▸ パニック")
+
+
+def test_型の違う欄があってもtracebackを出さずに描く(tmp_path):
+    """`progress` は実行器が書いたファイルの中身そのままなので、崩れていることがある。"""
+    st = status()
+    execution = st["tasks"][1]["executions"][0]
+    execution["round"] = "x"
+    execution["progress"]["turns"] = "many"
+    st["tasks"][4]["escalations"] = 5
+    st["tasks"][1]["flow"]["steps"] = "broken"
+    lines = run(tmp_path, columns=120, statuses=[st, status(name="other", tasks=5)])
+    assert lines[4].startswith("autodev add-cache ▸ task1 ジャッジ r0")
+    assert any(line.startswith("autodev other ▸ ") for line in lines)
+
+
+def test_組み立ての途中で落ちても理由を1行で出す(monkeypatch):
+    def broken(st, now):
+        raise KeyError("x")
+
+    monkeypatch.setattr(autodev, "statuses", lambda: autodev.Reply(0, [status()], ""))
+    monkeypatch.setattr(statusline, "run_block", broken)
+    got = statusline.autodev_block(dt.datetime.now().astimezone())
+    assert [line.plain for line in got] == ["autodev status を読めない · KeyError: 'x'"]
+
+
+def test_statusが返らなければそう出す(tmp_path):
+    entry = tmp_path / "broken-autodev.py"
+    entry.write_text("import sys; sys.stderr.write('autodev: まだ動かない\\n'); sys.exit(1)")
+    lines = run(tmp_path, statuses=[], entry=str(entry))
+    assert lines[4:] == ["autodev status を読めない · autodev: まだ動かない"]

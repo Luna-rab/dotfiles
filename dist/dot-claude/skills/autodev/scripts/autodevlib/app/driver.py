@@ -39,7 +39,7 @@ from ..domain.aggregates.run import Run
 from ..domain.aggregates.task import Task
 from ..domain.commands.run import Panic, ResumeRun, StartRun
 from ..domain.events.run import RunStarted
-from ..domain.policies import RECEIVERS
+from ..domain.policies.registry import RECEIVERS
 from ..domain.streams import aggregate_for
 from ..domain.supervision import Supervisor, wake_for
 from ..domain.value_objects.command_id import CommandId

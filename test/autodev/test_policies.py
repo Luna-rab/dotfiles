@@ -21,7 +21,8 @@ from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.task import Escalate
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.design import DesignAmbiguous, DesignRoundsExhausted
-from autodevlib.domain.policies import FOLLOW_UPS, POLICIES, RECEIVERS, By, Policy
+from autodevlib.domain.policies.base import By, Policy
+from autodevlib.domain.policies.registry import FOLLOW_UPS, POLICIES, RECEIVERS
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind
 from autodevlib.domain.value_objects.event_id import EventId

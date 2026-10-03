@@ -38,7 +38,7 @@ from ..domain.events.task import (
     StageRequested,
     StageStarted,
 )
-from ..domain.policies import FOLLOW_UPS
+from ..domain.policies.registry import FOLLOW_UPS
 from ..domain.supervision import wake_for
 from ..domain.value_objects.stream_id import StreamId
 from ..infra.paths import RunPaths

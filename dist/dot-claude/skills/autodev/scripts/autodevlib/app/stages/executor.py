@@ -50,60 +50,48 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ..adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending, Progress
-from ..adapters.claude.guard import ask_question, guard_context, stage_env, write_hook_settings
-from ..adapters.claude.schema import load_schema, normalize_nulls, violations
-from ..adapters.github.forge import Forge
-from ..adapters.github.git import Git
-from ..adapters.process._proc import StopScope, stoppable
-from ..adapters.process.process import ProcessRunner
-from ..domain.aggregates.base import Aggregate
-from ..domain.aggregates.task import ExecutionStatus
-from ..domain.commands.base import Command
-from ..domain.commands.run import Panic
-from ..domain.commands.task import BeginStage, ReportBeginFailure, ReportStageResult
-from ..domain.guard import cut_off_by_denials
-from ..domain.stages.catalog import StageSpec
-from ..domain.stages.kinds import BodyTarget, ResultField, StageMode
-from ..domain.value_objects.artifact_kind import ArtifactKind
-from ..domain.value_objects.artifact_ref import ArtifactRef
-from ..domain.value_objects.base import InvalidValue
-from ..domain.value_objects.command_id import CommandId
-from ..domain.value_objects.commit_sha import CommitSha
-from ..domain.value_objects.deferred_call import DeferredCall
-from ..domain.value_objects.evidence import Evidence
-from ..domain.value_objects.execution_id import ExecutionId
-from ..domain.value_objects.issuer import Issuer
-from ..domain.value_objects.overview_pr_title import overview_pr_title
-from ..domain.value_objects.pointers import Pointers
-from ..domain.value_objects.session_id import SessionId
-from ..domain.value_objects.stage_exit import StageExit
-from ..domain.value_objects.stream_id import StreamId
-from ..domain.value_objects.task_id import TaskId
-from ..infra.files import utc_now
-from ..infra.status.status import remove_progress, write_progress
+from ...adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending, Progress
+from ...adapters.claude.guard import ask_question, guard_context, stage_env, write_hook_settings
+from ...adapters.claude.schema import load_schema, normalize_nulls, violations
+from ...adapters.github.forge import Forge
+from ...adapters.github.git import Git
+from ...adapters.process._proc import StopScope, stoppable
+from ...adapters.process.process import ProcessRunner
+from ...domain.aggregates.base import Aggregate
+from ...domain.aggregates.task import ExecutionStatus
+from ...domain.commands.base import Command
+from ...domain.commands.run import Panic
+from ...domain.commands.task import BeginStage, ReportBeginFailure, ReportStageResult
+from ...domain.guard import cut_off_by_denials
+from ...domain.stages.catalog import StageSpec
+from ...domain.stages.kinds import BodyTarget, ResultField, StageMode
+from ...domain.value_objects.artifact_kind import ArtifactKind
+from ...domain.value_objects.artifact_ref import ArtifactRef
+from ...domain.value_objects.base import InvalidValue
+from ...domain.value_objects.command_id import CommandId
+from ...domain.value_objects.commit_sha import CommitSha
+from ...domain.value_objects.deferred_call import DeferredCall
+from ...domain.value_objects.evidence import Evidence
+from ...domain.value_objects.execution_id import ExecutionId
+from ...domain.value_objects.issuer import Issuer
+from ...domain.value_objects.overview_pr_title import overview_pr_title
+from ...domain.value_objects.pointers import Pointers
+from ...domain.value_objects.session_id import SessionId
+from ...domain.value_objects.stage_exit import StageExit
+from ...domain.value_objects.stream_id import StreamId
+from ...domain.value_objects.task_id import TaskId
+from ...infra.files import utc_now
+from ...infra.status.status import remove_progress, write_progress
+from ..mainloop import Ticket
 from . import files, outputs
-from .mainloop import Ticket
-from .programs import (
-    ProgramOutcome,
-    Tools,
-    VerifyRunner,
-    cut_point,
-    own_commits,
-    run_program,
-)
-from .prompts import asset_name, skill_root
-from .stage_context import (
-    ResumeMode,
-    RunSetting,
-    StageContext,
-    StagePrompt,
-    run_setting,
-    snapshot,
-)
+from .programs.common import ProgramOutcome, Tools, VerifyRunner, own_commits
+from .programs.registry import run_program
+from .programs.stacking import cut_point
+from .prompts.assets import asset_name, skill_root
+from .stage_context import ResumeMode, RunSetting, StageContext, StagePrompt, run_setting, snapshot
 
 if TYPE_CHECKING:
-    from .driver import DriverParts
+    from ..driver import DriverParts
 
 log = logging.getLogger(__name__)
 

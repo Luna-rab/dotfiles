@@ -53,8 +53,9 @@ from ..infra.files import write_atomic
 from ..infra.paths import RunPaths
 from .decisions import RUN_DECISIONS, TASK_DECISIONS, DecisionError, to_command
 from .mainloop import Inbox, Ticket
-from .prompts import render_rejection, schema_text
-from .stage_context import StagePrompt
+from .stages.prompts.assets import schema_text
+from .stages.prompts.render import render_rejection
+from .stages.stage_context import StagePrompt
 
 log = logging.getLogger(__name__)
 

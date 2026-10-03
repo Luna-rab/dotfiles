@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from autodevlib.app.files import (
+from autodevlib.app.stages.files import (
     APPENDIX_MARKER,
     append_appendix,
     write_answer,

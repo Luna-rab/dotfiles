@@ -25,7 +25,7 @@ from ..infra.repo_config import RepoConfig
 from ..infra.store.eventstore import EventReader
 from ..infra.store.requests import RequestBox, UnreadableRequest
 from .driver import Driver
-from .executor import from_parts
+from .stages.executor import from_parts
 
 
 def build_driver(paths: RunPaths, config: RepoConfig) -> Driver:

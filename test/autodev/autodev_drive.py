@@ -19,9 +19,9 @@ from typing import Any
 from autodev_samples import stage_result
 from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
 from autodevlib.app.driver import Driver, DriverParts, StartRequest
-from autodevlib.app.executor import StageContext, StagePrompt
-from autodevlib.app.files import write_design
 from autodevlib.app.mainloop import Ticket
+from autodevlib.app.stages.executor import StageContext, StagePrompt
+from autodevlib.app.stages.files import write_design
 from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.run import Panic, StartRun
 from autodevlib.domain.commands.task import BeginStage, ReportStageResult

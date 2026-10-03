@@ -18,9 +18,9 @@ from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, En
 from autodevlib.adapters.github.forge import Forge
 from autodevlib.adapters.github.git import Git
 from autodevlib.adapters.process.process import ProcessRunner
-from autodevlib.app.executor import Executor, StagePrompt
 from autodevlib.app.mainloop import Inbox
-from autodevlib.app.stage_context import RunSetting, StageContext
+from autodevlib.app.stages.executor import Executor, StagePrompt
+from autodevlib.app.stages.stage_context import RunSetting, StageContext
 from autodevlib.domain.aggregates.base import Aggregate
 from autodevlib.domain.aggregates.review_ledger import ReviewLedger
 from autodevlib.domain.aggregates.run import Run

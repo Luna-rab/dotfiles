@@ -14,7 +14,7 @@ from pathlib import Path
 from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
 from autodevlib.adapters.claude.guard import GUARD_ENV
 from autodevlib.app.mainloop import Inbox
-from autodevlib.app.stage_context import StagePrompt
+from autodevlib.app.stages.stage_context import StagePrompt
 from autodevlib.app.supervisors import SupervisorRunner, SupervisorSetting
 from autodevlib.domain.commands.run import Panic, ReportSupervisorFailure
 from autodevlib.domain.commands.task import AcceptFlow

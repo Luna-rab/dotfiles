@@ -12,38 +12,38 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..domain.aggregates.base import Aggregate
-from ..domain.aggregates.design import Design
-from ..domain.aggregates.review_ledger import ReviewLedger
-from ..domain.aggregates.run import Run
-from ..domain.aggregates.stack import Stack
-from ..domain.aggregates.task import ExecutionStatus, StartMode, Task
-from ..domain.events.run import RunStarted
-from ..domain.flow.flow import FlowStep
-from ..domain.stages.catalog import STAGE_SPECS, StageSpec
-from ..domain.stages.kinds import StepArgument
-from ..domain.value_objects.artifact_kind import ArtifactKind
-from ..domain.value_objects.artifact_ref import ArtifactRef
-from ..domain.value_objects.branch_name import BranchName
-from ..domain.value_objects.commit_sha import CommitSha
-from ..domain.value_objects.decision import Decision
-from ..domain.value_objects.execution_id import ExecutionId
-from ..domain.value_objects.finding_id import FindingId
-from ..domain.value_objects.git_job import GitJob
-from ..domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
-from ..domain.value_objects.pr_number import PrNumber
-from ..domain.value_objects.session_id import SessionId
-from ..domain.value_objects.stack_entry import StackEntry
-from ..domain.value_objects.stage_kind import StageKind
-from ..domain.value_objects.stream_id import StreamId
-from ..domain.value_objects.task_id import TaskId
-from ..domain.value_objects.task_spec import TaskSpec
-from ..domain.value_objects.task_status import TaskStatus
-from ..domain.value_objects.verify_command import VerifyCommand
-from ..infra.paths import RunPaths
+from ...domain.aggregates.base import Aggregate
+from ...domain.aggregates.design import Design
+from ...domain.aggregates.review_ledger import ReviewLedger
+from ...domain.aggregates.run import Run
+from ...domain.aggregates.stack import Stack
+from ...domain.aggregates.task import ExecutionStatus, StartMode, Task
+from ...domain.events.run import RunStarted
+from ...domain.flow.flow import FlowStep
+from ...domain.stages.catalog import STAGE_SPECS, StageSpec
+from ...domain.stages.kinds import StepArgument
+from ...domain.value_objects.artifact_kind import ArtifactKind
+from ...domain.value_objects.artifact_ref import ArtifactRef
+from ...domain.value_objects.branch_name import BranchName
+from ...domain.value_objects.commit_sha import CommitSha
+from ...domain.value_objects.decision import Decision
+from ...domain.value_objects.execution_id import ExecutionId
+from ...domain.value_objects.finding_id import FindingId
+from ...domain.value_objects.git_job import GitJob
+from ...domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
+from ...domain.value_objects.pr_number import PrNumber
+from ...domain.value_objects.session_id import SessionId
+from ...domain.value_objects.stack_entry import StackEntry
+from ...domain.value_objects.stage_kind import StageKind
+from ...domain.value_objects.stream_id import StreamId
+from ...domain.value_objects.task_id import TaskId
+from ...domain.value_objects.task_spec import TaskSpec
+from ...domain.value_objects.task_status import TaskStatus
+from ...domain.value_objects.verify_command import VerifyCommand
+from ...infra.paths import RunPaths
 
 if TYPE_CHECKING:
-    from .mainloop import Delivery
+    from ..mainloop import Delivery
 
 
 #: 実行をどう始めるか。どれにするかは Task が決める（`Task.how_to_start`）

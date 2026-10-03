@@ -11,10 +11,10 @@ from types import SimpleNamespace
 import pytest
 from autodev_harness import DRIVER, POLICY, new_id, of_type
 from autodevlib.adapters.claude.schema import ecma_pattern, normalize_nulls, violations
-from autodevlib.app.executor import from_parts
 from autodevlib.app.mainloop import Delivery
-from autodevlib.app.markers import fill
-from autodevlib.app.stage_context import ResumeMode, RunSetting, snapshot
+from autodevlib.app.stages.executor import from_parts
+from autodevlib.app.stages.markers import fill
+from autodevlib.app.stages.stage_context import ResumeMode, RunSetting, snapshot
 from autodevlib.domain.aggregates.review_ledger import ReviewLedger
 from autodevlib.domain.aggregates.task import ExecutionStatus, StageStart, StartMode
 from autodevlib.domain.commands.task import (

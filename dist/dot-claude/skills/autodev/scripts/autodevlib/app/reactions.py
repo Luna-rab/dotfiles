@@ -42,10 +42,10 @@ from ..domain.policies.registry import FOLLOW_UPS
 from ..domain.supervision import wake_for
 from ..domain.value_objects.stream_id import StreamId
 from ..infra.paths import RunPaths
-from .executor import StageExecutor
-from .files import append_appendix, write_answer, write_question
 from .mainloop import Delivery, Inbox, Subscriber
-from .prompts import Prompts
+from .stages.executor import StageExecutor
+from .stages.files import append_appendix, write_answer, write_question
+from .stages.prompts.render import Prompts
 from .supervisors import SupervisorRunner
 
 Aggregates = Callable[[], Mapping[StreamId, Aggregate]]

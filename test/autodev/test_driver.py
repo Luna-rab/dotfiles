@@ -24,10 +24,10 @@ from autodev_drive import (
 )
 from autodevlib.adapters.claude.agent_runtime import AgentOutcome, Ending
 from autodevlib.app.driver import ExitCode, exit_code
-from autodevlib.app.files import APPENDIX_MARKER
 from autodevlib.app.mainloop import LoopExit
 from autodevlib.app.mainloop import Outcome as Outcome_
-from autodevlib.app.prompts import asset_name, contract_inputs
+from autodevlib.app.stages.files import APPENDIX_MARKER
+from autodevlib.app.stages.prompts.assets import asset_name, contract_inputs
 from autodevlib.app.supervisors import MAX_ATTEMPTS, MAX_CORRECTIONS
 from autodevlib.domain.aggregates.questions import Questions
 from autodevlib.domain.aggregates.run import Run

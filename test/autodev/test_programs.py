@@ -13,9 +13,18 @@ from pathlib import Path
 import pytest
 from autodev_harness import POLICY, new_id, of_type
 from autodevlib.adapters.process._proc import CommandFailed
-from autodevlib.app import programs
-from autodevlib.app.programs import Tools
-from autodevlib.app.stage_context import (
+from autodevlib.app.stages.programs.common import ProgramOutcome, Tools, own_commits
+from autodevlib.app.stages.programs.discard import close_prs, relink, unstack
+from autodevlib.app.stages.programs.implementation import gate
+from autodevlib.app.stages.programs.overview import (
+    create_overview_pr,
+    ready_overview,
+    refresh_overview,
+)
+from autodevlib.app.stages.programs.planning import prepare
+from autodevlib.app.stages.programs.registry import run_program
+from autodevlib.app.stages.programs.stacking import check_union, create_pr, push, stack_link, verify
+from autodevlib.app.stages.stage_context import (
     GateFacts,
     OverviewFacts,
     StackFacts,
@@ -101,7 +110,7 @@ def context(
 
 def cut(env: Env, job: GitJob) -> dict:
     ctx = context(env, S.CUT_BRANCH, job=job)
-    outcome = programs.run_program(ctx, tools(env))
+    outcome = run_program(ctx, tools(env))
     assert outcome.result is not None
     point = job.cut_point
     if point is not None and point.roots_branch and not point.detached:
@@ -109,11 +118,11 @@ def cut(env: Env, job: GitJob) -> dict:
     return outcome.result
 
 
-def rebase(env: Env, job: GitJob, **fields) -> programs.ProgramOutcome:
+def rebase(env: Env, job: GitJob, **fields) -> ProgramOutcome:
     """Rebase を実行器と同じ入口（途中の rebase を取りやめてから）で流す。衝突せずに終えたら、ドメインと
     同じく載せ直した先を根元にする（BranchRebased）。"""
     ctx = context(env, S.REBASE, job=job, **fields)
-    outcome = programs.run_program(ctx, tools(env))
+    outcome = run_program(ctx, tools(env))
     if not outcome.conflicts and outcome.result is not None:
         ROOTS[ctx.tree] = CommitSha(outcome.result["onto"])
     return outcome
@@ -212,10 +221,10 @@ def test_積み直した新しい名前のブランチでも根元から上の�
     renamed = BranchName("stack/r--task-1-r1")
     cut(env, GitJob(5, J.STACK, task=T1, branch=renamed, base=OVERVIEW, previous=B1))
     ctx = context(env, S.GATE, task=T1)
-    assert len(programs.own_commits(ctx, tools(env), tree)) == 1
+    assert len(own_commits(ctx, tools(env), tree)) == 1
     # 上のタスクを、このブランチから切っても数は変わらない（ほかのブランチから辿れるかでは数えない）
     sh(env.repo, "branch", "stack/r--task-2", str(renamed))
-    assert len(programs.own_commits(ctx, tools(env), tree)) == 1
+    assert len(own_commits(ctx, tools(env), tree)) == 1
 
 
 def test_根元が無ければコミットを数えずに落ちる(env: Env):
@@ -223,7 +232,7 @@ def test_根元が無ければコミットを数えずに落ちる(env: Env):
     tree = task_tree(env)
     ctx = context(env, S.GATE, task=T1, base_commit=None)
     with pytest.raises(RuntimeError, match="根元"):
-        programs.own_commits(ctx, tools(env), tree)
+        own_commits(ctx, tools(env), tree)
 
 
 def test_git管理タスクのCutBranchは切った後にWorktreeReadyまで進む(env: Env):
@@ -270,7 +279,7 @@ def conflicting(env: Env) -> tuple[Path, StageContext]:
 def test_両側を残して解いたらCheckUnionが通りrebaseを続ける(env: Env):
     tree, ctx = conflicting(env)
     (tree / "a.txt").write_text("1\n2\ntop\ntask\n3\n", encoding="utf-8")
-    outcome = programs.check_union(ctx, tools(env))
+    outcome = check_union(ctx, tools(env))
     assert outcome.union is not None and outcome.union.passed
     assert not env.git.rebase_in_progress(tree)
     assert (tree / "a.txt").read_text(encoding="utf-8") == "1\n2\ntop\ntask\n3\n"
@@ -279,7 +288,7 @@ def test_両側を残して解いたらCheckUnionが通りrebaseを続ける(env
 def test_片方を落とした解き方はCheckUnionが通さずrebaseを止めたまま残す(env: Env):
     tree, ctx = conflicting(env)
     (tree / "a.txt").write_text("1\n2\ntask\n3\n", encoding="utf-8")
-    outcome = programs.check_union(ctx, tools(env))
+    outcome = check_union(ctx, tools(env))
     assert outcome.union is not None and not outcome.union.passed
     assert outcome.union.files[0].missing == ("top",)
     assert env.git.rebase_in_progress(tree)
@@ -289,7 +298,7 @@ def test_git_add済みでCheckUnionが落ちた後のやり直しでrebaseし直
     tree, ctx = conflicting(env)
     (tree / "a.txt").write_text("1\n2\ntask\n3\n", encoding="utf-8")
     sh(tree, "add", "a.txt")
-    outcome = programs.check_union(ctx, tools(env))
+    outcome = check_union(ctx, tools(env))
     assert outcome.union is not None and outcome.union.files[0].unreadable
     # IntegrationFailed を受けた反応が、途中の rebase を取りやめる
     env.executor.abort_rebase(T1)
@@ -322,8 +331,8 @@ def test_rebaseを終えた後に流し直しても始めた時点へ戻して�
     start = CommitSha(sh(tree, "rev-parse", "HEAD").strip())
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
     ctx = context(env, S.REBASE, job=job, start_commit=start)
-    assert programs.run_program(ctx, tools(env)).conflicts == ()
-    outcome = programs.run_program(ctx, tools(env))
+    assert run_program(ctx, tools(env)).conflicts == ()
+    outcome = run_program(ctx, tools(env))
     assert outcome.conflicts == () and outcome.result == {"onto": head}
     assert sh(tree, "rev-parse", "HEAD^").strip() == head
     assert (tree / "mine.py").is_file()
@@ -342,7 +351,7 @@ def test_rebaseが衝突で止まったままのworktreeで始めたRebaseはタ
     assert isinstance(begun, BeginStage) and str(begun.head) == tip
     assert not env.git.rebase_in_progress(tree)
     ctx = context(env, S.REBASE, job=job, start_commit=begun.head)
-    assert programs.run_program(ctx, tools(env)).conflicts == ("a.txt",)
+    assert run_program(ctx, tools(env)).conflicts == ("a.txt",)
     assert sh(tree, "rev-parse", str(B1)).strip() == tip
 
 
@@ -357,7 +366,7 @@ def test_初めて流すRebaseは汚れたworktreeを消さない(env: Env):
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
     ctx = context(env, S.REBASE, job=job, start_commit=start)
     with pytest.raises(CommandFailed):
-        programs.run_program(ctx, tools(env))
+        run_program(ctx, tools(env))
     assert (tree / "mine.py").read_text(encoding="utf-8") == "書きかけ\n"
     assert (tree / "scratch.txt").is_file()
 
@@ -409,7 +418,7 @@ def test_上のタスクを切ったブランチを積み直しても仕事が�
     renamed = BranchName("stack/r--task-2-r1")
     job = GitJob(9, J.STACK, task=T2, branch=renamed, base=OVERVIEW, previous=B2)
     cut(env, job)
-    assert len(programs.own_commits(context(env, S.REBASE, job=job), tools(env), tree)) == 1
+    assert len(own_commits(context(env, S.REBASE, job=job), tools(env), tree)) == 1
     assert rebase(env, job).conflicts == ()
     assert (tree / "mine.py").is_file() and not (tree / "below.py").exists()
     assert sh(tree, "rev-parse", "HEAD^").strip() == sh(top, "rev-parse", "HEAD").strip()
@@ -449,7 +458,7 @@ def test_切り直したブランチは切り直した所から上だけを数�
     cut(env, GitJob(7, J.CUT_TASK, task=T1, branch=again, base=OVERVIEW))
     assert sh(tree, "symbolic-ref", "--short", "HEAD").strip() == str(again)
     commit(tree, "new.py", "始め直した試み\n")
-    assert len(programs.own_commits(context(env, S.GATE, task=T1), tools(env), tree)) == 1
+    assert len(own_commits(context(env, S.GATE, task=T1), tools(env), tree)) == 1
     head = commit(top, "later.txt", "later\n")
     job = GitJob(8, J.STACK, task=T1, branch=again, base=OVERVIEW)
     assert rebase(env, job).result == {"onto": head}
@@ -469,7 +478,7 @@ def test_引き継いだタスクは引き継ぎ元のコミットを載せ直�
     commit(tree, "a.txt", "1\n2\ntop\ntask1\n3\n")
     head = commit(top, "b.txt", "later\n")
     job = GitJob(10, J.STACK, task=T2, branch=B2, base=OVERVIEW)
-    assert len(programs.own_commits(context(env, S.REBASE, job=job), tools(env), tree)) == 1
+    assert len(own_commits(context(env, S.REBASE, job=job), tools(env), tree)) == 1
     assert rebase(env, job).conflicts == ()
     assert sh(tree, "rev-parse", "HEAD^").strip() == head
 
@@ -493,7 +502,7 @@ def test_Verifyはラン共通のverifyを流す(env: Env):
     task_tree(env)
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
     ctx = context(env, S.VERIFY, job=job, run_verify=(VerifyCommand("test -f a.txt"),))
-    outcome = programs.verify(ctx, tools(env))
+    outcome = verify(ctx, tools(env))
     assert [(str(v.command), v.passed) for v in outcome.verify] == [("test -f a.txt", True)]
 
 
@@ -502,7 +511,7 @@ def test_Pushはタスクのブランチをoriginへ送る(env: Env, tmp_path: P
     tree = task_tree(env)
     head = commit(tree, "b.txt", "x\n")
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
-    programs.push(context(env, S.PUSH, job=job), tools(env))
+    push(context(env, S.PUSH, job=job), tools(env))
     remote = sh(tmp_path / "origin.git", "rev-parse", str(B1)).strip()
     assert remote == head
 
@@ -527,7 +536,7 @@ def test_CreatePRは実装タスクが書いた本文と概要PRへの案内で�
         stack=StackFacts(OVERVIEW_ENTRY),
         target=TargetFacts("キャッシュを足す", body_ref(env, "本文 ${x} $$ \\1")),
     )
-    assert programs.create_pr(ctx, tools(env)).result == {"pr": 12}
+    assert create_pr(ctx, tools(env)).result == {"pr": 12}
     created = next(c for c in env.gh.calls() if c["args"][:2] == ["pr", "create"])
     assert created["args"][2:8] == [
         "--base",
@@ -550,7 +559,7 @@ def test_同じブランチのPRがあればCreatePRはそれを使う(env: Env)
     pr_list(env, B1, json.dumps(others + json.loads(pr_json(12, str(B1), str(OVERVIEW)))))
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
     ctx = context(env, S.CREATE_PR, job=job, stack=StackFacts(OVERVIEW_ENTRY))
-    assert programs.create_pr(ctx, tools(env)).result == {"pr": 12}
+    assert create_pr(ctx, tools(env)).result == {"pr": 12}
     assert not [c for c in env.gh.calls() if c["args"][:2] == ["pr", "create"]]
 
 
@@ -561,7 +570,7 @@ def test_StackLinkは概要PRから一番上まで全部を下から順にbase�
     env.gh.reply(["pr", "view"], out=pr_json(5, str(OVERVIEW))[1:-1])
     job = GitJob(7, J.STACK, task=T2, branch=B2, base=B1)
     ctx = context(env, S.STACK_LINK, job=job, stack=StackFacts(OVERVIEW_ENTRY, (ENTRY1,)))
-    assert programs.stack_link(ctx, tools(env)).result == {"pr": 13}
+    assert stack_link(ctx, tools(env)).result == {"pr": 13}
     link = next(c for c in env.gh.calls() if c["args"][:2] == ["stack", "link"])
     assert link["args"] == ["stack", "link", "--base", "main", "5", "11", "13"]
     assert link["cwd"] == str(env.paths.overview_tree)
@@ -575,7 +584,7 @@ def test_つないだ後に概要PRのbaseが変わっていたら落とす(env:
     job = GitJob(7, J.STACK, task=T1, branch=B1, base=OVERVIEW)
     ctx = context(env, S.STACK_LINK, job=job, stack=StackFacts(OVERVIEW_ENTRY))
     with pytest.raises(RuntimeError, match="base が develop"):
-        programs.stack_link(ctx, tools(env))
+        stack_link(ctx, tools(env))
 
 
 # --- 概要 PR ---
@@ -603,7 +612,7 @@ def test_CreateOverviewPRは空のコミットを載せてpushしdraftで作る(
     pr_list(env, OVERVIEW, "[]")
     env.gh.reply(["pr", "create"], out="https://github.com/o/r/pull/5\n")
     ctx = context(env, S.CREATE_OVERVIEW_PR, job=overview_job(), overview=OVERVIEW_FACTS)
-    assert programs.create_overview_pr(ctx, tools(env)).result == {"pr": 5}
+    assert create_overview_pr(ctx, tools(env)).result == {"pr": 5}
     assert sh(tree, "rev-list", "--count", "origin/main..HEAD").strip() == "1"
     assert (
         sh(tmp_path / "origin.git", "rev-parse", str(OVERVIEW)).strip()
@@ -616,7 +625,7 @@ def test_CreateOverviewPRは空のコミットを載せてpushしdraftで作る(
     # 呼び直しても空のコミットを重ねない
     env.gh.replies.clear()
     pr_list(env, OVERVIEW, pr_json(5, str(OVERVIEW), draft=True))
-    programs.create_overview_pr(ctx, tools(env))
+    create_overview_pr(ctx, tools(env))
     assert sh(tree, "rev-list", "--count", "origin/main..HEAD").strip() == "1"
 
 
@@ -643,7 +652,7 @@ def test_RefreshOverviewは保存した本文のマーカーを状態から埋�
         stack=StackFacts(OVERVIEW_ENTRY),
         overview=OVERVIEW_FACTS,
     )
-    programs.refresh_overview(ctx, tools(env))
+    refresh_overview(ctx, tools(env))
     (edit,) = [c for c in env.gh.calls() if c["args"][:2] == ["pr", "edit"]]
     assert edit["args"][:5] == [
         "pr",
@@ -672,7 +681,7 @@ def test_ReadyOverviewは概要PRをdraftから外す(env: Env):
     ctx = context(
         env, S.READY_OVERVIEW, job=overview_job(J.FINISH), stack=StackFacts(OVERVIEW_ENTRY)
     )
-    programs.ready_overview(ctx, tools(env))
+    ready_overview(ctx, tools(env))
     assert [c["args"] for c in env.gh.calls()] == [["pr", "ready", "5"]]
 
 
@@ -692,9 +701,9 @@ def test_破棄はClosePRsで閉じた所から上を閉じUnstackで解きRelin
     env.gh.reply(["api"], out=json.dumps([{"number": 77}]))
     env.gh.reply(["pr", "view"], out=pr_json(5, str(OVERVIEW))[1:-1])
     for stage, program in (
-        (S.CLOSE_PRS, programs.close_prs),
-        (S.UNSTACK, programs.unstack),
-        (S.RELINK, programs.relink),
+        (S.CLOSE_PRS, close_prs),
+        (S.UNSTACK, unstack),
+        (S.RELINK, relink),
     ):
         program(discard_ctx(env, stage, ENTRY2), tools(env))
     args = [c["args"] for c in env.gh.calls()]
@@ -705,7 +714,7 @@ def test_破棄はClosePRsで閉じた所から上を閉じUnstackで解きRelin
 
 def test_残したのが概要PRだけならRelinkはつながない(env: Env):
     overview(env)
-    programs.relink(discard_ctx(env, S.RELINK, ENTRY1), tools(env))
+    relink(discard_ctx(env, S.RELINK, ENTRY1), tools(env))
     assert env.gh.calls() == []
 
 
@@ -727,7 +736,7 @@ def test_Gateは証拠を集めて項目ごとの合否をGateEvaluatorに任せ
         artifacts={A.TESTS: ArtifactRef(A.TESTS, tests_at)},
         task_spec=TaskSpec("x", verify=(VerifyCommand("exit 3"),)),
     )
-    outcome = programs.gate(ctx, tools(env))
+    outcome = gate(ctx, tools(env))
     assert outcome.commits == 3
     assert outcome.gate is not None
     failed = {r.item: r.reason for r in outcome.gate.failed}
@@ -742,10 +751,10 @@ def test_TestGenが無ければ変わったファイルがテストの要らな�
     commit(tree, "docs/a.md", "x\n")
     facts = GateFacts((), (S.REVIEW,), (S.REVIEW,), has_test_gen=False)
     ctx = context(env, S.GATE, task=T1, gate=facts)
-    passed = programs.gate(ctx, tools(env)).gate
+    passed = gate(ctx, tools(env)).gate
     assert passed is not None and passed.passed
     commit(tree, "src/b.py", "x\n")
-    report = programs.gate(ctx, tools(env)).gate
+    report = gate(ctx, tools(env)).gate
     assert report is not None
     assert [r.item for r in report.failed] == [GateItem.UNTESTED_PATHS]
     assert "src/b.py" in report.failed[0].reason
@@ -753,7 +762,7 @@ def test_TestGenが無ければ変わったファイルがテストの要らな�
 
 def test_Prepareは指示とリポジトリごとの設定からブリーフを書く(env: Env):
     overview(env)
-    outcome = programs.prepare(context(env, S.PREPARE, task=PLANNING), tools(env))
+    outcome = prepare(context(env, S.PREPARE, task=PLANNING), tools(env))
     assert outcome.products == (ArtifactRef(A.BRIEF, "brief.md"),)
     brief = env.paths.brief.read_text(encoding="utf-8")
     assert "キャッシュを足す" in brief and "- `pytest -q`" in brief and "- `docs/**`" in brief

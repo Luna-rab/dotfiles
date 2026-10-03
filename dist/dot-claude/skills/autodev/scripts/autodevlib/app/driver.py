@@ -50,10 +50,11 @@ from ..domain.value_objects.stream_id import StreamId
 from ..infra.paths import RunPaths
 from ..infra.store.eventstore import EventStore
 from ..infra.store.rejections import RejectionLog
-from .executor import StageExecutor, StagePrompt
 from .mainloop import Delivery, Inbox, LoopExit, MainLoop, Outcome, Subscriber
-from .prompts import Prompts, skill_root
 from .reactions import reactions
+from .stages.executor import StageExecutor, StagePrompt
+from .stages.prompts.assets import skill_root
+from .stages.prompts.render import Prompts
 from .stopping import SignalStop
 from .supervisors import AgentRuntimeLike, SupervisorRunner, SupervisorSetting
 

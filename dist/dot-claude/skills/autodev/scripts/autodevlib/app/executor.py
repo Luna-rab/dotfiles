@@ -220,6 +220,9 @@ class Executor:
         self._live: dict[ExecutionId, _Live] = {}
         #: 止めて、まだ終わっていない実行
         self._stopping: list[_Live] = []
+        #: 実行を止めた後に、残った `index.lock` をまだ確かめていない worktree。止めた走りは終わると
+        #: すぐ `_stopping` から外れるので、それだけでは次の仕事が lock を消すべきかを知れない
+        self._unswept: set[Path] = set()
         self._threads: list[threading.Thread] = []
         #: worktree ごとの順番待ち
         self._lanes: dict[Path, queue.Queue[Callable[[], None] | None]] = {}
@@ -302,6 +305,7 @@ class Executor:
             # 走っている実行から外す。止めた後に同じ実行を再開したら（ResumeStage）、新しく走らせる
             live.stopped = True
             self._stopping.append(live)
+            self._unswept.add(live.tree)
             process = live.process
         if process is not None:
             process.interrupt("driver が止めた")
@@ -506,9 +510,10 @@ class Executor:
         """同じ worktree で止めた実行が終わるまで待つ。待ち切れなければ偽。新しいフローのステージを、止めた
         ステージ（決定的なステージの子プロセスを含む）と同じ worktree で同時に走らせない。
 
-        止めた実行が終わったと確かめたら、残った `index.lock` を消す。SIGKILL で止めた git は lock を
-        片付けずに終わり、残すと次の git がどれも落ちる。同じ worktree でほかの実行（`besides` は
-        待っている当の実行）が走っていれば、その git の lock かもしれないので消さない。
+        止めた後にまだ確かめていない worktree（`_unswept`）なら、残った `index.lock` を消す。SIGKILL で
+        止めた git は lock を片付けずに終わり、残すと次の git がどれも落ちる。確かめたら印を下ろし、その
+        後に現れた lock は消さない。同じ worktree でほかの実行（`besides` は待っている当の実行）が走って
+        いるか止めている途中なら、その git の lock かもしれないので消さず、印も残す。
         """
         with self._lock:
             waiting = [live for live in self._stopping if live.tree == tree]
@@ -517,13 +522,21 @@ class Executor:
                 log.warning("%s で止めた実行が %s 秒で終わらなかった", tree, STOP_WAIT_SECONDS)
                 return False
         with self._lock:
-            others = any(live.tree == tree and live is not besides for live in self._live.values())
-        if waiting and not others and (tree / ".git").exists():
+            busy = any(
+                live.tree == tree and live is not besides
+                for live in (*self._live.values(), *self._stopping)
+            )
+            sweep = tree in self._unswept and not busy
+            if sweep:
+                self._unswept.discard(tree)
+        if sweep and (tree / ".git").exists():
             try:
                 if self._git.remove_index_lock(tree):
                     log.warning("%s で止めた実行が残した index.lock を消した", tree)
             except Exception:
                 log.exception("%s の index.lock を確かめられなかった", tree)
+                with self._lock:
+                    self._unswept.add(tree)
         return True
 
     # --- パス ---

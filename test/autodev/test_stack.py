@@ -6,9 +6,9 @@ import itertools
 
 import pytest
 from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.stack import (
     AppendEntry,
-    Command,
     DropGitJob,
     EnqueueGitJob,
     EnqueueStack,
@@ -24,8 +24,9 @@ from autodevlib.domain.commands import (
     UnstackFrom,
     WithdrawRequest,
 )
-from autodevlib.domain.events import (
-    Event,
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.review_ledger import ResultReceived, ResultRefused
+from autodevlib.domain.events.stack import (
     GitJobDropped,
     GitJobFinished,
     GitJobQueued,
@@ -36,8 +37,6 @@ from autodevlib.domain.events import (
     IntegrationRetried,
     OverviewRecorded,
     RebaseConflicted,
-    ResultReceived,
-    ResultRefused,
     StackCutBack,
     StackingPaused,
     StackingResumed,

@@ -25,15 +25,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 
 from ..domain.aggregate import Aggregate
-from ..domain.commands import Command
-from ..domain.events import (
-    DesignSettled,
+from ..domain.commands.base import Command
+from ..domain.events.design import DesignSettled
+from ..domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from ..domain.events.stack import IntegrationFailed
+from ..domain.events.task import (
     EscalationResolved,
     ExecutionRestarted,
-    IntegrationFailed,
-    QuestionAnswered,
-    QuestionPosted,
-    QuestionWithdrawn,
     StageInterrupted,
     StageRequested,
     StageStarted,

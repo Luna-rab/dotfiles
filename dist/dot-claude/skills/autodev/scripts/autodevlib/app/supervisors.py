@@ -41,7 +41,8 @@ from typing import Any, Protocol
 
 from ..adapters.agent_runtime import AgentCall, AgentOutcome, Ending
 from ..adapters.guard import guard_context, stage_env
-from ..domain.commands import Command, Panic, ReportSupervisorFailure
+from ..domain.commands.base import Command
+from ..domain.commands.run import Panic, ReportSupervisorFailure
 from ..domain.supervision import SUPERVISOR_GUARD, Supervisor
 from ..domain.value_objects.command_id import CommandId
 from ..domain.value_objects.event_id import EventId

@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 from autodev_fakes import execution, task
-from autodevlib.domain.commands import ResumeStage, StartTask
+from autodevlib.domain.commands.run import StartTask
+from autodevlib.domain.commands.task import ResumeStage
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.issuer import Issuer
 from autodevlib.infra.eventstore import EventStore

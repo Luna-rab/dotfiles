@@ -21,16 +21,17 @@ from autodev_fakes import (
 )
 from autodevlib.app.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
 from autodevlib.domain.aggregate import Aggregate
-from autodevlib.domain.commands import (
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.task import (
     AcceptFlow,
     BeginStage,
-    Command,
     MarkInterrupted,
     OpenTask,
     ResumeInterrupted,
     ResumeStage,
 )
-from autodevlib.domain.events import GitJobQueued, StageInterrupted, StageStarted
+from autodevlib.domain.events.stack import GitJobQueued
+from autodevlib.domain.events.task import StageInterrupted, StageStarted
 from autodevlib.domain.flow import FlowStep, Reviewers
 from autodevlib.domain.task import Task
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind

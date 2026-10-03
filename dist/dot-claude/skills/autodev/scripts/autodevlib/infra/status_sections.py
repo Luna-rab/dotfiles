@@ -14,7 +14,9 @@ from typing import Any, TypeVar
 
 from ..domain.aggregate import Aggregate
 from ..domain.design import Design
-from ..domain.events import Event, RunStarted, StageStarted
+from ..domain.events.base import Event
+from ..domain.events.run import RunStarted
+from ..domain.events.task import StageStarted
 from ..domain.questions import Questions
 from ..domain.run import Run, TaskEntry
 from ..domain.stack import Stack

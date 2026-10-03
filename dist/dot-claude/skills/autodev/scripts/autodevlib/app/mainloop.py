@@ -45,8 +45,9 @@ from typing import Protocol, runtime_checkable
 
 from ..domain import codec
 from ..domain.aggregate import Aggregate, Rejected
-from ..domain.commands import Command, MarkInterrupted
-from ..domain.events import Event
+from ..domain.commands.base import Command
+from ..domain.commands.task import MarkInterrupted
+from ..domain.events.base import Event
 from ..domain.value_objects.command_id import CommandId
 from ..domain.value_objects.event_id import EventId
 from ..domain.value_objects.execution_id import ExecutionId

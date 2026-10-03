@@ -6,9 +6,9 @@ import itertools
 
 import pytest
 from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.review_ledger import (
     CarryFinding,
-    Command,
     CommentFinding,
     CountFix,
     JudgeFinding,
@@ -18,10 +18,10 @@ from autodevlib.domain.commands import (
     RecordJudgement,
     TrackProposal,
 )
-from autodevlib.domain.events import (
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.review_ledger import (
     CarryRefused,
     CommentRefused,
-    Event,
     FindingCarried,
     FindingClosed,
     FindingCommented,

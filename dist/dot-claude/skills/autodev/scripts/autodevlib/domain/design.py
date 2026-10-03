@@ -49,7 +49,7 @@ from __future__ import annotations
 from enum import Enum
 
 from .aggregate import Aggregate, Rejected, applies, handles
-from .commands import (
+from .commands.design import (
     DiscardProposal,
     MarkAmbiguous,
     MarkReverted,
@@ -58,7 +58,8 @@ from .commands import (
     ReviseDesign,
     SettleDesign,
 )
-from .events import (
+from .events.base import Event
+from .events.design import (
     DesignAmbiguous,
     DesignProposalAbandoned,
     DesignProposed,
@@ -68,10 +69,8 @@ from .events import (
     DesignRoundsExhausted,
     DesignRoundsReset,
     DesignSettled,
-    Event,
-    ResultReceived,
-    ResultRefused,
 )
+from .events.review_ledger import ResultReceived, ResultRefused
 from .stages import spec_of
 from .value_objects.artifact_kind import ArtifactKind
 from .value_objects.artifact_ref import ArtifactRef

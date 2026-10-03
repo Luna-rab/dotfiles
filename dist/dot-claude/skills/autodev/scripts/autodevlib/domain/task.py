@@ -33,7 +33,7 @@ from enum import Enum
 from typing import Any
 
 from .aggregate import Aggregate, Rejected, applies, handles
-from .commands import (
+from .commands.task import (
     AbandonFlow,
     AcceptFlow,
     AddNote,
@@ -56,13 +56,13 @@ from .commands import (
     ResumeStage,
     StopTask,
 )
-from .events import (
+from .events.base import Event
+from .events.run import EscalationRaised
+from .events.task import (
     BaseRecorded,
     BranchRebased,
     EscalationClosed,
-    EscalationRaised,
     EscalationResolved,
-    Event,
     ExecutionRestarted,
     FlowAbandoned,
     FlowAccepted,

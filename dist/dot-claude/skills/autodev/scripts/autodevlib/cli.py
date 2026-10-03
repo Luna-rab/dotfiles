@@ -31,8 +31,9 @@ from .adapters.git import Git
 from .adapters.guard import ANSWER_FILE_OPTION
 from .app import assembly, cleanup
 from .app.driver import ExitCode, StartRequest
-from .domain.commands import AnswerQuestion, StartRun
-from .domain.events import RunStarted
+from .domain.commands.questions import AnswerQuestion
+from .domain.commands.run import StartRun
+from .domain.events.run import RunStarted
 from .domain.services.housekeeping import (
     Blocker,
     Leftovers,

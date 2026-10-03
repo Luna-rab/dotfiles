@@ -12,19 +12,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .events import (
+from .events.base import Event
+from .events.run import (
     AllTasksSettled,
     AnswerRecorded,
     EscalationAnswered,
     EscalationRaised,
-    Event,
-    FlowAbandoned,
-    FlowRejected,
-    ScopeChanged,
     SettledPlanRecorded,
     TasksPlanned,
-    WorktreeReady,
 )
+from .events.task import FlowAbandoned, FlowRejected, ScopeChanged, WorktreeReady
 from .services.escalation_router import EscalationRouter, SupervisorLevel, task_of_stream
 from .value_objects.event_id import EventId
 from .value_objects.git_job_kind import GitJobKind

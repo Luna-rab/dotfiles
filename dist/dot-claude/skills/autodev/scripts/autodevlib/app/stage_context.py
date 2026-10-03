@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..domain.aggregate import Aggregate
 from ..domain.design import Design
-from ..domain.events import RunStarted
+from ..domain.events.run import RunStarted
 from ..domain.flow import FlowStep
 from ..domain.review import ReviewLedger
 from ..domain.run import Run

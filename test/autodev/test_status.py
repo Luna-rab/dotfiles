@@ -12,29 +12,28 @@ import pytest
 from autodev_fakes import Queue, enqueue, execution, factory, task
 from autodevlib.adapters import children
 from autodevlib.app.mainloop import MainLoop
-from autodevlib.domain.events import (
-    DesignAmbiguous,
-    DesignProposed,
-    DesignSettled,
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import DesignAmbiguous, DesignProposed, DesignSettled
+from autodevlib.domain.events.questions import QuestionPosted
+from autodevlib.domain.events.run import (
     EscalationRaised,
-    Event,
-    FlowAccepted,
-    OverviewRecorded,
-    QuestionPosted,
     RunFinished,
     RunPanicked,
     RunResumed,
     RunStarted,
+    TaskMarkedStacked,
+    TasksPlanned,
+    TasksStopped,
+    TaskStarted,
+    TaskStatusChanged,
+)
+from autodevlib.domain.events.stack import OverviewRecorded, TaskStacked
+from autodevlib.domain.events.task import (
+    FlowAccepted,
     StageCompleted,
     StageRequested,
     StageStarted,
-    TaskMarkedStacked,
     TaskOpened,
-    TasksPlanned,
-    TasksStopped,
-    TaskStacked,
-    TaskStarted,
-    TaskStatusChanged,
 )
 from autodevlib.domain.flow import Cursor, Flow, FlowStep
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind

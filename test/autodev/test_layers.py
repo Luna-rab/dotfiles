@@ -108,8 +108,8 @@ def test_ドメイン層のファイルがある():
     names = {path.relative_to(DOMAIN).as_posix() for path in DOMAIN_FILES}
     assert {
         "value_objects/base.py",
-        "events.py",
-        "commands.py",
+        "events/base.py",
+        "commands/base.py",
         "stages.py",
         "flow.py",
         "aggregate.py",

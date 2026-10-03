@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..domain import codec
-from ..domain.commands import Command
+from ..domain.commands.base import Command
 
 
 @dataclass(frozen=True)

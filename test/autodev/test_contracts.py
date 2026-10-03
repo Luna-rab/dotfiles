@@ -17,7 +17,8 @@ from typing import Any
 import pytest
 from autodevlib.app.decisions import RUN_DECISIONS, TASK_DECISIONS, payload_key
 from autodevlib.app.prompts import SOURCES, contract_inputs
-from autodevlib.domain.commands import Command, JudgeFinding, RaiseFinding
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.review_ledger import JudgeFinding, RaiseFinding
 from autodevlib.domain.flow import FlowStep, Reviewers
 from autodevlib.domain.services.escalation_router import RAISED_IN_TASK, RELAYED_TO_RUN
 from autodevlib.domain.stages import (

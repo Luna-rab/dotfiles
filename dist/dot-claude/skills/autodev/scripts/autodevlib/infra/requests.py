@@ -23,7 +23,8 @@ from types import TracebackType
 from typing import Any
 
 from ..domain import codec
-from ..domain.commands import COMMAND_TYPES, Command
+from ..domain.commands.base import Command
+from ..domain.commands.registry import COMMAND_TYPES
 from ..domain.value_objects.base import InvalidValue
 from ..domain.value_objects.issuer import Issuer
 from ..domain.value_objects.issuer_kind import IssuerKind

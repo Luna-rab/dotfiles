@@ -8,7 +8,7 @@ import pytest
 from autodev_harness import CLI, DRIVER, POLICY, SESSION, Loop, names, new_id, of_type
 from autodev_samples import stage_result
 from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
+from autodevlib.domain.commands.task import (
     AbandonFlow,
     AcceptFlow,
     BeginStage,
@@ -29,11 +29,11 @@ from autodevlib.domain.commands import (
     ResumeStage,
     StopTask,
 )
-from autodevlib.domain.events import (
+from autodevlib.domain.events.run import EscalationRaised
+from autodevlib.domain.events.task import (
     BaseRecorded,
     BranchRebased,
     EscalationClosed,
-    EscalationRaised,
     EscalationResolved,
     ExecutionRestarted,
     FlowAbandoned,

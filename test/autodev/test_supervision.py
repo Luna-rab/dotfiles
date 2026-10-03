@@ -6,28 +6,29 @@ import dataclasses
 
 import pytest
 from autodev_samples import sample
-from autodevlib.domain.events import (
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted
+from autodevlib.domain.events.run import (
     AllTasksSettled,
     AnswerRecorded,
     EscalationAnswered,
     EscalationRaised,
-    Event,
+    RunFinished,
+    RunStarted,
+    SettledPlanRecorded,
+    TasksPlanned,
+    TaskStarted,
+    TaskStatusChanged,
+)
+from autodevlib.domain.events.task import (
     FlowAbandoned,
     FlowAccepted,
     FlowRejected,
-    QuestionAnswered,
-    QuestionPosted,
-    RunFinished,
-    RunStarted,
     ScopeChanged,
-    SettledPlanRecorded,
     StageCompleted,
     StageRequested,
     StageStarted,
     TaskOpened,
-    TasksPlanned,
-    TaskStarted,
-    TaskStatusChanged,
     TaskStopped,
     WorktreeReady,
 )

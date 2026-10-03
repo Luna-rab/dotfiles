@@ -22,8 +22,8 @@ from autodevlib.app.executor import Executor, StagePrompt
 from autodevlib.app.mainloop import Inbox
 from autodevlib.app.stage_context import RunSetting, StageContext
 from autodevlib.domain.aggregate import Aggregate
-from autodevlib.domain.commands import Command
-from autodevlib.domain.events import Event
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.events.base import Event
 from autodevlib.domain.review import ReviewLedger
 from autodevlib.domain.run import Run
 from autodevlib.domain.stack import Stack

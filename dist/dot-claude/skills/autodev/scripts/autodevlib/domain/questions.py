@@ -14,8 +14,9 @@ from dataclasses import dataclass, replace
 from enum import Enum
 
 from .aggregate import Aggregate, Rejected, applies, handles
-from .commands import AnswerQuestion, PostQuestion, WithdrawQuestions
-from .events import Event, QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from .commands.questions import AnswerQuestion, PostQuestion, WithdrawQuestions
+from .events.base import Event
+from .events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
 from .value_objects.event_id import EventId
 from .value_objects.question_id import QuestionId
 from .value_objects.stream_id import StreamId

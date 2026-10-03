@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from autodev_harness import CLI, POLICY, RUN_SUPERVISOR, Loop, new_id
 from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import AnswerQuestion, PostQuestion, WithdrawQuestions
-from autodevlib.domain.events import QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from autodevlib.domain.commands.questions import AnswerQuestion, PostQuestion, WithdrawQuestions
+from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
 from autodevlib.domain.questions import Questions, QuestionStatus
 from autodevlib.domain.value_objects.event_id import EventId
 from autodevlib.domain.value_objects.question_id import QuestionId

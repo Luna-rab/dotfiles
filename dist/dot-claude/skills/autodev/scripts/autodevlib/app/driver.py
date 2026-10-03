@@ -34,8 +34,8 @@ from ..adapters._proc import KILL_AFTER_SECONDS
 from ..adapters.agent_runtime import INTERRUPT_GRACE
 from ..adapters.guard import write_hook_settings
 from ..domain.aggregate import Aggregate
-from ..domain.commands import Panic, ResumeRun, StartRun
-from ..domain.events import RunStarted
+from ..domain.commands.run import Panic, ResumeRun, StartRun
+from ..domain.events.run import RunStarted
 from ..domain.policies import RECEIVERS
 from ..domain.questions import Questions
 from ..domain.run import Run

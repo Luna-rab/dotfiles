@@ -23,8 +23,8 @@ from autodevlib.app.stage_context import (
     TargetFacts,
     TaskRow,
 )
-from autodevlib.domain.commands import AcceptFlow, BeginStage, OpenTask
-from autodevlib.domain.events import StageCompleted, StageStarted, WorktreeReady
+from autodevlib.domain.commands.task import AcceptFlow, BeginStage, OpenTask
+from autodevlib.domain.events.task import StageCompleted, StageStarted, WorktreeReady
 from autodevlib.domain.flow import FlowStep, git_job_flow
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef

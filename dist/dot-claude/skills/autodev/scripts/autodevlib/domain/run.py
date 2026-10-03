@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 
 from .aggregate import Aggregate, Rejected, applies, handles
-from .commands import (
+from .commands.run import (
     AnswerEscalation,
     ApplyPlan,
     ApplyReplan,
@@ -41,13 +41,12 @@ from .commands import (
     StopTasks,
     UpdateTaskStatus,
 )
-from .events import (
+from .events.base import Event
+from .events.run import (
     AllTasksSettled,
     AnswerRecorded,
     EscalationAnswered,
-    EscalationClosed,
     EscalationRaised,
-    Event,
     IntegrationFailureCleared,
     IntegrationFailureRecorded,
     ReplanRequested,
@@ -66,6 +65,7 @@ from .events import (
     TaskStatusChanged,
     TaskSuperseded,
 )
+from .events.task import EscalationClosed
 from .services.escalation_router import EscalationRouter, Route, SupervisorLevel
 from .services.task_scheduler import SchedulingEntry, TaskScheduler
 from .value_objects.artifact_kind import ArtifactKind

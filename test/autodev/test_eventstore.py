@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 from autodev_fakes import Queue, factory, requested, task
-from autodevlib.domain.events import Event, UnknownEventType, to_record
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.record import UnknownEventType, to_record
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.event_id import EventId
 from autodevlib.domain.value_objects.stream_id import StreamId

@@ -6,8 +6,8 @@ import itertools
 
 import pytest
 from autodevlib.domain.aggregate import Rejected
-from autodevlib.domain.commands import (
-    Command,
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.design import (
     DiscardProposal,
     MarkAmbiguous,
     MarkReverted,
@@ -17,7 +17,8 @@ from autodevlib.domain.commands import (
     SettleDesign,
 )
 from autodevlib.domain.design import Design
-from autodevlib.domain.events import (
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import (
     DesignAmbiguous,
     DesignProposalAbandoned,
     DesignProposed,
@@ -27,10 +28,8 @@ from autodevlib.domain.events import (
     DesignRoundsExhausted,
     DesignRoundsReset,
     DesignSettled,
-    Event,
-    ResultReceived,
-    ResultRefused,
 )
+from autodevlib.domain.events.review_ledger import ResultReceived, ResultRefused
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.command_id import CommandId

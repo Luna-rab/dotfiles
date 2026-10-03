@@ -25,12 +25,12 @@ from typing import Any
 from ..domain import codec
 from ..domain.aggregate import Aggregate
 from ..domain.design import Design
-from ..domain.events import (
+from ..domain.events.base import Event
+from ..domain.events.design import DesignRevisionStarted
+from ..domain.events.run import (
     AnswerRecorded,
-    DesignRevisionStarted,
     EscalationAnswered,
     EscalationRaised,
-    Event,
     ReplanRequested,
 )
 from ..domain.flow import FlowStep

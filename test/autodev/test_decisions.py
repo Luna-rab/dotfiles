@@ -12,17 +12,17 @@ from autodevlib.app.decisions import (
     payload_key,
     to_command,
 )
-from autodevlib.domain.commands import (
-    AcceptFlow,
+from autodevlib.domain.commands.questions import PostQuestion
+from autodevlib.domain.commands.run import (
     AnswerEscalation,
     ApplyReplan,
     EscalateToRun,
     FinishRun,
     InsertTask,
-    PostQuestion,
     RequestReplan,
     StopTasks,
 )
+from autodevlib.domain.commands.task import AcceptFlow
 from autodevlib.domain.flow import FlowStep, Reviewers
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.design_version import DesignVersion

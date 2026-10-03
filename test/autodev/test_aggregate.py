@@ -9,21 +9,13 @@ from dataclasses import dataclass
 import pytest
 from autodevlib import domain
 from autodevlib.domain.aggregate import Aggregate, Rejected, UnknownEvent, applies, handles
-from autodevlib.domain.commands import (
-    COMMANDS_BY_AGGREGATE,
-    AcceptFlow,
-    AppendEntry,
-    EnqueueStack,
-    EscalateToRun,
-    ReportStageResult,
-    StartTask,
-    TakeNextGitJob,
-)
-from autodevlib.domain.events import (
-    EVENTS_BY_AGGREGATE,
-    Event,
-    RunPanicked,
-)
+from autodevlib.domain.commands.registry import COMMANDS_BY_AGGREGATE
+from autodevlib.domain.commands.run import EscalateToRun, StartTask
+from autodevlib.domain.commands.stack import AppendEntry, EnqueueStack, TakeNextGitJob
+from autodevlib.domain.commands.task import AcceptFlow, ReportStageResult
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.registry import EVENTS_BY_AGGREGATE
+from autodevlib.domain.events.run import RunPanicked
 from autodevlib.domain.flow import FlowStep
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId

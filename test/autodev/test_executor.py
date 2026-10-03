@@ -17,18 +17,18 @@ from autodevlib.adapters.agent_runtime import AgentCall, DeferredToolUse, Ending
 from autodevlib.adapters.guard import GUARD_ENV
 from autodevlib.app import executor as executor_module
 from autodevlib.app.stage_context import ResumeMode
-from autodevlib.domain.commands import (
+from autodevlib.domain.commands.run import Panic
+from autodevlib.domain.commands.task import (
     AcceptFlow,
     InterruptStage,
     OpenTask,
-    Panic,
     ReportBeginFailure,
     ReportStageResult,
     ResolveEscalation,
     ResumeStage,
 )
-from autodevlib.domain.events import (
-    EscalationRaised,
+from autodevlib.domain.events.run import EscalationRaised
+from autodevlib.domain.events.task import (
     ExecutionRestarted,
     StageCompleted,
     StageDeferred,

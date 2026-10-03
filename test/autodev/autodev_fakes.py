@@ -10,8 +10,12 @@ from collections.abc import Iterable
 
 from autodevlib.app.mainloop import Delivery, Subscriber
 from autodevlib.domain.aggregate import Aggregate, Rejected, applies, handles
-from autodevlib.domain.commands import Command, EnqueueStack, MarkInterrupted, ResumeStage
-from autodevlib.domain.events import Event, GitJobQueued, StageInterrupted, StageStarted
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.stack import EnqueueStack
+from autodevlib.domain.commands.task import MarkInterrupted, ResumeStage
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.stack import GitJobQueued
+from autodevlib.domain.events.task import StageInterrupted, StageStarted
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.commit_sha import CommitSha

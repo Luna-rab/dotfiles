@@ -11,8 +11,8 @@ from collections.abc import Iterable
 from typing import Generic, TypeVar
 
 from autodevlib.domain.aggregate import Aggregate
-from autodevlib.domain.commands import Command
-from autodevlib.domain.events import Event
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.events.base import Event
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.event_id import EventId
 from autodevlib.domain.value_objects.issuer import Issuer

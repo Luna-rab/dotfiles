@@ -58,7 +58,9 @@ from ..adapters.guard import ask_question, guard_context, stage_env, write_hook_
 from ..adapters.process import ProcessRunner
 from ..adapters.schema import load_schema, normalize_nulls, violations
 from ..domain.aggregate import Aggregate
-from ..domain.commands import BeginStage, Command, Panic, ReportBeginFailure, ReportStageResult
+from ..domain.commands.base import Command
+from ..domain.commands.run import Panic
+from ..domain.commands.task import BeginStage, ReportBeginFailure, ReportStageResult
 from ..domain.guard import cut_off_by_denials
 from ..domain.stages import BodyTarget, ResultField, StageMode, StageSpec
 from ..domain.task import ExecutionStatus

@@ -17,8 +17,10 @@ import pytest
 import test_seams as seams
 from autodevlib.app.mainloop import Delivery, LoopExit, MainLoop, Subscriber
 from autodevlib.domain.aggregate import Aggregate
-from autodevlib.domain.commands import Command, Escalate
-from autodevlib.domain.events import DesignAmbiguous, DesignRoundsExhausted, Event
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.task import Escalate
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import DesignAmbiguous, DesignRoundsExhausted
 from autodevlib.domain.policies import FOLLOW_UPS, POLICIES, RECEIVERS, By, Policy
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind

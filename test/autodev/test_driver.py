@@ -29,19 +29,20 @@ from autodevlib.app.mainloop import LoopExit
 from autodevlib.app.mainloop import Outcome as Outcome_
 from autodevlib.app.prompts import asset_name, contract_inputs
 from autodevlib.app.supervisors import MAX_ATTEMPTS, MAX_CORRECTIONS
-from autodevlib.domain.commands import AnswerQuestion
-from autodevlib.domain.events import (
-    BaseRecorded,
-    BranchRebased,
-    DesignSettled,
+from autodevlib.domain.commands.questions import AnswerQuestion
+from autodevlib.domain.events.design import DesignSettled
+from autodevlib.domain.events.questions import QuestionPosted
+from autodevlib.domain.events.run import (
     EscalationAnswered,
     EscalationRaised,
-    EscalationResolved,
-    GitJobDropped,
-    GitJobRetried,
-    QuestionPosted,
     RunPanicked,
     RunResumed,
+)
+from autodevlib.domain.events.stack import GitJobDropped, GitJobRetried
+from autodevlib.domain.events.task import (
+    BaseRecorded,
+    BranchRebased,
+    EscalationResolved,
     WorktreeReady,
 )
 from autodevlib.domain.questions import Questions

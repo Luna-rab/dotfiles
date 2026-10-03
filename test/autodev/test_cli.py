@@ -18,13 +18,9 @@ from typing import Any
 
 import pytest
 from autodevlib import cli
-from autodevlib.domain.commands import AnswerQuestion
-from autodevlib.domain.events import (
-    QuestionAnswered,
-    QuestionPosted,
-    QuestionWithdrawn,
-    RunStarted,
-)
+from autodevlib.domain.commands.questions import AnswerQuestion
+from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
+from autodevlib.domain.events.run import RunStarted
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.event_id import EventId

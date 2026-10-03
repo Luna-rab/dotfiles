@@ -27,8 +27,20 @@ A = TypeVar("A", bound=Aggregate)
 
 
 @dataclass(frozen=True)
+class DriverFacts:
+    """イベントには残らない、driver のプロセスの事実。"""
+
+    #: ランディレクトリの絶対パス
+    directory: str
+    #: `driver.lock` をほかのプロセスが握っている
+    running: bool
+    #: 前の driver が起こして、まだ生きている子の pid
+    live_children: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class Replayed:
-    """欄を作る材料。集約と、確定したイベントの列と、走っているステージの進み具合。"""
+    """欄を作る材料。集約と、確定したイベントの列と、走っているステージの進み具合と、driver の事実。"""
 
     aggregates: Mapping[StreamId, Aggregate]
     history: Sequence[tuple[StoredEvent, Event]]
@@ -36,6 +48,7 @@ class Replayed:
     progress: Mapping[str, Any]
     #: 再生に使ったもの。イベントがまだ無いストリームの集約も、これで作る
     factory: AggregateFactory = aggregate_for
+    driver: DriverFacts = DriverFacts(directory="", running=False)
 
     def get(self, stream: StreamId, kind: type[A]) -> A:
         """型が違えば TypeError。空の集約で置き換えると、欄が黙って空になる。"""
@@ -95,6 +108,10 @@ def run_section(view: Replayed) -> dict[str, Any]:
         "base": started[1].base.value if started else None,
         "limit": run.limit.value,
         "resumes": run.resumes,
+        "panic_cause": run.panic_cause,
+        "directory": view.driver.directory,
+        "driver_running": view.driver.running,
+        "live_children": list(view.driver.live_children),
     }
 
 

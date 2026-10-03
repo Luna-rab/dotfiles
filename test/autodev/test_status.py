@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from autodev_fakes import Queue, enqueue, execution, factory, task
+from autodevlib.adapters import children
 from autodevlib.app.mainloop import MainLoop
 from autodevlib.domain.events import (
     DesignAmbiguous,
@@ -19,6 +23,7 @@ from autodevlib.domain.events import (
     QuestionPosted,
     RunFinished,
     RunPanicked,
+    RunResumed,
     RunStarted,
     StageCompleted,
     StageRequested,
@@ -61,6 +66,7 @@ from autodevlib.domain.values import (
 )
 from autodevlib.infra import status_sections
 from autodevlib.infra.eventstore import EventStore
+from autodevlib.infra.lock import DriverLock
 from autodevlib.infra.paths import RunPaths, state_root
 from autodevlib.infra.rejections import Rejection, RejectionLog, read_rejections
 from autodevlib.infra.status import (
@@ -327,6 +333,10 @@ def test_走っているランのタスクと実行と回答待ちを見せる(p
         "base": "main",
         "limit": 2,
         "resumes": 0,
+        "panic_cause": None,
+        "directory": str(paths.root.absolute()),
+        "driver_running": False,
+        "live_children": [],
     }
     assert [(t["id"], t["kind"], t["status"]) for t in status["tasks"]] == [
         ("planning", "planning", "escalated"),
@@ -432,8 +442,14 @@ def test_パニックしたランは終えた後でもパニックと見せる(p
     seed = Seed(paths)
     seed(RUN, started(), TaskStarted(GIT, TaskKind.GIT))
     assert run_status(paths)["run"]["phase"] == "planning"
+    assert run_status(paths)["run"]["panic_cause"] is None
     seed(RUN, RunFinished(ready_overview=False), RunPanicked("利用枠"))
-    assert run_status(paths)["run"]["phase"] == "panicked"
+    run = run_status(paths)["run"]
+    assert (run["phase"], run["panic_cause"]) == ("panicked", "利用枠")
+    # 呼び直したら、もうパニックしていない
+    seed(RUN, RunResumed((GIT,), after_panic=True))
+    run = run_status(paths)["run"]
+    assert (run["phase"], run["panic_cause"]) == ("finishing", None)
 
 
 def test_StartRunを拒まれてイベントが無いランも読める(paths: RunPaths):
@@ -527,3 +543,80 @@ def test_書き直す前のフローで走っている実行はフローの版�
         ("task1-TestGen-r0-a1", 2, 0, None),
     ]
     assert task1["flow"]["version"] == 2
+
+
+#: 錠を握ったら `held` を 1 行書き、標準入力が閉じるまで握り続ける
+_HOLD_LOCK = """
+import fcntl, os, sys
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)
+fcntl.flock(fd, fcntl.LOCK_EX)
+print("held", flush=True)
+sys.stdin.read()
+"""
+
+
+@pytest.fixture
+def holder(paths: RunPaths) -> Iterator[subprocess.Popen[str]]:
+    """`driver.lock` を握っている、別のプロセス（同じプロセスの flock では driver の代わりにならない）。"""
+    paths.root.mkdir(parents=True, exist_ok=True)
+    process = subprocess.Popen(
+        [sys.executable, "-c", _HOLD_LOCK, str(paths.driver_lock)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout is not None and process.stdout.readline() == "held\n"
+    yield process
+    assert process.stdin is not None
+    process.stdin.close()
+    process.wait()
+
+
+def test_ほかのプロセスが錠を握っていればdriverが走っていると見せる(
+    paths: RunPaths, holder: subprocess.Popen[str]
+):
+    Seed(paths)(RUN, started())
+    assert run_status(paths)["run"]["driver_running"] is True
+    assert holder.stdin is not None
+    holder.stdin.close()
+    holder.wait()
+    assert run_status(paths)["run"]["driver_running"] is False
+
+
+def test_錠を確かめても錠のファイルを作らず錠を残さない(paths: RunPaths):
+    Seed(paths)(RUN, started())
+    assert run_status(paths)["run"]["driver_running"] is False
+    assert not paths.driver_lock.exists()
+    with DriverLock(paths.driver_lock):
+        pass
+    assert run_status(paths)["run"]["driver_running"] is False
+    with DriverLock(paths.driver_lock):
+        pass
+
+
+@pytest.fixture
+def sleeper(paths: RunPaths) -> Iterator[int]:
+    """前の driver が控えを置いたまま残した子。"""
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    children.track_in(paths.children)
+    try:
+        children.record(child.pid, ["python", "-c", "sleep"])
+    finally:
+        children.track_in(None)
+    yield child.pid
+    child.kill()
+    child.wait()
+
+
+def test_driverが止まっていて前の子が生きていればそのpidを見せる(paths: RunPaths, sleeper: int):
+    Seed(paths)(RUN, started())
+    run = run_status(paths)["run"]
+    assert (run["driver_running"], run["live_children"]) == (False, [sleeper])
+
+
+def test_driverが走っていれば生きている子を前の子に数えない(
+    paths: RunPaths, sleeper: int, holder: subprocess.Popen[str]
+):
+    Seed(paths)(RUN, started())
+    run = run_status(paths)["run"]
+    assert (run["driver_running"], run["live_children"]) == (True, [])

@@ -911,7 +911,16 @@ class Run(Aggregate):
                 ),
                 EscalationClosed(asked.id, "ユーザーが答えた", asked.task),
             ]
-        return [AnswerRecorded(command.question, command.answer, command.escalation)]
+        # 閉じたエスカレーションへの回答も記録する（ユーザーの言葉を回答の記録に残す）。拒むと、
+        # 質問は answered のまま Run に届かない
+        return [
+            AnswerRecorded(
+                command.question,
+                command.answer,
+                command.escalation,
+                escalation_closed=command.escalation is not None and asked is None,
+            )
+        ]
 
     @handles(AnswerEscalation)
     def _answer(self, command: AnswerEscalation) -> list[Event]:

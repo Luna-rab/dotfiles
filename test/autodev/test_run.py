@@ -51,6 +51,7 @@ from autodevlib.domain.events import (
 )
 from autodevlib.domain.run import Run
 from autodevlib.domain.services.escalation_router import SupervisorLevel
+from autodevlib.domain.supervision import wake_for
 from autodevlib.domain.values import (
     MAX_REPLANS_WITHOUT_STACK,
     MAX_SUPERVISOR_FAILURES,
@@ -939,6 +940,33 @@ def test_ユーザーの回答は届いた本文を写して1回だけその質�
     third = run.escalate(t(1), E.NEEDS_HUMAN)
     with pytest.raises(Rejected, match="もう使った"):
         run(answer(third, question="q-b"))
+
+
+def test_回答が届く前に回答以外で閉じたエスカレーションへの回答ではラン統括を起こさない(
+    planned_run: RunLoop,
+):
+    # ユーザーの回答（QuestionAnswered）と、ラン統括の stop-tasks が前後した。質問はもう answered
+    # なので取り下げられず、回答は閉じたエスカレーションに届く
+    run = planned_run
+    escalation = run.escalate(t(1), E.NEEDS_HUMAN, source="task/task1#5")
+    run(
+        StopTasks(
+            command_id=new_id(),
+            issuer=RUN_SUPERVISOR,
+            tasks=frozenset({t(1), t(2)}),
+            responds_to=escalation,
+        )
+    )
+    run.record_answer("q-a", escalation)
+    recorded = run.events[-1]
+    assert isinstance(recorded, AnswerRecorded)
+    # 起こしても answer は拒まれ、差し戻しを使い切ると supervisor-failed → ユーザーに聞く →
+    # 同じ知らせで起こし直す、の輪になる
+    assert wake_for(recorded, run.aggregate.event_id) is None
+    with pytest.raises(Rejected, match="開いている Run のエスカレーションではない"):
+        run(answer(escalation, question="q-a"))
+    assert recorded.escalation_closed
+    assert run.replayed().answers == run.aggregate.answers
 
 
 def failed(supervisor: TaskId | None, notice: str) -> ReportSupervisorFailure:

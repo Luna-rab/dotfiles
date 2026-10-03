@@ -80,6 +80,8 @@ FAILED_RUN = EscalationRaised(
         # ラン統括
         (sample(EscalationRaised), RUN, Wake(Supervisor.run(), Notice.ESCALATION)),
         (AnswerRecorded(QuestionId("q1"), "A"), RUN, Wake(Supervisor.run(), Notice.ANSWER)),
+        # 回答が届く前にエスカレーションが閉じていたら、答える先が無いので起こさない
+        (AnswerRecorded(QuestionId("q1"), "A", RUN, escalation_closed=True), RUN, None),
         # タスク統括が応じなかった上げはラン統括が受ける
         (FAILED_TASK1, RUN, Wake(Supervisor.run(), Notice.ESCALATION)),
         # ラン統括が応じなかった上げはユーザーが受ける（ポリシーが質問にする）。ラン統括は起こさない

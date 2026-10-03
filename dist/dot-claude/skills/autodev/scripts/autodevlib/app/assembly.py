@@ -1,8 +1,8 @@
 """CLI が使う組み立て: 本物の実行器と AgentRuntime で driver を組む・走り出す前に道具を確かめる・
 ランディレクトリの記録を読む。
 
-ここは判断を持たない。記録を読むときは集約を再生してドメインに聞き（`Questions.handle`）、答えを
-そのまま CLI に返す。
+ここは判断を持たない。記録を読むときは集約を再生してドメインに聞き（`Task.running_executions`・
+`Questions.handle`）、答えをそのまま CLI に返す。
 """
 
 from __future__ import annotations
@@ -16,7 +16,8 @@ from ..domain.aggregate import Rejected
 from ..domain.commands import AnswerQuestion
 from ..domain.events import RunStarted
 from ..domain.questions import Questions
-from ..domain.values import StreamId
+from ..domain.task import Task
+from ..domain.values import ExecutionId, StreamId
 from ..infra.eventstore import EventReader
 from ..infra.paths import RunPaths
 from ..infra.repo_config import RepoConfig
@@ -60,6 +61,20 @@ def run_started(paths: RunPaths) -> RunStarted | None:
             if isinstance(event, RunStarted):
                 return event
     return None
+
+
+def running_executions(paths: RunPaths) -> list[ExecutionId]:
+    """記録の上で running のまま残っている実行。driver が落ちた後は、走っていなくても残る。"""
+    if not paths.events_db.is_file():
+        return []
+    found: list[ExecutionId] = []
+    with EventReader.open(paths.events_db) as reader:
+        streams = sorted({stored.stream for stored in reader.read_all()}, key=str)
+        for stream in streams:
+            if stream.is_task:
+                history = [(s.decode(), s.command_id) for s in reader.read_stream(stream)]
+                found += Task.replay(stream, history).running_executions()
+    return found
 
 
 def answer_refusal(paths: RunPaths, command: AnswerQuestion) -> str | None:

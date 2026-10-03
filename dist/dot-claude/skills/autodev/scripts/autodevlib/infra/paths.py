@@ -167,3 +167,8 @@ class RunPaths:
     def driver_lock(self) -> Path:
         """driver が走っている間握る錠（`infra/lock.py`）。"""
         return self.root / "driver.lock"
+
+    @property
+    def trees(self) -> Path:
+        """worktree を並べる所（`clean`・`purge` が外す）。"""
+        return self.root / "trees"

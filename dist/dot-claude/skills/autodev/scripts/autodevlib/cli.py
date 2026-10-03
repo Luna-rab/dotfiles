@@ -29,7 +29,7 @@ from .adapters import git as git_adapter
 from .adapters._proc import CommandFailed
 from .adapters.git import Git
 from .adapters.guard import ANSWER_FILE_OPTION
-from .app import assembly
+from .app import assembly, cleanup
 from .app.driver import ExitCode, StartRequest
 from .domain.commands import AnswerQuestion, StartRun
 from .domain.events import RunStarted
@@ -80,6 +80,13 @@ def _value(kind: type[Any], text: str, what: str) -> Any:
 
 def _paths(name: str) -> RunPaths:
     return RunPaths.of(_value(RunName, name, "ラン名"))
+
+
+def _existing(name: str) -> RunPaths:
+    paths = _paths(name)
+    if not paths.root.is_dir():
+        raise Failed(f"そのランが無い: {paths.root}")
+    return paths
 
 
 def _text(value: str | None, file: str | None) -> str | None:
@@ -262,6 +269,42 @@ def cmd_ask(args: argparse.Namespace) -> int:
     return OK
 
 
+# --- clean・purge ---
+
+
+def cmd_clean(args: argparse.Namespace) -> int:
+    paths = _existing(args.name)
+    try:
+        with DriverLock(paths.driver_lock):
+            started = assembly.run_started(paths)
+            removed = cleanup.remove_worktrees(paths, started.repository if started else None)
+    except DriverBusy as error:
+        raise Failed(str(error)) from error
+    _say(f"記録は残してある: {paths.root}")
+    _emit({"removed": [str(tree) for tree in removed], "kept": str(paths.root)})
+    return OK
+
+
+def cmd_purge(args: argparse.Namespace) -> int:
+    paths = _existing(args.name)
+    try:
+        with DriverLock(paths.driver_lock):
+            started = assembly.run_started(paths)
+            repository = started.repository if started else None
+            problems = cleanup.purge_problems(paths, repository)
+            if problems and not args.force:
+                for problem in problems:
+                    _say(problem)
+                raise Failed("何も消していない。それでも消すなら --force を付ける")
+            branches = cleanup.purge(paths, repository)
+    except DriverBusy as error:
+        # driver が走っている間は --force でも消さない。消すと、走っている driver の記録が消える
+        raise Failed(str(error)) from error
+    _say("GitHub の PR とリモートのブランチは残してある")
+    _emit({"deleted": str(paths.root), "branches": [branch.value for branch in branches]})
+    return OK
+
+
 # --- 引数 ---
 
 
@@ -300,6 +343,17 @@ def build_parser() -> argparse.ArgumentParser:
     # ガードのフックが、回答のファイルを置いた後に足す
     ask.add_argument(ANSWER_FILE_OPTION, dest="answer_file", help=argparse.SUPPRESS)
     ask.set_defaults(func=cmd_ask)
+
+    clean = sub.add_parser("clean", help="worktree を外す（記録は残す）")
+    clean.add_argument("--name", required=True)
+    clean.set_defaults(func=cmd_clean)
+
+    purge = sub.add_parser("purge", help="worktree・手元のブランチ・ランディレクトリを消す")
+    purge.add_argument("--name", required=True)
+    purge.add_argument(
+        "--force", action="store_true", help="走っている記録・push していないコミットがあっても消す"
+    )
+    purge.set_defaults(func=cmd_purge)
     return parser
 
 

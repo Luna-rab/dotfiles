@@ -209,6 +209,14 @@ class BranchName(Text):
         suffix = f"-r{branch_round}" if branch_round else ""
         return cls(f"stack/{run}--task-{number}{suffix}")
 
+    @staticmethod
+    def run_prefix(run: RunName) -> str:
+        """そのランが切るブランチ（概要ブランチも）がどれも始まる文字列。`purge` が手元のブランチを集める。
+
+        ラン名に `--` は入らないので、`stack/a--task-` は `stack/a-b--task-1` に当たらない。
+        """
+        return f"stack/{run}--task-"
+
 
 class PrNumber(Number):
     pass

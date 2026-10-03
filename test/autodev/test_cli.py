@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,8 +37,8 @@ from autodevlib.infra.lock import DriverLock
 from autodevlib.infra.paths import RunPaths
 from autodevlib.infra.repo_config import config_path
 from autodevlib.infra.requests import RequestBox
-from conftest import SKILL_ROOT
-from executor_fakes import make_repo, sh
+from conftest import SCRIPTS_ROOT, SKILL_ROOT
+from executor_fakes import commit, make_repo, sh
 from fake_claude_run import ASK_ID, QUESTION
 from test_adapter_forge import FakeGh
 
@@ -345,6 +348,82 @@ def test_statusはnameがあればrun_statusを無ければall_statusesを呼ん
     assert (code, json.loads(out)) == (0, [{"name": "x"}])
 
 
-def test_無いランのeventsは1で止める(world: World):
-    code, _, err = world.cli("events", "--name", NAME)
-    assert (code, "そのランが無い" in err) == (1, True)
+# --- clean・purge ---
+
+
+def test_cleanはworktreeを外して記録を残す(world: World):
+    assert start(world)[0] == 4
+    assert world.paths.overview_tree.is_dir()
+    code, out, _ = world.cli("clean", "--name", NAME)
+    assert code == 0
+    assert json.loads(out)["removed"] == [str(world.paths.overview_tree)]
+    assert not world.paths.overview_tree.exists()
+    assert world.paths.events_db.is_file()
+    assert str(world.paths.overview_tree) not in sh(world.repo, "worktree", "list")
+
+
+def test_purgeはoriginに無いコミットがあれば何も消さずforceなら消す(world: World):
+    assert start(world)[0] == 4
+    branch = f"stack/{NAME}--task-0"
+    # 概要ブランチは、計画の後に概要 PR を作るときに push する。ここでは先に push しておく
+    sh(world.paths.overview_tree, "push", "-q", "origin", f"{branch}:{branch}")
+    commit(world.paths.overview_tree, "b.txt", "x\n", "push していない")
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 1
+    assert f"{branch} に origin に無いコミットがある（1 件）" in err
+    assert world.paths.overview_tree.is_dir()
+
+    code, out, err = world.cli("purge", "--name", NAME, "--force")
+    assert code == 0, err
+    assert json.loads(out)["branches"] == [branch]
+    assert not world.paths.root.exists()
+    assert sh(world.repo, "branch", "--list", branch).strip() == ""
+    # リモートのブランチと PR には触らない
+    assert sh(world.repo, "ls-remote", "origin", branch).strip()
+    assert not any(call["args"][:2] == ["pr", "close"] for call in world.gh.calls())
+
+
+def test_purgeはdriverが落ちて記録の上で走っている実行が残っていれば消さない(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    # 入口（scripts/autodev.py）を別のプロセスで起こし、Plan が走っている間に driver ごと落とす
+    monkeypatch.setenv("FAKE_CLAUDE_HANG", "plan")
+    driver = subprocess.Popen(
+        [
+            sys.executable,
+            str(SCRIPTS_ROOT / "autodev.py"),
+            *("run", "--name", NAME, "--instruction", "TTL を足す", "--repo", str(world.repo)),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not world.claude_calls() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        (plan,) = world.claude_calls()
+    finally:
+        os.killpg(driver.pid, signal.SIGKILL)
+        driver.wait()
+    # claude は別のプロセスグループで起こすので、driver を落としても残る
+    os.kill(plan["pid"], signal.SIGKILL)
+
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 1
+    assert "記録の上で走っている実行がある: planning-Plan" in err
+    assert world.paths.events_db.is_file()
+
+
+def test_purgeとcleanはdriverが走っている間はforceでも消さない(world: World):
+    assert start(world)[0] == 4
+    with DriverLock(world.paths.driver_lock):
+        assert world.cli("purge", "--name", NAME, "--force")[0] == 1
+        assert world.cli("clean", "--name", NAME)[0] == 1
+    assert world.paths.overview_tree.is_dir()
+
+
+def test_無いランのcleanとpurgeとeventsは1で止める(world: World):
+    for command in ("clean", "purge", "events"):
+        code, _, err = world.cli(command, "--name", NAME)
+        assert (command, code, "そのランが無い" in err) == (command, 1, True)

@@ -110,6 +110,18 @@ figure {
 }
 figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
 pre.mermaid { margin: 0; text-align: center; background: transparent; }
+/* Mermaid はノードの大きさを body の下の仮の要素で測ってから pre へ移す。pre の書式（折り返さない・
+   等幅）や本文の行間・両端揃えを文字が受け継ぐと、測った枠と描いた文字の大きさが食い違って見切れる。
+   測るときも描くときも同じ書式になるよう、pre ではなく SVG の中に掛ける（foreignObject を使うのは Mermaid だけ） */
+svg foreignObject,
+svg foreignObject * {
+  white-space: normal;
+  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+  line-break: auto;
+}
 .aggregate {
   border-left: 3px solid var(--accent);
   padding-left: 1rem;

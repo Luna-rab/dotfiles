@@ -102,6 +102,8 @@ th, td {
   vertical-align: top;
 }
 th { background: var(--panel); font-weight: 700; }
+/* 長いパスやコマンド名が、狭い画面で表の列を押し広げないようにする */
+td code, dd code { overflow-wrap: anywhere; }
 .table-wrap { overflow-x: auto; }
 figure {
   margin: 1.25rem 0 1.75rem;
@@ -166,7 +168,8 @@ dl.io dd { margin: 0; }
 .box-t { font-size: 0.78rem; font-weight: 700; color: var(--muted); margin-bottom: 0.4rem; }
 .box .row { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
 .e { color: var(--muted); font-size: 0.76rem; line-height: 1.4; text-align: center; }
-.e > span { max-width: 10rem; }
+/* 矢印の説明は語の途中で折らない。改行は <br> で、区切りの「・」か語と語の間に入れる */
+.e > span { white-space: nowrap; }
 .e > i { display: block; position: relative; border: 0 solid currentColor; }
 .e.dash > i { border-style: dashed; }
 .e.d, .e.u, .e.du {
@@ -260,11 +263,27 @@ table.tr td { padding: 0.4rem 0.45rem; }
 table.tr td:nth-child(-n+3) { width: 1%; }
 table.tr td:nth-child(2) { color: var(--muted); text-align: center; }
 table.tr .chip { margin: 0.12rem 0.1rem; }
+table.tr td:nth-child(4) { overflow-wrap: anywhere; }
+/* 狭い画面では 1 行を「元 → 先」と、その下の「きっかけ」の 2 段に組み替え、きっかけに全幅を渡す */
+@media (max-width: 640px) {
+  table.tr, table.tr tbody { display: block; }
+  table.tr thead { display: none; }
+  table.tr tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    column-gap: 0.4rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  table.tr td { width: auto; padding: 0; border: 0; }
+  table.tr td:nth-child(4) { grid-column: 1 / -1; padding-top: 0.25rem; }
+}
 
 /* 1 回のランのシーケンス図。参加者 1 人が 2 列を持ち、矢印は送り手の列の中心から受け手の列の中心まで引く */
 .seq {
   display: grid;
-  grid-template-columns: 1.8rem repeat(16, minmax(3.3rem, 1fr));
+  grid-template-columns: 1.8rem repeat(16, minmax(4.1rem, 1fr));
   font-size: 0.78rem;
   line-height: 1.4;
 }
@@ -281,7 +300,8 @@ table.tr .chip { margin: 0.12rem 0.1rem; }
 .seq .life { background: linear-gradient(var(--line), var(--line)) center / 2px 100% no-repeat; }
 .seq .sn { grid-column: 1; align-self: end; padding: 0 0.35rem 0.1rem 0; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .seq .m { z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; padding-top: 0.5rem; text-align: center; min-width: 0; }
-.seq .m > span { align-self: center; max-width: 100%; padding: 0 0.3rem; background: var(--panel); overflow-wrap: anywhere; }
+/* 説明は矢印の幅に縛らず 1 行で書き、矢印の中央から左右へはみ出させる。長いものだけ <br> で 2 行にする */
+.seq .m > span { align-self: center; padding: 0 0.3rem; background: var(--panel); white-space: nowrap; }
 .seq .m > i { display: block; position: relative; height: 0; margin-top: 0.2rem; border-top: 2px dashed var(--muted); }
 .seq .m.solid > i { border-top-style: solid; }
 .seq .m > i::after {
@@ -917,7 +937,7 @@ table.tr .chip { margin: 0.12rem 0.1rem; }
   <div class="sn" style="grid-row: 17;">14</div>
   <div class="m" style="grid-area: 17 / 13 / 18 / 17;"><span>TaskGated → EnqueueStack</span><i></i></div>
   <div class="sn" style="grid-row: 18;">15</div>
-  <div class="m to-l" style="grid-area: 18 / 15 / 19 / 17;"><span>GitJobTaken → Rebase … Push → CreatePR → StackLink</span><i></i></div>
+  <div class="m to-l" style="grid-area: 18 / 15 / 19 / 17;"><span>GitJobTaken → Rebase … Push<br>→ CreatePR → StackLink</span><i></i></div>
   <div class="sn" style="grid-row: 19;">16</div>
   <div class="m" style="grid-area: 19 / 15 / 20 / 17;"><span>AppendEntry → TaskStacked</span><i></i></div>
   <div class="sn" style="grid-row: 20;">17</div>
@@ -926,7 +946,7 @@ table.tr .chip { margin: 0.12rem 0.1rem; }
   <div class="sn" style="grid-row: 22;">18</div>
   <div class="m" style="grid-area: 22 / 5 / 23 / 17;"><span>RunFinished → 仕上げの仕事を列へ</span><i></i></div>
   <div class="sn" style="grid-row: 23;">19</div>
-  <div class="m to-l" style="grid-area: 23 / 15 / 24 / 17;"><span>概要 PR を書き直す（外すと決めたら draft から外す）</span><i></i></div>
+  <div class="m to-l" style="grid-area: 23 / 15 / 24 / 17;"><span>概要 PR を書き直す<br>（外すと決めたら draft から外す）</span><i></i></div>
   <div class="sn" style="grid-row: 24;">20</div>
   <div class="m to-l" style="grid-area: 24 / 5 / 25 / 15;"><span>仕上げを終えた → git 管理タスクが finished</span><i></i></div>
 </div>
@@ -939,7 +959,7 @@ table.tr .chip { margin: 0.12rem 0.1rem; }
 <p>エスカレーションは段を飛ばさない。ステージ → タスク統括 → ラン統括 → /autodev → ユーザーの順に 1 段ずつ上がる。回答は、上げたタスクへ直に戻る。タスク統括を経由せず、Task が止めていたフローを続ける（ask で止まった実行なら、続きから再開する）。</p>
 
 <figure>
-<div class="g" style="grid-template-columns: repeat(4, minmax(7.5rem, 10rem)); column-gap: 0.6rem;">
+<div class="g" style="grid-template-columns: repeat(4, minmax(7.5rem, max-content)); column-gap: 0.6rem;">
   <div class="n wide" style="grid-area: 1 / 1 / 2 / 5;">ステージ<small>報告・2 回続けて落ちた・停滞</small></div>
   <div class="e d side" style="grid-area: 2 / 1 / 3 / 3;"><i></i><span>EscalationRaised（タスク）</span></div>
   <div class="e u side" style="grid-area: 2 / 3 / 3 / 5;"><i></i><span>新しいフローで応える</span></div>
@@ -947,9 +967,9 @@ table.tr .chip { margin: 0.12rem 0.1rem; }
   <div class="e d side" style="grid-area: 4 / 1 / 5 / 5;"><i></i><span>EscalateToRun<br>needs-replan・needs-human など</span></div>
   <div class="n wide key" style="grid-area: 5 / 1 / 6 / 5;">ラン統括</div>
   <div class="e d side" style="grid-area: 6 / 1;"><i></i><span>answer<br>ResolveEscalation</span></div>
-  <div class="e d side" style="grid-area: 6 / 2;"><i></i><span>replan・insert-task・stop-tasks</span></div>
-  <div class="e d side" style="grid-area: 6 / 3;"><i></i><span>ask-user（PostQuestion）</span></div>
-  <div class="e u side" style="grid-area: 6 / 4;"><i></i><span>AnswerQuestion<br>Run が記録し、ラン統括を起こす</span></div>
+  <div class="e d side" style="grid-area: 6 / 2;"><i></i><span>replan・insert-task・<br>stop-tasks</span></div>
+  <div class="e d side" style="grid-area: 6 / 3;"><i></i><span>ask-user<br>（PostQuestion）</span></div>
+  <div class="e u side" style="grid-area: 6 / 4;"><i></i><span>AnswerQuestion<br>Run が記録し、<br>ラン統括を起こす</span></div>
   <div class="n wide" style="grid-area: 7 / 1; align-self: stretch;">Task<small>止めたフローを続ける</small></div>
   <div class="n wide" style="grid-area: 7 / 2; align-self: stretch;">Run が計画とタスクを直す</div>
   <div class="n wide" style="grid-area: 7 / 3 / 8 / 5;">/autodev</div>

@@ -430,6 +430,10 @@ class Task(Aggregate):
         同じ位置の 1 つ前の試みを作り直した（restarted）なら、その試みが始めた時点へ戻す。作り直しの
         反応が戻す前に driver が落ちると、反応は配り直されず、呼び直した driver が戻していない HEAD から
         次の試みを始めてしまう。始める前に戻し直せば、何度戻しても同じ結果になる。
+
+        始めていない試み（begin が落ちた。`start_commit` が無い）は worktree に触れていないので、飛ばして
+        遡る。飛ばさないと、作り直しの反応が戻すのを待ち切れず、続く試みの begin も落ちたときに、その
+        次の試みが戻していない HEAD から始まる。
         """
         record = self.executions.get(execution)
         if record is None or record.status is not _X.REQUESTED:
@@ -440,6 +444,7 @@ class Task(Aggregate):
             if e.position == record.position
             and e.flow_version == record.flow_version
             and e.id.attempt < execution.attempt
+            and e.start_commit is not None
         ]
         if not earlier:
             return None

@@ -18,6 +18,7 @@ from autodevlib.domain.commands import (
     BeginStage,
     ChangeScope,
     MarkInterrupted,
+    ReportBeginFailure,
     ResumeStage,
 )
 from autodevlib.domain.events import ExecutionRestarted, RunStarted, StageCompleted, StageFailed
@@ -158,6 +159,41 @@ def test_resumeで続けられなかった証拠なら失敗に数えず作り�
     assert restarted.reason == "No conversation" and restarted.start_commit == HEAD
     assert not of_type(events, StageFailed)
     assert task.aggregate.reset_before_start(ex(S.IMPL, attempt=2)) == HEAD
+
+
+def test_作り直した後に始められなかった試みを挟んでも次の試みは作り直した時点へ戻す(
+    task: TaskLoop,
+):
+    """作り直しの反応が待ち切れずに戻さず、次の試みの begin も落ちた。その次の試みは戻さずに始めない。"""
+    begin(task, ex(S.IMPL), 1)
+    task.report(
+        ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, session_lost=True, error="lost"
+    )
+    task(
+        ReportBeginFailure(
+            command_id=new_id(),
+            issuer=Issuer.executor(ex(S.IMPL, attempt=2)),
+            task=T1,
+            execution=ex(S.IMPL, attempt=2),
+            error="同じ worktree で止めた実行が終わらない",
+        )
+    )
+    agg = task.aggregate
+    assert agg.executions[ex(S.IMPL, attempt=3)].status is ExecutionStatus.REQUESTED
+    assert agg.reset_before_start(ex(S.IMPL, attempt=3)) == HEAD
+
+
+def test_作り直した後に始めて落ちた試みの次は戻さない(task: TaskLoop):
+    """遡るのは始めていない試みだけ。始めた試みは戻した時点から走ったので、落ちた後はそこから続ける。"""
+    begin(task, ex(S.IMPL), 1)
+    task.report(
+        ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, session_lost=True, error="lost"
+    )
+    begin(task, ex(S.IMPL, attempt=2), 1)
+    task.report(ex(S.IMPL, attempt=2), result_valid=False)
+    agg = task.aggregate
+    assert agg.executions[ex(S.IMPL, attempt=3)].status is ExecutionStatus.REQUESTED
+    assert agg.reset_before_start(ex(S.IMPL, attempt=3)) is None
 
 
 def test_フックに止められ続けて打ち切ったなら続けられなかったのではなく失敗にする(task: TaskLoop):

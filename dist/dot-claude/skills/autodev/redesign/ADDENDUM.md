@@ -190,3 +190,83 @@
 - **エスカレーションが回答以外で閉じたら（`EscalationClosed`）、それを経路に持つ回答待ちの質問を取り下げる**（ポリシー `withdraw-questions` → `WithdrawQuestions` → `QuestionWithdrawn`）。ラン統括が `ask-user` の後に `stop-tasks`・`replan` で閉じると、質問が回答を待ったまま残り、`awaiting_answer` が真のまま終了コード 4 で止まるためである。`/autodev` には `questions/<QuestionId>.json` の `status: withdrawn` と `reason`（閉じた理由）で見せる
 - **質問が answered になった後、回答が Run に届く前にエスカレーションが閉じたら、回答は記録するが、ラン統括を起こさない**（`AnswerRecorded.escalation_closed`）。答える先が無いので、起こすと `answer` が拒まれ続け、`supervisor-failed` から同じ知らせで起こし直す輪になる。印を付けるのは Run で開いたことのあるエスカレーション（`Run.opened_escalations`）への回答だけで、開いたことの無い id（`ask-user` の `escalation` の取り違え）への回答は今までどおり起こす。`<回答の記録>` には `escalationClosed: true` で見せる
 - `retry` の知らせは、起こし直しが重なっても最初の知らせを 1 段だけ載せる（途中の回答は載せない）
+
+### status --json の形（段 6）
+
+HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形。組み立てるのは `infra/status.py`（`run_status`・`all_statuses`）と `infra/status_sections.py` で、集約をそのまま JSON にしない。状態の見せ方の判断（ランがどこにいるか・段がどこまで進んだか など）は、集約の問い（`Run.phase`・`Task.step_states`・`Task.current_executions`・`Design.proposal_state`・`Questions.open_questions`・`Stack.entry_of`・`Run.applied_design`）が答える。
+
+- `run_status` は 1 つのランのオブジェクト（ランが無ければ FileNotFoundError）、`all_statuses` は状態の置き場にある全ランの配列（ラン名の順。読めないランは飛ばす）を返す。どちらを CLI のどの呼び方に当てるかは `cli.py` が決める
+- 欄を足すだけなら `format` は上げない。読む側は知らない欄を無視する
+- 時刻はすべて UTC の ISO 8601（`2026-10-03T01:02:03.456789Z`）。イベントを確定した時刻で、ステージが走り始めた正確な時刻ではない
+- driver が生きているかは、この形からは分からない。`updated_at` と `progress.updated` が古ければ止まっているとみなす
+
+```json
+{
+  "format": 1,
+  "name": "add-cache",
+  "last_seq": 57,
+  "updated_at": "2026-10-03T01:02:03.456789Z",
+  "rejections": [],
+  "run": {"phase": "running", "awaiting_answer": true, "started_at": "…", "repository": "/repo",
+          "base": "main", "limit": 2, "resumes": 0},
+  "tasks": [
+    {"id": "task1", "kind": "implementation", "title": "パーサを足す", "status": "running",
+     "terminal": false, "blocked_by": [], "branch": "stack/add-cache--task-1", "pr": null,
+     "superseded_by": null, "takes_over": null, "integration_failed": false, "awaiting_requeue": false,
+     "flow": {"version": 1, "finished": false, "halted": false, "job": null,
+              "steps": [{"stage": "TestGen", "state": "done"},
+                        {"stage": "ReviewLoop", "state": "current", "inner": "Judge", "round": 2},
+                        {"stage": "Gate", "state": "pending"}]},
+     "executions": [{"id": "task1-Judge-r2-a1", "stage": "Judge", "round": 2, "attempt": 1, "step": 1,
+                     "status": "running", "started_at": "…",
+                     "progress": {"stage": "Judge", "state": "running", "turns": 7, "lastTool": "Read",
+                                  "hookDenials": 0, "events": 41, "updated": "…"}}],
+     "escalations": []}
+  ],
+  "stack": {"overview": {"task": "git", "branch": "autodev/add-cache", "pr": 4, "base": "main"},
+            "entries": [], "top": "autodev/add-cache", "queue": [], "current": null, "parked": null,
+            "paused": false, "cuts_pending": 0},
+  "questions": [{"id": "q1", "body": "…", "escalation": "run#7"}],
+  "escalations": [{"id": "run#7", "kind": "ask", "task": "planning", "source": "task/planning#5",
+                   "for_user": false, "answer_only": false, "failures": 0}],
+  "plan": {"planning": false, "planned": true, "applied_design": 1, "replans_without_stack": 0,
+           "design": {"versions": [1, 2], "settled": 1,
+                      "proposal": {"version": 2, "state": "awaiting", "round": 1,
+                                   "awaiting": "design-ambiguous"}}}
+}
+```
+
+| 欄 | 意味 | 取りうる値 |
+| --- | --- | --- |
+| `format` | 形の版 | `1` |
+| `last_seq`・`updated_at` | 最後のイベントの通し番号と確定した時刻。イベントが無ければ `0`・`null` | |
+| `rejections` | 拒んだコマンド（`logs/rejected.jsonl`）。`at`・`type`・`command_id`・`issuer`・`reason` | |
+| `run.phase` | ランがどこにいるか。`panicked` は仕上げの途中にも起きるので、`finishing` より先に見せる | `not-started`（RunStarted が無い）・`planning`（初めての計画を反映する前）・`running`・`panicked`（呼び直すまで進まない）・`finishing`（ランを終え、git 管理タスクの仕上げが残る）・`finished`（終了コード 0 で終える） |
+| `run.awaiting_answer` | `/autodev` の回答を待つ質問がある。ほかのタスクが進んでいても真になる | `true`・`false` |
+| `run.resumes` | 呼び直された回数 | |
+| `tasks[]` | 計画タスク・git 管理タスク（始めていれば）、実装タスク（番号の順） | |
+| `tasks[].kind` | タスクの種類 | `planning`・`implementation`・`git` |
+| `tasks[].status` | Run が持つ状態（ADDENDUM §2・§11） | `pending`・`running`・`escalated`・`gated`・`stacking`・`stacked`・`dropped`（止めた）・`superseded`（引き継がれた）・`discarded`（積んだ後に破棄した）・`finished`（計画・git 管理タスクの終わり） |
+| `tasks[].terminal` | 終端の状態か。`stacked` も終端に数える | |
+| `tasks[].pr`・`branch` | 今スタックに積んである PR の番号（積んでいなければ `null`）と、タスクのブランチ | |
+| `tasks[].awaiting_requeue` | 破棄した所より上にあり、閉じ終えたら積み直すのを待っている（`stacked` のまま） | |
+| `tasks[].flow` | 今のフロー。無ければ `null`（始めていない・範囲が変わって組み直しを待つ） | |
+| `flow.steps[].state` | 段の進み具合。`current` の段が合成ステージなら、`inner`（中のステージ）と `round` が付く | `done`・`skipped`（飛ばした。衝突しなかった Rebase の後など）・`current`・`pending` |
+| `flow.finished`・`flow.halted` | フローを終えた・捨てた（置き換えを待つ） | |
+| `flow.job` | git 管理タスクの処理している仕事（`id`・`kind`・`task`・`branch`）。ほかは `null` | `kind`: `cut-overview`・`cut-task`・`cut-stack-top`・`open-overview`・`rewrite-overview`・`stack`・`discard`・`finish` |
+| `tasks[].executions[]` | 今のフローの実行と、書き直す前のフローでまだ走っている実行（始めた順）。`stage` は `StageKind` の値 | `status`: `requested`（始めるのを待つ）・`running`・`completed`・`reported`（報告で終えた）・`failed`・`interrupted`・`deferred`（ask の回答待ち）・`abandoned`・`restarted`・`refused`（結果を受けてもらえなかった） |
+| `executions[].started_at` | 最後に StageStarted を確定した時刻（再開したら再開した時刻）。まだなら `null` | |
+| `executions[].progress` | 実行器が数秒ごとに書く進み具合（`progress/<id>.json`）。走っていない・ファイルが無ければ `null`。`turns`・`lastTool`・`hookDenials`・`events` は LLM のステージだけ | |
+| `tasks[].escalations[]` | タスクの側で開いているエスカレーション（`id`・`kind`・`origin` の実行） | `kind`: 下の `escalations[].kind` と同じ |
+| `stack.overview`・`entries[]` | 概要 PR と積んだ PR（下から）。`task`・`branch`・`pr`・`base` | |
+| `stack.queue`・`current`・`parked` | git 管理タスクの仕事の列・処理中の仕事・戻す回数の上限で止めた仕事（形は `flow.job`） | |
+| `stack.paused`・`cuts_pending` | 再計画の間で積まない・破棄して閉じ終えていない数 | |
+| `questions[]` | 回答を待っている質問（`id`・`body`・`escalation`）。答えた・取り下げた質問は載せない（`questions/<id>.json` を見る） | |
+| `escalations[]` | Run の側で開いているエスカレーション。`for_user` が真ならラン統括は応えず、`/autodev` の回答で閉じる。`answer_only` が真なら答え以外では閉じない。`failures` は supervisor-failed で続けて応じなかった数 | `kind`: `stall`・`design-gap`・`test-conflict`・`ask`・`red-check-failed`・`untested-change`・`gate-unfixable`・`stage-errors`・`design-ambiguous`・`design-reverted`・`design-rounds-exhausted`・`integration-failed`・`needs-replan`・`needs-human`・`question`・`result-refused`・`supervisor-failed` |
+| `plan.planning` | 計画が進んでいる（初回はランの開始から、再計画は頼まれてから、反映するまで） | |
+| `plan.planned`・`applied_design` | 計画を反映したか・最後に反映した設計の版 | |
+| `plan.replans_without_stack` | 1 本も積まずに続けた再計画の数 | |
+| `plan.design.versions`・`settled` | 入った設計の版（増えるだけ）と、最後に確定した版 | |
+| `plan.design.proposal` | 確定していない提案。無ければ `null`。`round` は今の提案の何ラウンド目か | `state`: `judging`・`revising`・`awaiting`。`awaiting`: `design-rounds-exhausted`・`design-reverted`・`design-ambiguous`（`state` が `awaiting` のときだけ。ほかは `null`） |
+
+`/autodev` が終了コード 0 の後に見分けること: 積んだのは `kind` が `implementation` で `status` が `stacked` のタスク、止めたのは `dropped`、破棄したのは `discarded`。回答待ち（終了コード 4）なら `run.awaiting_answer` が真で、`questions[]` に答える。

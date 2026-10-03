@@ -628,8 +628,9 @@ class _Collector:
 
 
 def _hook_denials(event: Mapping[str, Any]) -> int:
-    """PreToolUse のフックは stream-json にイベントを出さない。拒まれた呼び出しは次の user イベントの
-    tool_result に残る。`hook_response` の `exit_code` を数えると SessionStart のフックの失敗まで
+    """PreToolUse のフックは、通したときは `type: attachment`（`hook_success`）のイベントを出すが、
+    拒んだときは出さない（claude 2.1.288 で確かめた）。拒まれた呼び出しは次の user イベントの
+    tool_result にだけ残る。`hook_response` の `exit_code` を数えると SessionStart のフックの失敗まで
     数える（AR-26）。"""
     message = event.get("message")
     content = message.get("content") if isinstance(message, Mapping) else None

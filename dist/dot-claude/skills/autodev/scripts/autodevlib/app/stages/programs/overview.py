@@ -9,7 +9,15 @@ from ....domain.value_objects.overview_pr_title import overview_pr_title
 from ....domain.value_objects.task_status import TaskStatus
 from .. import markers
 from ..stage_context import StageContext
-from .common import ProgramOutcome, Tools, _branch, _bullets, _job, _overview_pr, _start_of
+from .common import (
+    ProgramOutcome,
+    Tools,
+    bullets,
+    job_branch,
+    job_of,
+    overview_pr_of,
+    start_commit_of,
+)
 
 _STATUS_LABELS: Mapping[TaskStatus, str] = {
     TaskStatus.PENDING: "未着手",
@@ -40,10 +48,10 @@ def overview_values(ctx: StageContext, tools: Tools) -> dict[str, str]:
     decisions = [*(f"{d}（計画）" for d in facts.decisions)]
     decisions += [f"{note.text}（{_ORIGIN_LABELS[note.origin]}）" for note in facts.notes]
     return {
-        "tasks": _bullets(rows),
-        "waiting": _bullets(waiting),
-        "decisions": _bullets(decisions),
-        "deferrals": _bullets(list(facts.deferrals)),
+        "tasks": bullets(rows),
+        "waiting": bullets(waiting),
+        "decisions": bullets(decisions),
+        "deferrals": bullets(list(facts.deferrals)),
         "instruction": tools.setting.instruction,
         "signature": f"autodev のラン `{tools.setting.paths.name}` が {tools.clock()} に更新した",
     }
@@ -67,11 +75,11 @@ def _overview_title(tools: Tools) -> str:
 def create_overview_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """概要ブランチを push し、概要 PR を draft で作る。base との差分が 0 だと作れないので、空のコミットを
     1 つ載せる。同じブランチの PR があればそれを使う。"""
-    job = _job(ctx)
-    branch = _branch(job)
+    job = job_of(ctx)
+    branch = job_branch(job)
     git, tree = tools.git, tools.setting.paths.overview_tree
     base = job.base or tools.setting.base
-    if git.commit_count(tree, _start_of(tools, str(base))) == 0:
+    if git.commit_count(tree, start_commit_of(tools, str(base))) == 0:
         git.commit_empty(tree, f"autodev: ラン {tools.setting.paths.name} の概要")
     git.push(tree, branch)
     found = tools.forge.find_pr(tree, branch)
@@ -91,7 +99,7 @@ def create_overview_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 def refresh_overview(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     tools.forge.edit_pr(
         tools.setting.paths.overview_tree,
-        _overview_pr(ctx),
+        overview_pr_of(ctx),
         title=_overview_title(tools),
         body=_overview_body(ctx, tools),
     )
@@ -99,5 +107,5 @@ def refresh_overview(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
 
 def ready_overview(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    tools.forge.ready_pr(tools.setting.paths.overview_tree, _overview_pr(ctx))
+    tools.forge.ready_pr(tools.setting.paths.overview_tree, overview_pr_of(ctx))
     return ProgramOutcome()

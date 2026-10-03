@@ -18,23 +18,23 @@ from ..stage_context import StageContext
 from .common import (
     ProgramOutcome,
     Tools,
-    _branch,
-    _job,
-    _overview_pr,
-    _start_of,
-    _verify,
+    job_branch,
+    job_of,
+    overview_pr_of,
     own_commits,
+    start_commit_of,
+    verify_tree,
 )
 
 
 def cut_point(tools: Tools, point: CutPoint) -> str:
     """切る元の名前。ランの base は origin にあればそちらを使う（手元の base は古いことがある）。"""
-    return _start_of(tools, str(point.start)) if point.run_base else str(point.start)
+    return start_commit_of(tools, str(point.start)) if point.run_base else str(point.start)
 
 
 def cut_branch(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """仕事が決めた切る元（`GitJob.cut_point`）から、ブランチと worktree を切る。"""
-    job = _job(ctx)
+    job = job_of(ctx)
     point = job.cut_point
     if point is None:
         raise RuntimeError(f"仕事 {job.id}（{job.kind.value}）に切る元が無い")
@@ -51,7 +51,7 @@ def cut_branch(ctx: StageContext, tools: Tools) -> ProgramOutcome:
         branch = None
         base = top
     else:
-        branch = _branch(job)
+        branch = job_branch(job)
         tree = ctx.tree
         found = git.rev_parse(git.repo, start)
         if found is None:
@@ -81,7 +81,7 @@ def rebase(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     実行器が、途中の rebase を取りやめ、始めた時点へ戻している（`StageSpec.abandons_rebase`・
     `restores_start`）。
     """
-    job = _job(ctx)
+    job = job_of(ctx)
     git, tree = tools.git, ctx.tree
     if job.base is None:
         raise RuntimeError("積む仕事に一番上が無い")
@@ -121,11 +121,11 @@ def check_union(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
 def verify(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """積む直前の回帰を、ラン共通の verify で確かめる。"""
-    return ProgramOutcome(verify=_verify(ctx, tools, ctx.tree))
+    return ProgramOutcome(verify=verify_tree(ctx, tools, ctx.tree))
 
 
 def push(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    tools.git.push(ctx.tree, _branch(_job(ctx)))
+    tools.git.push(ctx.tree, job_branch(job_of(ctx)))
     return ProgramOutcome()
 
 
@@ -137,8 +137,8 @@ def _read(tools: Tools, ref: ArtifactRef | None, what: str) -> str:
 
 def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """タスク PR を、実装タスクが書いた本文で作る。同じブランチの PR があればそれを使う。"""
-    job = _job(ctx)
-    branch = _branch(job)
+    job = job_of(ctx)
+    branch = job_branch(job)
     found = tools.forge.find_pr(ctx.tree, branch)
     if found is not None:
         return ProgramOutcome(result={"pr": int(found.number.value)})
@@ -147,7 +147,7 @@ def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     body = markers.fill(
         markers.template("task-pr-body"),
         {
-            "overview-pr": f"概要 PR: #{_overview_pr(ctx)}",
+            "overview-pr": f"概要 PR: #{overview_pr_of(ctx)}",
             "body": _read(tools, ctx.target.pr_body, "タスク PR の本文（pr-body）"),
         },
     )
@@ -157,7 +157,7 @@ def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     return ProgramOutcome(result={"pr": int(number.value)})
 
 
-def _link(ctx: StageContext, tools: Tools, prs: Sequence[PrNumber]) -> None:
+def link_stack(ctx: StageContext, tools: Tools, prs: Sequence[PrNumber]) -> None:
     """概要 PR から下から順に渡して、つないだ後に概要 PR の base がランの base のままか確かめる。"""
     paths, base = tools.setting.paths, tools.setting.base
     tools.forge.stack_link(paths.overview_tree, base, prs)
@@ -168,10 +168,10 @@ def _link(ctx: StageContext, tools: Tools, prs: Sequence[PrNumber]) -> None:
 
 def stack_link(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """概要 PR から一番上（このタスクの PR）まで、全部を下から順につなぐ（link は足すだけ）。"""
-    branch = _branch(_job(ctx))
+    branch = job_branch(job_of(ctx))
     found = tools.forge.find_pr(ctx.tree, branch)
     if found is None:
         raise RuntimeError(f"{branch} の PR が無い")
-    prs = [_overview_pr(ctx), *(entry.pr for entry in ctx.stack.entries), found.number]
-    _link(ctx, tools, prs)
+    prs = [overview_pr_of(ctx), *(entry.pr for entry in ctx.stack.entries), found.number]
+    link_stack(ctx, tools, prs)
     return ProgramOutcome(result={"pr": int(found.number.value)})

@@ -47,7 +47,7 @@ from typing import IO, Any
 
 from ...domain.value_objects.session_id import SessionId
 from ..process import children
-from ..process._proc import merged_env, run
+from ..process.command import merged_env, run
 
 #: 外して起動する変数
 REMOVED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")

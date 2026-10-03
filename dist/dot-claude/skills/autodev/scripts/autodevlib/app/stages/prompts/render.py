@@ -29,7 +29,7 @@ from ....infra.paths import RunPaths
 from ...driving.mainloop import Delivery
 from ..stage_context import StageContext, StagePrompt
 from .assets import asset_name, contract_inputs, contract_path
-from .sources import SOURCES, Block, Sources, _camel_keys, _json
+from .sources import SOURCES, Block, Sources, camel_keys, json_block
 
 _INLINE_UNSAFE = re.compile(r"[\n|`]")
 
@@ -88,7 +88,7 @@ def _notice_body(
         "notice": notice.value if notice is not None else None,
         "id": delivery.event_id.value,
         "event": type(delivery.event).__name__,
-        **_camel_keys(codec.to_json(delivery.event)),
+        **camel_keys(codec.to_json(delivery.event)),
     }
     if replay is not None and (original := find(replay)) is not None:
         # 起こし直す元の知らせを、そのときと同じ形で入れ子にする。元も起こし直しなら、最初の知らせ
@@ -118,7 +118,7 @@ def render_notice(
 
     起こし直す（`Wake.replay`）なら、元の知らせを `find` で確定したイベントの列から引いて `retry` に載せる。
     """
-    return _json(_notice_body(wake.notice, wake.replay, delivery, find)).text
+    return json_block(_notice_body(wake.notice, wake.replay, delivery, find)).text
 
 
 def render_rejection(reason: str) -> str:
@@ -126,7 +126,7 @@ def render_rejection(reason: str) -> str:
     body = {"notice": Notice.DECISION_REJECTED.value, "reason": reason}
     return (
         "## `<通知>`\n\n"
-        + _json(body).text
+        + json_block(body).text
         + "\n\n返した判断は実行していない。理由を読んで、直した判断を 1 つ返す。\n"
     )
 

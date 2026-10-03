@@ -3,14 +3,14 @@ from __future__ import annotations
 import re
 
 from .base import Text
-from .task_id import _TASK_ID, TaskId
+from .task_id import TASK_ID_PATTERN, TaskId
 
 
 class StreamId(Text):
     """集約 1 つぶんのイベントの列。"""
 
     PATTERN = re.compile(
-        rf"run|design|stack|questions|review/design|(?:task|review)/(?:{_TASK_ID})"
+        rf"run|design|stack|questions|review/design|(?:task|review)/(?:{TASK_ID_PATTERN})"
     )
 
     @classmethod

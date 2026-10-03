@@ -33,7 +33,7 @@ from ..value_objects.limits import MAX_JOB_RETURNS
 from ..value_objects.pointers import Pointers
 from ..value_objects.task_id import TaskId
 from ..value_objects.task_status import TaskStatus
-from .base import Stamp, _from_git
+from .base import Stamp, is_from_git
 
 _J = GitJobKind
 _E = EscalationKind
@@ -129,20 +129,20 @@ def _stuck_job_escalation(kind: EscalationKind | None, origin: ExecutionId | Non
 
 def retry_stuck_job(e: EscalationResolved, src: EventId, stamp: Stamp) -> list[Command]:
     """止めた仕事への上げに回答が届いた。続ける。"""
-    if not _from_git(src) or not _stuck_job_escalation(e.kind, e.origin):
+    if not is_from_git(src) or not _stuck_job_escalation(e.kind, e.origin):
         return []
     return [RetryGitJob(**stamp())]
 
 
 def drop_stuck_job(e: EscalationClosed, src: EventId, stamp: Stamp) -> list[Command]:
     """止めた仕事への上げを答え以外で閉じた。やめる。"""
-    if not _from_git(src) or not _stuck_job_escalation(e.kind, e.origin):
+    if not is_from_git(src) or not _stuck_job_escalation(e.kind, e.origin):
         return []
     return [DropGitJob(**stamp())]
 
 
 def retry_integration(e: EscalationResolved, src: EventId, stamp: Stamp) -> list[Command]:
     """統合の失敗に回答が届いた。同じ仕事で統合をやり直すので、失敗の印を下ろす。"""
-    if not _from_git(src) or e.kind is not _E.INTEGRATION_FAILED:
+    if not is_from_git(src) or e.kind is not _E.INTEGRATION_FAILED:
         return []
     return [RetryIntegration(**stamp())]

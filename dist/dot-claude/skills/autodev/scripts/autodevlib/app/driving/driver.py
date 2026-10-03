@@ -32,7 +32,7 @@ from enum import IntEnum
 from ...adapters.claude.agent_runtime import INTERRUPT_GRACE
 from ...adapters.claude.guard import write_hook_settings
 from ...adapters.process import children
-from ...adapters.process._proc import KILL_AFTER_SECONDS
+from ...adapters.process.command import KILL_AFTER_SECONDS
 from ...domain.aggregates.base import Aggregate
 from ...domain.aggregates.questions import Questions
 from ...domain.aggregates.run import Run

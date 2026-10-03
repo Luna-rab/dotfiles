@@ -28,7 +28,7 @@ class GateItem(Enum):
         return _GATE_ESCALATIONS[self]
 
 
-_GATE_ITEM_VALUES = frozenset(item.value for item in GateItem)
+GATE_ITEM_VALUES = frozenset(item.value for item in GateItem)
 
 _GATE_ESCALATIONS: dict[GateItem, EscalationKind | None] = {
     GateItem.COMMITS: EscalationKind.GATE_UNFIXABLE,

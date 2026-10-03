@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .artifact_kind import ArtifactKind
-from .base import _non_blank
+from .base import non_blank
 
 
 @dataclass(frozen=True)
@@ -20,4 +20,4 @@ class ArtifactRef:
     at: str
 
     def __post_init__(self) -> None:
-        _non_blank("成果物の在りか", self.at)
+        non_blank("成果物の在りか", self.at)

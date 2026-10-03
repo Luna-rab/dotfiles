@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from .base import InvalidValue, Text
-from .gate_item import _GATE_ITEM_VALUES, GateItem
+from .gate_item import GATE_ITEM_VALUES, GateItem
 
 
 class FindingId(Text):
@@ -15,7 +15,7 @@ class FindingId(Text):
     PATTERN = re.compile(r"[RD][1-9][0-9]*|G-[a-z][a-z-]*")
 
     def _check(self) -> None:
-        if self.value.startswith("G-") and self.value[len("G-") :] not in _GATE_ITEM_VALUES:
+        if self.value.startswith("G-") and self.value[len("G-") :] not in GATE_ITEM_VALUES:
             raise InvalidValue(f"Gate の項目に無い: {self.value!r}")
 
     @classmethod

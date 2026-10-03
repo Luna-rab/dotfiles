@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from autodevlib.adapters.github.git import Git, WorktreeMismatch
-from autodevlib.adapters.process._proc import CommandFailed
+from autodevlib.adapters.process.command import CommandFailed
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.commit_sha import CommitSha
 

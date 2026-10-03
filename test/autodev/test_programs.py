@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from autodev_harness import POLICY, new_id, of_type
-from autodevlib.adapters.process._proc import CommandFailed
+from autodevlib.adapters.process.command import CommandFailed
 from autodevlib.app.stages.programs.common import ProgramOutcome, Tools, own_commits
 from autodevlib.app.stages.programs.discard import close_prs, relink, unstack
 from autodevlib.app.stages.programs.implementation import gate

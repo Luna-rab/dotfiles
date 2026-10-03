@@ -28,7 +28,7 @@ from typing import Any, NoReturn
 from .adapters.claude.guard import ANSWER_FILE_OPTION
 from .adapters.github import git as git_adapter
 from .adapters.github.git import Git
-from .adapters.process._proc import CommandFailed
+from .adapters.process.command import CommandFailed
 from .app.driving import assembly, cleanup
 from .app.driving.driver import ExitCode, StartRequest
 from .domain.commands.questions import AnswerQuestion

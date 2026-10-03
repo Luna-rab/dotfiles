@@ -73,7 +73,7 @@ def own_commits(ctx: StageContext, tools: Tools, tree: Path) -> list[str]:
     return [str(c) for c in tools.git.commits_since(tree, str(ctx.base_commit))]
 
 
-def _changed(tools: Tools, tree: Path, since: str) -> tuple[ChangedFile, ...]:
+def changes_since(tools: Tools, tree: Path, since: str) -> tuple[ChangedFile, ...]:
     """`since` から変わったファイルと、glob との照合の答え（照合の規則はアダプタ）。"""
     setting = tools.setting
     return tuple(
@@ -86,40 +86,40 @@ def _changed(tools: Tools, tree: Path, since: str) -> tuple[ChangedFile, ...]:
     )
 
 
-def _verify(ctx: StageContext, tools: Tools, tree: Path) -> tuple[VerifyResult, ...]:
+def verify_tree(ctx: StageContext, tools: Tools, tree: Path) -> tuple[VerifyResult, ...]:
     task_verify = ctx.task_spec.verify if ctx.task_spec is not None else ()
     commands = VerifySelector.select(ctx.execution.stage, task_verify, ctx.run_verify)
     return tuple(tools.runner.run(command, tree) for command in commands)
 
 
-def _head(tools: Tools, tree: Path) -> str:
+def head_of(tools: Tools, tree: Path) -> str:
     return str(tools.git.head(tree))
 
 
-def _start_of(tools: Tools, rev: str) -> str:
+def start_commit_of(tools: Tools, rev: str) -> str:
     """origin にあればそちら（手元の base は古いことがある）。無ければ手元の名前。"""
     git = tools.git
     remote = f"origin/{rev}"
     return remote if git.rev_parse(git.repo, remote) is not None else rev
 
 
-def _job(ctx: StageContext) -> GitJob:
+def job_of(ctx: StageContext) -> GitJob:
     if ctx.job is None:
         raise RuntimeError(f"{ctx.execution} は git 管理タスクの仕事の中で走っていない")
     return ctx.job
 
 
-def _branch(job: GitJob) -> BranchName:
+def job_branch(job: GitJob) -> BranchName:
     if job.branch is None:
         raise RuntimeError(f"仕事 {job.id}（{job.kind.value}）にブランチが無い")
     return job.branch
 
 
-def _overview_pr(ctx: StageContext) -> PrNumber:
+def overview_pr_of(ctx: StageContext) -> PrNumber:
     if ctx.stack.overview is None:
         raise RuntimeError("概要 PR がまだ無い")
     return ctx.stack.overview.pr
 
 
-def _bullets(lines: Sequence[str]) -> str:
+def bullets(lines: Sequence[str]) -> str:
     return "\n".join(f"- {line}" for line in lines) if lines else "（なし）"

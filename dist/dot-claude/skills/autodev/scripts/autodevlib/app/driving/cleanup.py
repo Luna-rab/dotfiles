@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ...adapters.github.git import Git
 from ...adapters.process import children
-from ...adapters.process._proc import CommandFailed
+from ...adapters.process.command import CommandFailed
 from ...domain.services.housekeeping import Leftovers, LiveProcess, WorktreeState
 from ...domain.value_objects.branch_name import BranchName
 from ...domain.value_objects.repository import Repository

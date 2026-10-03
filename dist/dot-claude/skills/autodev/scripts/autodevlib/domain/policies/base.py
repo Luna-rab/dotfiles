@@ -96,19 +96,19 @@ class Policy:
         return self.rule(event, source, Stamp(self.name, source, self.by))
 
 
-def _task_of(source: EventId) -> TaskId:
+def source_task(source: EventId) -> TaskId:
     """イベントを出したタスク（task/<TaskId> のストリーム）。"""
     return task_of_stream(source.stream)
 
 
-def _from_task(source: EventId) -> bool:
+def is_from_task(source: EventId) -> bool:
     return source.stream.is_task
 
 
-def _from_git(source: EventId) -> bool:
+def is_from_git(source: EventId) -> bool:
     """git 管理タスクのストリームのイベントか。"""
     return source.stream == StreamId.task(_GIT)
 
 
-def _ledger_of(task: TaskId) -> StreamId:
+def review_stream_of(task: TaskId) -> StreamId:
     return JudgeCapability.ledger_of(task)

@@ -50,7 +50,7 @@ from ..value_objects.stage_kind import StageKind
 from ..value_objects.task_id import TaskId
 from ..value_objects.task_kind import TaskKind
 from ..value_objects.task_status import TaskStatus
-from .base import Rule, Stamp, _from_task, _ledger_of, _task_of
+from .base import Rule, Stamp, is_from_task, review_stream_of, source_task
 
 _S = StageKind
 _J = GitJobKind
@@ -66,7 +66,7 @@ def hand_findings(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Command
     return [
         RecordFindings(
             **stamp(),
-            ledger=_ledger_of(e.execution.task),
+            ledger=review_stream_of(e.execution.task),
             source=e.execution,
             findings=e.result.findings,
             design=e.reviewed,
@@ -81,7 +81,7 @@ def hand_judgement(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Comman
     return [
         RecordJudgement(
             **stamp(),
-            ledger=_ledger_of(e.execution.task),
+            ledger=review_stream_of(e.execution.task),
             execution=e.execution,
             verdicts=e.result.verdicts,
             stall_cause=e.result.stall_cause,
@@ -141,7 +141,7 @@ def record_conflict(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Comma
 def count_fix(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Command]:
     if e.execution.stage is not _S.FIX:
         return []
-    return [CountFix(**stamp(), ledger=_ledger_of(e.execution.task), execution=e.execution)]
+    return [CountFix(**stamp(), ledger=review_stream_of(e.execution.task), execution=e.execution)]
 
 
 def comment_findings(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Command]:
@@ -150,7 +150,7 @@ def comment_findings(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Comm
     return [
         CommentFinding(
             **stamp(),
-            ledger=_ledger_of(e.execution.task),
+            ledger=review_stream_of(e.execution.task),
             finding=c.finding,
             body=c.body,
             author=e.execution,
@@ -162,14 +162,18 @@ def comment_findings(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Comm
 def gate_passed(e: StageCompleted, src: EventId, stamp: Stamp) -> list[Command]:
     if e.execution.stage is not _S.GATE:
         return []
-    return [RecordGateResult(**stamp(), ledger=_ledger_of(e.execution.task), execution=e.execution)]
+    return [
+        RecordGateResult(
+            **stamp(), ledger=review_stream_of(e.execution.task), execution=e.execution
+        )
+    ]
 
 
 def gate_failed(e: GateFailed, src: EventId, stamp: Stamp) -> list[Command]:
     return [
         RecordGateResult(
             **stamp(),
-            ledger=_ledger_of(e.execution.task),
+            ledger=review_stream_of(e.execution.task),
             execution=e.execution,
             failed=e.failed,
         )
@@ -184,9 +188,9 @@ def reject_integration(e: StageReported, src: EventId, stamp: Stamp) -> list[Com
 
 def relay_to_run(e: EscalationRaised, src: EventId, stamp: Stamp) -> list[Command]:
     """計画タスクと git 管理タスクの統括: 受けたエスカレーションを、そのままラン統括へ上げる。"""
-    if not _from_task(src) or _task_of(src).kind is TaskKind.IMPLEMENTATION:
+    if not is_from_task(src) or source_task(src).kind is TaskKind.IMPLEMENTATION:
         return []
-    task = _task_of(src)
+    task = source_task(src)
     return [
         EscalateToRun(
             **stamp(task),
@@ -204,7 +208,7 @@ def relay_to_run(e: EscalationRaised, src: EventId, stamp: Stamp) -> list[Comman
 
 def close_run_side(e: EscalationClosed, src: EventId, stamp: Stamp) -> list[Command]:
     """タスクの側で閉じたエスカレーションを中継していた、Run の側のエスカレーションも閉じる。"""
-    if not _from_task(src):
+    if not is_from_task(src):
         return []
     return [CloseRelayedEscalation(**stamp(), source=e.escalation, reason=e.reason)]
 
@@ -219,7 +223,7 @@ def resume_ask(e: EscalationResolved, src: EventId, stamp: Stamp) -> list[Comman
     """反応の続き: answers/<tool_use_id>.json に回答を書き終えてから、止まった実行を続きから再開する。"""
     if e.resume is None or e.tool_use_id is None:
         return []
-    return [ResumeStage(**stamp(), task=_task_of(src), execution=e.resume)]
+    return [ResumeStage(**stamp(), task=source_task(src), execution=e.resume)]
 
 
 def finish_git_job(e: FlowFinished | FlowAbandoned, src: EventId, stamp: Stamp) -> list[Command]:
@@ -240,7 +244,7 @@ def git_finished(e: FlowFinished, src: EventId, stamp: Stamp) -> list[Command]:
 
 def enqueue_gated(e: TaskGated, src: EventId, stamp: Stamp) -> list[Command]:
     assert e.branch is not None, "実装タスクの TaskGated はブランチを持つ"
-    return [EnqueueStack(**stamp(), task=_task_of(src), branch=e.branch)]
+    return [EnqueueStack(**stamp(), task=source_task(src), branch=e.branch)]
 
 
 def record_cut_base(e: WorktreeReady, src: EventId, stamp: Stamp) -> list[Command]:
@@ -282,10 +286,10 @@ def status(to: TaskStatus) -> Rule:
             if e.job.kind is not _J.STACK or e.job.task is None:
                 return []
             task = e.job.task
-        elif not _from_task(src):
+        elif not is_from_task(src):
             return []
         else:
-            task = _task_of(src)
+            task = source_task(src)
         if isinstance(e, FlowAccepted) and e.closes is None:
             return []
         return [UpdateTaskStatus(**stamp(), task=task, to_status=to, cause=type(e).__name__)]

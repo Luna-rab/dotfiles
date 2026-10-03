@@ -113,7 +113,7 @@ class Sources:
         return "" if ref is None else str(self.paths.root / ref.at)
 
 
-def _json(value: Any) -> Block:
+def json_block(value: Any) -> Block:
     return Block("```json\n" + json.dumps(value, ensure_ascii=False, indent=2) + "\n```")
 
 
@@ -122,11 +122,11 @@ def _camel(name: str) -> str:
     return head + "".join(part.capitalize() for part in rest)
 
 
-def _camel_keys(value: Any) -> Any:
+def camel_keys(value: Any) -> Any:
     if isinstance(value, dict):
-        return {_camel(str(k)): _camel_keys(v) for k, v in value.items()}
+        return {_camel(str(k)): camel_keys(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_camel_keys(v) for v in value]
+        return [camel_keys(v) for v in value]
     return value
 
 
@@ -153,17 +153,17 @@ def _task_spec(s: Sources, task: TaskId) -> Block:
     spec = s.task_of(task).spec or (entry.spec if entry is not None else None)
     body: dict[str, Any] = {"id": task.value}
     if spec is not None:
-        body |= _camel_keys(codec.to_json(spec))
+        body |= camel_keys(codec.to_json(spec))
     if entry is not None:
         body["blockedBy"] = sorted(t.value for t in entry.blocked_by)
-    return _json(body)
+    return json_block(body)
 
 
 def _notes(s: Sources, task: TaskId) -> Value:
     notes = s.task_of(task).notes
     if not notes:
         return ""
-    return _json([_camel_keys(codec.to_json(note)) for note in notes])
+    return json_block([camel_keys(codec.to_json(note)) for note in notes])
 
 
 def _findings(ledger: ReviewLedger, keep: Callable[[Any], bool] = lambda _: True) -> Value:
@@ -180,7 +180,7 @@ def _findings(ledger: ReviewLedger, keep: Callable[[Any], bool] = lambda _: True
         for f in ledger.findings.values()
         if keep(f)
     ]
-    return _json(found) if found else ""
+    return json_block(found) if found else ""
 
 
 def _current_design_finding(ledger: ReviewLedger) -> Callable[[Any], bool]:
@@ -212,7 +212,7 @@ def _code_tree(s: Sources) -> str:
 def _conflicts(s: Sources) -> Value:
     task = s.subject
     files = [*task.conflict_files, *(task.conflicts or ())]
-    return _json(files) if files else ""
+    return json_block(files) if files else ""
 
 
 def _predecessor(s: Sources) -> str:
@@ -234,9 +234,9 @@ def _replan_reason(s: Sources) -> Value:
         raised = dict(s.events(EscalationRaised)).get(last.trigger)
         body["trigger"] = last.trigger.value
         if raised is not None:
-            body["triggerPointers"] = _camel_keys(codec.to_json(raised.pointers))
+            body["triggerPointers"] = camel_keys(codec.to_json(raised.pointers))
             body["triggerReason"] = raised.reason
-    return _json(body)
+    return json_block(body)
 
 
 def _task_list(s: Sources) -> Value:
@@ -253,16 +253,16 @@ def _task_list(s: Sources) -> Value:
                 "blockedBy": sorted(t.value for t in entry.blocked_by),
                 "pr": prs.get(task),
                 "openFindings": [f.id.value for f in ledger.open_findings],
-                "spec": _camel_keys(codec.to_json(entry.spec)) if entry.spec else None,
+                "spec": camel_keys(codec.to_json(entry.spec)) if entry.spec else None,
             }
         )
-    return _json(listed)
+    return json_block(listed)
 
 
 def _pr_bodies(s: Sources) -> Value:
     paths = [s.file(s.task_of(entry.task).artifacts.get(_A.PR_BODY)) for entry in s.stack.entries]
     paths = [p for p in paths if p]
-    return _json(paths) if paths else ""
+    return json_block(paths) if paths else ""
 
 
 def _stack_top(s: Sources) -> str:
@@ -301,7 +301,7 @@ def _answer_log(s: Sources) -> Value:
                     "event": eid.value,
                 }
             )
-    return _json(found) if found else ""
+    return json_block(found) if found else ""
 
 
 #: プレースホルダ → 埋める値の出どころ。指示書の「入力」の表に足したら、ここにも足す
@@ -336,8 +336,8 @@ SOURCES: Mapping[str, Callable[[Sources], Value]] = {
     "却下した論点": lambda s: _findings(
         s.ledger(StreamId.design_review()), lambda f: f.status is FindingStatus.REJECTED
     ),
-    "提案のタスク": lambda s: _json(
-        [_camel_keys(codec.to_json(t)) for t in s.design.proposal.tasks]
+    "提案のタスク": lambda s: json_block(
+        [camel_keys(codec.to_json(t)) for t in s.design.proposal.tasks]
         if s.design.proposal is not None
         else []
     ),

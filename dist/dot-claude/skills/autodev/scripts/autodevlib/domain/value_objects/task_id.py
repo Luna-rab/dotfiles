@@ -7,7 +7,7 @@ from .base import Text
 from .task_kind import TaskKind
 
 #: TaskId の形。StreamId の形もこれから組む
-_TASK_ID = r"task[1-9][0-9]*|planning|git"
+TASK_ID_PATTERN = r"task[1-9][0-9]*|planning|git"
 
 
 class TaskId(Text):
@@ -17,7 +17,7 @@ class TaskId(Text):
     Run が確かめる。
     """
 
-    PATTERN = re.compile(_TASK_ID)
+    PATTERN = re.compile(TASK_ID_PATTERN)
     PLANNING: ClassVar[str] = "planning"
     GIT: ClassVar[str] = "git"
 

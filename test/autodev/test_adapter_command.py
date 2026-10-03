@@ -1,4 +1,4 @@
-"""コマンドを 1 回流す共通の部品（adapters/process/_proc.py）。"""
+"""コマンドを 1 回流す共通の部品（adapters/process/command.py）。"""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 
 import pytest
-from autodevlib.adapters.process import _proc
-from autodevlib.adapters.process._proc import (
+from autodevlib.adapters.process import command
+from autodevlib.adapters.process.command import (
     NOT_FOUND,
     TIMED_OUT,
     Stopped,
@@ -75,7 +75,7 @@ def test_子が先に終わってもSIGTERMを無視する孫をSIGKILLで止め
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """子（sh）は SIGTERM で終わるが、孫は SIGTERM を無視して出力の管を握ったまま残る。"""
-    monkeypatch.setattr(_proc, "KILL_AFTER_SECONDS", 0.5)
+    monkeypatch.setattr(command, "KILL_AFTER_SECONDS", 0.5)
     scope = StopScope()
     caught: list[BaseException] = []
 

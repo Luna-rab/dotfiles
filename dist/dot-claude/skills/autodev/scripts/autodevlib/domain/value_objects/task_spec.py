@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .base import _non_blank
+from .base import non_blank
 from .verify_command import VerifyCommand
 
 
@@ -22,4 +22,4 @@ class TaskSpec:
     verify: tuple[VerifyCommand, ...] = ()
 
     def __post_init__(self) -> None:
-        _non_blank("タスクの件名", self.title)
+        non_blank("タスクの件名", self.title)

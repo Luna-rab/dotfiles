@@ -58,6 +58,6 @@ class Number:
         return str(self.value)
 
 
-def _non_blank(owner: str, value: str) -> None:
+def non_blank(owner: str, value: str) -> None:
     if not value.strip():
         raise InvalidValue(f"{owner} が空")

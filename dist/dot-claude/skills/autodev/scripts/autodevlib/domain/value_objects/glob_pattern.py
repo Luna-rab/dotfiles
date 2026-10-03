@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from .base import Text, _non_blank
+from .base import Text, non_blank
 
 
 class GlobPattern(Text):
     """テストのパス・変更禁止パス・テストが要らないパス。照合の規則はアダプタとフックが持つ。"""
 
     def _check(self) -> None:
-        _non_blank("glob", self.value)
+        non_blank("glob", self.value)
 
 
 #: テストのパスの既定

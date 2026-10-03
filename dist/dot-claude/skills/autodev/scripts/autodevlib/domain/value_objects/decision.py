@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .base import InvalidValue, _non_blank
+from .base import InvalidValue, non_blank
 from .decision_origin import DecisionOrigin
 from .question_id import QuestionId
 
@@ -19,7 +19,7 @@ class Decision:
     question: QuestionId | None = None
 
     def __post_init__(self) -> None:
-        _non_blank("回答", self.text)
+        non_blank("回答", self.text)
         if (self.origin is DecisionOrigin.USER) != (self.question is not None):
             raise InvalidValue("ユーザーの回答だけが QuestionId を持つ")
 

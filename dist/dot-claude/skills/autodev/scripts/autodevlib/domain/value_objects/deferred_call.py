@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .base import _non_blank
+from .base import non_blank
 
 
 @dataclass(frozen=True)
@@ -13,4 +13,4 @@ class DeferredCall:
     question: str
 
     def __post_init__(self) -> None:
-        _non_blank("tool_use_id", self.tool_use_id)
+        non_blank("tool_use_id", self.tool_use_id)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .base import _non_blank
+from .base import non_blank
 from .branch_name import BranchName
 from .commit_sha import CommitSha
 from .task_id import TaskId
@@ -21,4 +21,4 @@ class WorktreeCut:
     base: CommitSha | None = None
 
     def __post_init__(self) -> None:
-        _non_blank("worktree の在りか", self.tree)
+        non_blank("worktree の在りか", self.tree)

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import pytest
-from autodevlib.adapters.process import _proc, children
+from autodevlib.adapters.process import children, command
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def test_控えを書けなければ子を止めて待ってから投げ直す(t
             patch.setattr(subprocess, "Popen", spy)
             began = time.monotonic()
             with pytest.raises(OSError):
-                _proc.run_raw([sys.executable, "-c", "import time; time.sleep(30)"])
+                command.run_raw([sys.executable, "-c", "import time; time.sleep(30)"])
     finally:
         children.track_in(None)
     assert time.monotonic() - began < 10
@@ -81,7 +81,7 @@ def test_子を待てずに抜けたら控えを消さない(tracked: Path, monk
 
     monkeypatch.setattr(subprocess.Popen, "communicate", broken)
     with pytest.raises(RuntimeError):
-        _proc.run_raw([sys.executable, "-c", "import time; time.sleep(5)"])
+        command.run_raw([sys.executable, "-c", "import time; time.sleep(5)"])
     (record,) = tracked.glob("*.json")
     pid = json.loads(record.read_text(encoding="utf-8"))["pid"]
     os.kill(pid, 9)

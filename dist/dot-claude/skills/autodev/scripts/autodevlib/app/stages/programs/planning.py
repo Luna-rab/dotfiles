@@ -7,7 +7,7 @@ from ....domain.value_objects.artifact_ref import ArtifactRef
 from ....infra.files import write_atomic
 from .. import markers
 from ..stage_context import StageContext
-from .common import ProgramOutcome, Tools, _bullets
+from .common import ProgramOutcome, Tools, bullets
 
 _A = ArtifactKind
 
@@ -19,10 +19,10 @@ def prepare(ctx: StageContext, tools: Tools) -> ProgramOutcome:
         markers.template("brief"),
         {
             "instruction": setting.instruction,
-            "verify": _bullets([f"`{c}`" for c in setting.verify]),
-            "test-paths": _bullets([f"`{g}`" for g in setting.test_globs]),
-            "protected-paths": _bullets([f"`{g}`" for g in setting.protected_globs]),
-            "untested-paths": _bullets([f"`{g}`" for g in setting.untested_globs]),
+            "verify": bullets([f"`{c}`" for c in setting.verify]),
+            "test-paths": bullets([f"`{g}`" for g in setting.test_globs]),
+            "protected-paths": bullets([f"`{g}`" for g in setting.protected_globs]),
+            "untested-paths": bullets([f"`{g}`" for g in setting.untested_globs]),
         },
     )
     path = setting.paths.brief

@@ -15,13 +15,15 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from ..adapters import children
 from ..domain.streams import aggregate_for
 from ..domain.values import ExecutionId, RunName
 from .eventstore import AggregateFactory, EventReader, decoded, replay
 from .files import write_atomic
+from .lock import held_elsewhere
 from .paths import RunPaths, state_root
 from .rejections import read_rejections
-from .status_sections import SECTIONS, Replayed, Section
+from .status_sections import SECTIONS, DriverFacts, Replayed, Section
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +44,9 @@ def build_status(
         raise ValueError(f"骨組みの欄と同じ名前の欄は差し込めない: {clash}")
     with EventReader.open(paths.events_db) as reader:
         history = decoded(reader.read_all())
-    view = Replayed(replay(history, factory), history, read_progress(paths), factory)
+    view = Replayed(
+        replay(history, factory), history, read_progress(paths), factory, driver_facts(paths)
+    )
     last = history[-1][0] if history else None
     status: dict[str, Any] = {
         "format": FORMAT,
@@ -54,6 +58,19 @@ def build_status(
     for key, section in sections.items():
         status[key] = section(view)
     return status
+
+
+def driver_facts(paths: RunPaths) -> DriverFacts:
+    """driver が走っていれば、生きている子はその driver の子なので、前の driver の子として数えない
+    （`autodev run` も錠を取ってから子の控えを見る）。"""
+    directory = str(paths.root.absolute())
+    if held_elsewhere(paths.driver_lock):
+        return DriverFacts(directory, running=True)
+    live = tuple(child.pid for child in children.alive(paths.children))
+    # 控えを見ている間に driver が起動していたら、見つけた子はその driver の子かもしれない
+    if live and held_elsewhere(paths.driver_lock):
+        return DriverFacts(directory, running=True)
+    return DriverFacts(directory, running=False, live_children=live)
 
 
 def run_status(paths: RunPaths) -> dict[str, Any]:

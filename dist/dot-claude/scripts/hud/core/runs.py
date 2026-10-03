@@ -1,8 +1,7 @@
 """`autodev status --json` の結果を読む。形は ADDENDUM §12「status --json の形」にある。
 
-**driver が生きているかは、この形からは分からない。** `updated_at`（イベントを確定した時刻）も
-`progress.updated` も生存の目安にならないので、「止まっている」とは言わない。ランがどこにいるかは
-`run.phase` を、そのまま見せる。
+driver が生きているかは `run.driver_running` だけで決める。`updated_at`（イベントを確定した時刻）も
+`progress.updated` も、走っていても古くなるので生存の目安にしない。
 """
 
 from __future__ import annotations
@@ -139,6 +138,30 @@ def phase_label(st: dict) -> str:
 
 def awaiting(st: dict) -> bool:
     return bool(run_of(st).get("awaiting_answer"))
+
+
+def driver_stopped(st: dict) -> bool:
+    """driver が走っているはずのフェーズなのに走っていない。呼び直すまで進まない。
+
+    回答待ちでは、driver が 4 で終えて回答を待つのがいつもの流れなので、止まっているとは言わない。
+    `driver_running` の無い古い形でも言わない。
+    """
+    run = run_of(st)
+    return (
+        run.get("driver_running") is False
+        and not awaiting(st)
+        and phase(st) in ("running", "planning", "finishing")
+    )
+
+
+def live_children(st: dict) -> tuple[int, ...]:
+    """前の driver が残した、まだ生きている子の pid。"""
+    return tuple(number(pid) for pid in items(run_of(st).get("live_children")) if number(pid))
+
+
+def panic_cause(st: dict) -> str:
+    """1 行にした原因。原因には claude の標準エラーがそのまま入ることがあり、改行で行が崩れる。"""
+    return " ".join(str(run_of(st).get("panic_cause") or "").split())
 
 
 def tasks(st: dict) -> list[dict]:

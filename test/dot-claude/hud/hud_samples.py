@@ -132,6 +132,10 @@ def status(**over) -> dict[str, Any]:
             "base": "main",
             "limit": 2,
             "resumes": 0,
+            "panic_cause": None,
+            "directory": "/state/autodev/add-cache",
+            "driver_running": True,
+            "live_children": [],
         },
         "tasks": [
             task(id="planning", kind="planning", title=None, status="finished", terminal=True),

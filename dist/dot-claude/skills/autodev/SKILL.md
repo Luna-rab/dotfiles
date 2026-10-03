@@ -46,7 +46,7 @@ EOF
 
 ## 2. 待っている間
 
-ランディレクトリは、`run` が標準エラーに出す「記録: <パス>」である（既定は `~/.local/state/autodev/<ラン名>`）。
+ランディレクトリは `autodev.py status --json --name <ラン名>` の `run.directory` で取る。起動の直後は 1 が返ることがあるので、`run` がまだ終えていなければ 5 秒おいて取り直す（5 回まで。それでも 1 なら標準エラーの理由をユーザーに伝える）。
 その `questions/` を Monitor で見る（`timeout_ms` は上限にし、切れたら張り直す）。Monitor が出した
 パス（渡し済みの質問）は会話の中で覚えておき、張り直すときは改行で区切って `seen` の初めの値にする。
 
@@ -82,7 +82,7 @@ driver が走っていれば、置いた回答をそのまま受け取る。回�
 | --- | --- |
 | 0 | `status --json` の `tasks[]` で、`kind` が `implementation` のものを `status` で分けて報告する: `stacked`（積んだ）・`dropped`（止めた）・`discarded`（破棄した）・`superseded`（引き継がれた。引き継いだ先は `superseded_by`）。概要 PR は `stack.overview.pr`。0 は「全部積んだ」ではない。マージしない |
 | 4 | 回答待ちで、進められるタスクが無い。`status --json` の `questions[]` をユーザーに渡し、答えを `answer` で置いてから `run --name <ラン名>` を呼び直す |
-| 3 | パニック（利用枠の上限など。SIGTERM・SIGINT で止めたときも 3）。`run` の標準エラーとランディレクトリの `logs/` で原因を確かめてユーザーに伝え、原因が消えたら `run --name <ラン名>` を呼び直す |
+| 3 | パニック（利用枠の上限など。SIGTERM・SIGINT で止めたときも 3）。`status --json` の `run.panic_cause` を読む。null か足りなければ、`run` の標準エラーとランディレクトリの `logs/` を見る。原因をユーザーに伝え、原因が消えたら `run --name <ラン名>` を呼び直す |
 | 1 | 起動できなかった。標準エラーの理由をユーザーに伝える。直せるもの（認証・gh stack・リポジトリの設定・ラン名）はユーザーと直してから呼び直す |
 
 呼び直すときは `--instruction` を付けない（1 で止まる）。`--repo`・`--base` は省くか、最初と同じ値にする。

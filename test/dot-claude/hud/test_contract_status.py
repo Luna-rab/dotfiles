@@ -54,4 +54,6 @@ def test_本物のstatusを読んでstatuslineが描いて0で終わる(tmp_path
     head = next(line for line in lines if line.startswith("autodev demo ▸ "))
     assert "planning 再計画 r0 · task1 実装 r0" in head
     assert "回答待ち q1" in head
+    # driver.lock を握るプロセスは無いが、回答待ちなので止まっているとは言わない
+    assert "driver 停止" not in head
     assert any("◼ task1 パーサを足す" in line for line in lines), lines

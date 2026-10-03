@@ -11,9 +11,12 @@ from hud.core.runs import (
     NOT_COUNTED,
     Running,
     awaiting,
+    driver_stopped,
     implementation,
+    live_children,
     name_of,
     overview_pr,
+    panic_cause,
     phase,
     phase_label,
     questions,
@@ -27,7 +30,7 @@ class State(Enum):
     PANICKED = "panicked"
     #: 実行が走っている
     RUNNING = "running"
-    #: 走っている実行が無い。driver が生きているかは分からないので、`run.phase` だけを出す
+    #: 走っている実行が無い
     QUIET = "quiet"
 
 
@@ -51,6 +54,11 @@ class Headline:
     total: int = 0
     #: エスカレーション中のタスクの数
     escalated: int = 0
+    #: driver が走っているはずのフェーズなのに走っていない（`runs.driver_stopped`）
+    stopped: bool = False
+    #: 前の driver が残した、まだ生きている子の pid
+    leftovers: tuple[int, ...] = ()
+    panic_cause: str = ""
 
 
 def build(st: dict, now: dt.datetime) -> Headline:
@@ -66,6 +74,9 @@ def build(st: dict, now: dt.datetime) -> Headline:
         stacked=sum(1 for t in counted if t.get("status") == "stacked"),
         total=len(counted),
         escalated=sum(1 for t in tasks(st) if t.get("status") == "escalated"),
+        stopped=driver_stopped(st),
+        leftovers=live_children(st),
+        panic_cause=panic_cause(st),
     )
     if phase(st) == "panicked":
         return replace(base, state=State.PANICKED)

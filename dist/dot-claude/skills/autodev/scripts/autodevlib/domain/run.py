@@ -254,7 +254,8 @@ class Run(Aggregate):
         #: ラン共通の成果物（brief・codemap・design）と検証コマンド
         self.artifacts: tuple[ArtifactRef, ...] = ()
         self.verify: tuple[VerifyCommand, ...] = ()
-        self.panicked = False
+        #: パニックした原因（RunPanicked の cause）。呼び直したら None に戻す
+        self.panic_cause: str | None = None
         self.finished = False
         #: 呼び直された回数（RunResumed の数）
         self.resumes = 0
@@ -267,6 +268,10 @@ class Run(Aggregate):
         self.retry_failures: dict[EventId, int] = {}
 
     # --- 読む ---
+
+    @property
+    def panicked(self) -> bool:
+        return self.panic_cause is not None
 
     def reported_failure(self, notice: EventId) -> bool:
         """その知らせに統括が応じなかったことを、もう受けたか（supervisor-failed を上げた）。
@@ -1242,11 +1247,11 @@ class Run(Aggregate):
 
     @applies(RunPanicked)
     def _on_panicked(self, event: RunPanicked) -> None:
-        self.panicked = True
+        self.panic_cause = event.cause
 
     @applies(RunResumed)
     def _on_resumed(self, event: RunResumed) -> None:
-        self.panicked = False
+        self.panic_cause = None
         self.resumes += 1
 
     @applies(RunFinished)

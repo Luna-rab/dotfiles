@@ -2,9 +2,10 @@
 
 autodev を直す人が知っておくことの詳細。何をするスキルかの概観は [README.md](README.md)、
 用語の意味は [GLOSSARY.md](GLOSSARY.md) にある。
+`56b72fa:` を付けたパスは、作り直しのブランチでは消してあり、旧実装が残っている固定のコミット `56b72fa` にある（`git show 56b72fa:dist/dot-claude/skills/autodev/<path>` で引く）。
 
 ステージはすべて `claude -p` を 1 プロセス起動して走らせ、**進行は driver が持つ**（ラン 1 回は
-`scripts/autodevlib/app/drive.py`、ステージの順番と打ち切りは `scripts/autodevlib/app/` の
+`56b72fa:scripts/autodevlib/app/drive.py`、ステージの順番と打ち切りは `56b72fa:scripts/autodevlib/app/` の
 各ファイル）。モデルが決めるのは各ステージの中身だけである。
 
 ## 資格情報
@@ -127,8 +128,8 @@ flowchart TD
    ジャッジの process にだけ渡す。他のステージは名乗っても拒まれる。自分で閉じられると
    「未解決が 0 件」が自己承認になる。
 5. **完了の根拠はステージの報告ではない。** 完了チェック（証拠を集めるのは
-   `scripts/autodevlib/ports/evidence.py`、合否を決めるのは
-   `scripts/autodevlib/core/verdict.py`）を
+   `56b72fa:scripts/autodevlib/ports/evidence.py`、合否を決めるのは
+   `56b72fa:scripts/autodevlib/core/verdict.py`）を
    driver が毎回通す。
    検証コマンドは driver が自分で流す。
 6. **レビューは毎ラウンドまっさらにする。** 1 ラウンド目の結論を持ち込むと、それがフレーミングに
@@ -227,8 +228,8 @@ flowchart TD
 
 ## ステージごとに変えるもの
 
-`scripts/autodevlib/config/stages.py` の `TABLE` にある。**体数の計算も停滞の条件も
-ここには無い**（`scripts/autodevlib/core/review_policy.py` と driver にある）ので、
+`56b72fa:scripts/autodevlib/config/stages.py` の `TABLE` にある。**体数の計算も停滞の条件も
+ここには無い**（`56b72fa:scripts/autodevlib/core/review_policy.py` と driver にある）ので、
 レビューステージを 1 体増やしても
 完了判定のコードに手が入らない。
 
@@ -343,14 +344,14 @@ driver は `schemas/<指示書>.json` の本文を `claude --json-schema` に渡
 
 | 置き場 | 何を書くか |
 | --- | --- |
-| `scripts/autodevlib/config/stages.py` の `TABLE` | 名前・指示書・モデル・思考量・ターンの上限・セッションを続けるか・ジャッジトークンを渡すか・ソースを書き換えるか |
-| `scripts/autodevlib/core/prompt.py` の `ROLE_KEY` | そのステージをどの役割の必須ルールで走らせるか。**足さないとステージの起動時に `KeyError` で落ちる**。役割ごと新しいなら `REQUIRED_RULES` にも 1 項目足す |
+| `56b72fa:scripts/autodevlib/config/stages.py` の `TABLE` | 名前・指示書・モデル・思考量・ターンの上限・セッションを続けるか・ジャッジトークンを渡すか・ソースを書き換えるか |
+| `56b72fa:scripts/autodevlib/core/prompt.py` の `ROLE_KEY` | そのステージをどの役割の必須ルールで走らせるか。**足さないとステージの起動時に `KeyError` で落ちる**。役割ごと新しいなら `REQUIRED_RULES` にも 1 項目足す |
 | `contracts/<名>.md` | そのステージが何をするか。**ステージはここを自分で読む** |
 | `schemas/<名>.json` | 結果の形（結果を返すステージだけ）。driver が `--json-schema` に渡す |
 | `templates/<名>.md` | 成果物の形。マーカーは driver が埋める（文面を出すステージだけ） |
 
-レビューステージを増やすときは、`scripts/autodevlib/ports/review_store.py` の `REVIEW_STAGES` に
-1 行足し、`scripts/autodevlib/core/review_policy.py` の `expected_reviewers()` が返す
+レビューステージを増やすときは、`56b72fa:scripts/autodevlib/ports/review_store.py` の `REVIEW_STAGES` に
+1 行足し、`56b72fa:scripts/autodevlib/core/review_policy.py` の `expected_reviewers()` が返す
 並びに入れる。**体数は `review.json` の
 `runs` から数えるので、期待する数をコードに埋める必要はない。**
 
@@ -360,7 +361,7 @@ driver は `schemas/<指示書>.json` の本文を `claude --json-schema` に渡
 
 ## ランナーを差し替える
 
-`claude` を別のものに替えるときに書き換えるのは `scripts/autodevlib/ports/runner.py`
+`claude` を別のものに替えるときに書き換えるのは `56b72fa:scripts/autodevlib/ports/runner.py`
 1 本である。
 次の 2 つの形を保てば driver には手が入らない。
 

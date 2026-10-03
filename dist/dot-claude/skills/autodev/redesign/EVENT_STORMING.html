@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>autodev イベントストーミング</title>
+<style>
+  :root {
+    --event: #ff9f43;
+    --command: #74b9ff;
+    --aggregate: #ffeaa7;
+    --policy: #d6a2e8;
+    --read: #7bed9f;
+    --external: #fd79a8;
+    --actor: #fffbd6;
+    --hot: #ff4757;
+    --goto: #dfe4ea;
+    --ink: #2d3436;
+    --muted: #636e72;
+    --board: #f5f3ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--board);
+    line-height: 1.6;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: #fff; border-bottom: 1px solid #ddd;
+    padding: 12px 24px;
+  }
+  header h1 { margin: 0 0 6px; font-size: 20px; }
+  .legend, .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+  .legend .chip { padding: 2px 8px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); }
+  .filters { margin-top: 6px; }
+  .filters button {
+    font: inherit; font-size: 12px; padding: 2px 10px; cursor: pointer;
+    border: 1px solid #b2bec3; background: #fff; border-radius: 12px;
+  }
+  .filters button.on { background: var(--aggregate); border-color: #e1b12c; font-weight: bold; }
+  main { padding: 16px 24px 80px; max-width: 1500px; }
+  section { background: #fff; border-radius: 6px; padding: 16px 20px; margin: 18px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  section h2 { margin: 0 0 4px; font-size: 17px; }
+  section > p { margin: 4px 0 12px; color: var(--muted); font-size: 13px; max-width: 1100px; }
+  .chain { display: flex; align-items: stretch; gap: 0; margin: 10px 0; flex-wrap: nowrap; overflow-x: auto; padding: 4px 2px 8px; transition: opacity .2s; }
+  .chain.dim { opacity: .18; }
+  .arrow { align-self: center; color: #95a5a6; font-size: 20px; padding: 0 6px; flex: none; }
+  .note {
+    flex: none; width: 168px; min-height: 76px; padding: 6px 9px 8px;
+    border-radius: 2px; box-shadow: 1px 2px 4px rgba(0,0,0,.18);
+    font-size: 12.5px; position: relative;
+  }
+  .note .kind { font-size: 10px; color: rgba(0,0,0,.55); display: block; margin-bottom: 2px; }
+  .note code { display: block; font-size: 10.5px; color: rgba(0,0,0,.6); margin-top: 3px; word-break: break-all; }
+  .event { background: var(--event); }
+  .command { background: var(--command); }
+  .aggregate { background: var(--aggregate); width: 130px; font-weight: bold; }
+  .policy { background: var(--policy); }
+  .read { background: var(--read); }
+  .external { background: var(--external); }
+  .actor { background: var(--actor); width: 120px; border: 1px dashed #b8a200; }
+  .hot { background: var(--hot); color: #fff; transform: rotate(-1.5deg); width: 230px; }
+  .hot .kind, .hot code { color: rgba(255,255,255,.85); }
+  .goto { background: var(--goto); box-shadow: none; border: 1px dashed #a4b0be; width: 140px; color: var(--muted); }
+  .bigpicture { display: flex; flex-wrap: wrap; gap: 8px 4px; align-items: center; }
+  .bigpicture .note { width: 140px; min-height: 58px; }
+  .bigpicture .step { font-size: 11px; color: var(--muted); }
+  .loops { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; margin-top: 14px; }
+  .loop { border-left: 4px solid var(--hot); background: #fff5f6; padding: 8px 12px; font-size: 13px; border-radius: 0 4px 4px 0; }
+  .loop b { display: block; }
+  table { border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  th, td { border: 1px solid #dcdde1; padding: 5px 9px; text-align: left; vertical-align: top; }
+  th { background: #f1f2f6; }
+  td .ev { display: inline-block; background: var(--event); padding: 1px 6px; margin: 2px; border-radius: 2px; }
+  .grammar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
+  .grammar .note { width: 120px; min-height: 48px; }
+  nav.toc { font-size: 13px; }
+  nav.toc a { margin-right: 12px; color: #0984e3; text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>autodev イベントストーミング（再設計）</h1>
+  <div class="legend">
+    <span class="chip" style="background:var(--event)">ドメインイベント（過去形）</span>
+    <span class="chip" style="background:var(--command)">コマンド</span>
+    <span class="chip" style="background:var(--aggregate)">集約</span>
+    <span class="chip" style="background:var(--policy)">ポリシー（〜したら〜する）</span>
+    <span class="chip" style="background:var(--read)">読み取りモデル（判断に読むもの）</span>
+    <span class="chip" style="background:var(--external)">外部システム</span>
+    <span class="chip" style="background:var(--actor);border-style:dashed">アクター（判断する者）</span>
+    <span class="chip" style="background:var(--hot);color:#fff">ホットスポット（問題・未決）</span>
+  </div>
+  <div class="filters" id="filters"><span>集約で絞る:</span></div>
+</header>
+
+<main>
+  <section>
+    <h2>この図の読み方</h2>
+    <p>
+      1 行が 1 つの因果のつながりです。左から「誰が（アクター）、または何をきっかけに（ポリシー）」→「何を命じ（コマンド）」→「どの集約が受け」→「何が起きたか（イベント）」の順に並びます。
+      起きたイベントは次の行のポリシーのきっかけになり、それが次のコマンドを出します。この連鎖で作業全体が回ります。
+      アクターのうち LLM はラン統括と実装タスク統括の 2 つだけで、計画タスクと git 管理タスクの統括、ポリシーを実行する driver は決定的なプログラムです。
+      イベントはすべて SQLite の <code>events.db</code> に追記され、それが状態の正本です（イベントソーシング）。コマンドは記録しません。書き込むのは driver のコマンドの列 1 本だけで、ステージは作業の途中でコマンドを出さず、終わりに結果を返します。結果を受けたポリシーがコマンドに変えます。
+      上の「集約で絞る」を押すと、その集約が関わる行だけが残ります。対応する設計書は <code>DOMAIN_MODEL.md</code> と <code>ARCHITECTURE.md</code> です。
+    </p>
+    <div class="grammar">
+      <div class="note actor"><span class="kind">アクター</span>または</div>
+      <div class="note policy"><span class="kind">ポリシー</span>〜したら</div>
+      <span class="arrow">→</span>
+      <div class="note command"><span class="kind">コマンド</span>〜せよ</div>
+      <span class="arrow">→</span>
+      <div class="note aggregate"><span class="kind">集約</span>受けて不変条件を守る</div>
+      <span class="arrow">→</span>
+      <div class="note event"><span class="kind">イベント</span>〜した</div>
+      <span class="arrow">→</span>
+      <div class="note policy"><span class="kind">ポリシー</span>次のきっかけ</div>
+    </div>
+    <nav class="toc" id="toc" style="margin-top:12px"></nav>
+  </section>
+
+  <section id="big">
+    <h2>全体の流れ（イベントだけを時間順に）</h2>
+    <p>うまく進んだときの 1 本の道筋です。並列に動く実装タスクは ③〜⑥ を同時に最大 3 本回り、1 本積むたびに ③ へ戻って次のタスクを探します。</p>
+    <div class="bigpicture" id="bigpicture"></div>
+    <div class="loops">
+      <div class="loop"><b>↺ エスカレーション（⑤）</b>ステージで解けない問題 → タスク統括がフローを書き直して ④ へ戻る。タスクの中で閉じなければラン統括へ、さらにユーザーへ。</div>
+      <div class="loop"><b>↺ 統合の失敗（⑥）</b>積むときの rebase で意味が変わる → ラン統括が引き継ぐタスクを差し込み、③ へ戻る。</div>
+      <div class="loop"><b>↺ 再計画（⑦）</b>ラン統括が頼む → ① ② をもう一度通り、確定したら無駄なタスクを止めて ③ へ戻る。</div>
+      <div class="loop"><b>⚡ パニック（⑨）</b>利用枠の上限 → 全ステージを止めて終了コード 3。呼び直すと --resume で続きから。</div>
+    </div>
+  </section>
+
+  <div id="chapters"></div>
+
+  <section id="matrix">
+    <h2>集約ごとの、受けるコマンドと出すイベント</h2>
+    <p>上の図の行から集めたものです。集約の外からは、ここにあるコマンドでしか状態を変えられません。</p>
+    <div id="matrixTable"></div>
+  </section>
+</main>
+
+<script>
+// 付箋の種類: actor / policy / read / command / aggregate / external / event / hot / goto
+// 1 つの付箋は [種類, 表示する文, コード上の名前（任意）]
+const chapters = [
+  {
+    id: "c0", title: "⓪ ランの開始",
+    desc: "ユーザーと対話する /autodev のエージェントが driver を起動する。driver はバックグラウンドで常駐し、以後のポリシーをすべて実行する。/autodev は driver の管理の外にいる。",
+    chains: [
+      [["actor", "/autodev のエージェント"], ["command", "ランを始める（指示・リポジトリ・ラン名）", "StartRun"], ["aggregate", "Run"], ["event", "ランが始まった", "RunStarted"]],
+      [["policy", "ランが始まったら、ラン統括を起こし、計画タスクと git 管理タスクを始める（ランの最初に 1 回だけ）"], ["command", "計画タスクと git 管理タスクを始める", "StartTask（planning・git）"], ["aggregate", "Run"], ["event", "タスクが始まった", "TaskStarted"]],
+      [["policy", "ランが始まったら、git 管理タスクが最初の仕事として概要ブランチを切る（trees/overview が在れば何もしない）"], ["actor", "git 管理タスク（プログラム）"], ["command", "ステージを走らせる（CutBranch。概要ブランチと trees/overview）", "BeginStage → ReportStageResult"], ["aggregate", "Task（git）"], ["external", "git worktree"], ["event", "worktree ができた", "WorktreeReady"]],
+    ],
+  },
+  {
+    id: "c1", title: "① 計画",
+    desc: "計画タスクはランに 1 つで、再計画のときも同じタスクが使われる（始め直さない）。統括はプログラムで、初回は Prepare → Plan → DesignLoop、再計画のときは Replan → DesignLoop の決まった並びを組む。Plan の結果はすぐタスクの一覧にせず、Design 集約に提案として持つ。計画ステージにはリポジトリの外の読める checkout が要るので、初回は trees/overview、再計画は trees/stack-top を cwd にする。",
+    chains: [
+      [["policy", "worktree（trees/overview）ができたら、統括にフローを組ませる"], ["actor", "計画タスクの統括（プログラム）"], ["command", "フローを実行する [Prepare, Plan, DesignLoop]", "AcceptFlow"], ["aggregate", "Task"], ["event", "フローを受け付けた", "FlowAccepted"]],
+      [["policy", "フローを受けたら、Cursor の指すステージを起動する"], ["command", "ステージを走らせる（Plan）", "BeginStage → ReportStageResult"], ["aggregate", "Task"], ["external", "claude -p"], ["event", "ステージが完了した", "StageCompleted"]],
+      [["policy", "Plan・Replan が完了したら、提案として持つ"], ["command", "提案する", "ProposeDesign"], ["aggregate", "Design"], ["event", "設計が提案された", "DesignProposed"]],
+      [["external", "claude -p が defer で止まった（ask）"], ["actor", "実行器（変換層。証拠を集めるだけ）"], ["command", "結果と証拠を報告する", "ReportStageResult"], ["aggregate", "Task"], ["event", "ステージが回答待ちで止まった（止めた呼び出しの tool_use_id を持つ。EscalationRaised(ask) も）", "StageDeferred"]],
+      [["policy", "計画タスクの統括（プログラム）は ask をそのままラン統括へ上げる。ラン統括は、指示とユーザーの回答から言えると判断したら自分で答える"], ["actor", "ラン統括（LLM）"], ["command", "計画タスクに回答を渡す（出どころ: ラン統括）", "ResolveEscalation（answer）"], ["aggregate", "Task"], ["event", "エスカレーションが解けた", "EscalationResolved"]],
+      [["policy", "ask の回答が届いたら、反応が answers/<tool_use_id>.json を書き、書き終えてから再開を渡す"], ["actor", "反応（変換層）"], ["command", "止まったステージを続きから進める（プロンプトなしの --resume）", "ResumeStage"], ["aggregate", "Task"], ["external", "claude -p --resume"], ["event", "ステージが始まった（同じ呼び出しから続く）", "StageStarted"]],
+      [["policy", "ラン統括が ask に answer ではなく replan で応じたら、止まった実行を捨てて閉じる"], ["command", "エスカレーションを閉じる", "CloseEscalation"], ["aggregate", "Task"], ["event", "エスカレーションが閉じた（deferred の実行は abandoned）", "EscalationClosed"], ["goto", "↺ ⑦ 再計画へ"]],
+    ],
+    hot: [["hot", "受入条件が曖昧なら Plan が ask を呼び、フックの defer で止まって待つ → 計画タスクの統括（プログラム）がそのままラン統括へ上げる（段は飛ばさない）。ラン統括は自分で答えるか、言えないときだけユーザーに聞く（⑤）", "StageDeferred / EscalationRaised(ask)"]],
+  },
+  {
+    id: "c2", title: "② 設計の確かめ（DesignLoop）",
+    desc: "合成ステージ DesignLoop の中。提案が出るたびに必ず回す。指摘の状態を動かせるのはジャッジだけ（JudgeCapability）。must-fix が 0 件になったら確定し、Run に反映する。",
+    chains: [
+      [["policy", "DesignReview の StageCompleted を受けたら、結果の指摘を台帳に立てる"], ["command", "指摘を立てる", "RaiseFinding"], ["aggregate", "ReviewLedger（設計）"], ["event", "指摘が立った", "FindingRaised"]],
+      [["policy", "DesignJudge の StageCompleted を受けたら、判定を台帳に写す（JudgeCapability）"], ["command", "指摘を判定する", "JudgeFinding"], ["aggregate", "ReviewLedger（設計）"], ["event", "閉じた / 却下された / 開き直された", "FindingClosed / FindingRejected / FindingReopened"]],
+      [["policy", "must-fix が残っていたら、Plan の続きのセッションで直させる"], ["command", "提案を直す", "ReviseDesign"], ["aggregate", "Design"], ["event", "設計が直された", "DesignRevised"], ["goto", "↺ 設計レビューへ戻る"]],
+      [["policy", "直しが MAX_DESIGN_ROUNDS（5）を超えたら"], ["command", "提案を直す", "ReviseDesign"], ["aggregate", "Design"], ["event", "設計のラウンドを使い切った", "DesignRoundsExhausted"], ["goto", "⑤ へ（計画タスクが Escalate して計画タスク統括へ）"]],
+      [["policy", "ラウンドの上限（design-rounds-exhausted）に回答が下りてきたら、数を 0 に戻す"], ["command", "ラウンドの数を戻す", "ResetDesignRounds"], ["aggregate", "Design"], ["event", "ラウンドの数を戻した（回答を Revise の入力に足して続ける）", "DesignRoundsReset"], ["goto", "↺ Revise から続ける"]],
+      [["policy", "DesignJudge の結果が「設計の受入条件が曖昧（ambiguous）」なら"], ["command", "エスカレーションする（design-ambiguous）", "Escalate"], ["aggregate", "Task"], ["event", "エスカレーションが上がった（計画タスクの統括がそのままラン統括へ）", "EscalationRaised"], ["goto", "⑤ へ"]],
+      [["policy", "DesignJudge の結果が「前の版に戻った」なら"], ["command", "前の版の形に戻ったと記録する", "MarkReverted"], ["aggregate", "Design"], ["event", "設計が前の版に戻った", "DesignReverted"], ["goto", "⑤ へ（計画タスクが Escalate して計画タスク統括へ）"]],
+      [["policy", "must-fix が 0 件なら確定する"], ["command", "確定する", "SettleDesign"], ["aggregate", "Design"], ["event", "設計が確定した", "DesignSettled"]],
+      [["policy", "設計が確定したら、計画を反映する（PlanApplier）"], ["command", "計画を反映する", "ApplyPlan"], ["aggregate", "Run"], ["event", "タスクが計画された", "TasksPlanned"]],
+      [["policy", "計画が反映されたら、概要 PR のまとめを書く（初回は概要 PR を draft で作る）"], ["actor", "git 管理タスク（プログラム）"], ["command", "ステージを走らせる（WriteOverview → CreateOverviewPR → RefreshOverview）", "BeginStage → ReportStageResult"], ["aggregate", "Task（git）"], ["external", "claude -p・GitHub"], ["event", "ステージが完了した", "StageCompleted"]],
+    ],
+  },
+  {
+    id: "c3", title: "③ タスクを始める",
+    desc: "どのタスクを始めるかは driver の TaskScheduler が決める（ラン統括は起こさない）。ブランチと worktree は git 管理タスクが切る。",
+    chains: [
+      [["policy", "TaskScheduler: blockedBy が全部積まれ、running が 3 未満なら始める"], ["read", "Run の依存グラフ"], ["command", "タスクを始める", "StartTask"], ["aggregate", "Run"], ["event", "タスクが始まった", "TaskStarted"]],
+      [["policy", "実装タスクが始まったら、ブランチを切る"], ["actor", "git 管理タスク（プログラム）"], ["command", "ステージを走らせる（CutBranch）", "BeginStage → ReportStageResult"], ["aggregate", "Task（git）"], ["external", "git worktree"], ["event", "worktree ができた", "WorktreeReady"]],
+      [["policy", "worktree ができたら、統括にフローを組ませる"], ["read", "TaskSpec・design.md"], ["actor", "実装タスク統括（LLM）"], ["command", "フローを実行する", "AcceptFlow（run-flow）"], ["aggregate", "Task"], ["event", "フローを受け付けた / 拒んだ", "FlowAccepted / FlowRejected"]],
+    ],
+    hot: [["hot", "FlowRejected（needs / produces が合わない）→ 理由を付けて同じ統括に差し戻す", "FlowValidator"]],
+  },
+  {
+    id: "c4", title: "④ ステージを回す",
+    desc: "実行器が Cursor の指すステージを 1 つずつ走らせる。どのステージも ①前提 → ②記録 → ③入力とガード → ④走らせる → ⑤実物で確かめる → ⑥次を決める、を通る。ふつうに回るループ（指摘 → 修正、Gate の落ち → 修正）はエスカレーションにしない。ステージ 1 回は最初の 3 行のとおり、BeginStage と ReportStageResult の 2 つのコマンドからなる。実行器（外部システムの変換層）は証拠を集めて報告するだけで、完了・失敗・エスカレーションのどれにするかは Task が証拠を見て決める。4 行目からは「BeginStage → ReportStageResult」とまとめて書く。",
+    chains: [
+      [["policy", "Cursor の次のステージを起動する"], ["command", "ステージを始める（TestGen）", "BeginStage"], ["aggregate", "Task"], ["external", "claude -p"], ["event", "ステージが始まった", "StageStarted"]],
+      [["external", "claude -p のプロセスが終わった"], ["actor", "実行器（変換層。証拠を集めるだけ）"], ["command", "結果と証拠を報告する", "ReportStageResult"], ["aggregate", "Task"], ["event", "証拠に tests のコミットが在れば: ステージが完了した", "StageCompleted"]],
+      [["external", "claude -p のプロセスが終わった"], ["actor", "実行器（変換層。証拠を集めるだけ）"], ["command", "結果と証拠を報告する", "ReportStageResult"], ["aggregate", "Task"], ["event", "実物が無い・エラーで終わったなら: ステージが失敗した（2 回続けば EscalationRaised）", "StageFailed"]],
+      [["command", "ステージを走らせる（ConfirmRed）", "BeginStage → ReportStageResult"], ["aggregate", "Task"], ["external", "検証コマンド"], ["event", "ステージが完了した（red-tests）", "StageCompleted"]],
+      [["command", "ステージを走らせる（Impl）", "BeginStage → ReportStageResult"], ["aggregate", "Task"], ["external", "claude -p"], ["event", "ステージが完了した（impl）", "StageCompleted"]],
+      [["policy", "Impl・Fix の StageCompleted を受けたら、直し方を指摘に書く"], ["command", "指摘にコメントする", "CommentFinding"], ["aggregate", "ReviewLedger"], ["event", "コメントが付いた（ジャッジが読む）", "FindingCommented"]],
+      [["external", "claude -p のプロセスが終わった"], ["actor", "実行器（変換層。証拠を集めるだけ）"], ["command", "結果と証拠を報告する", "ReportStageResult"], ["aggregate", "Task"], ["event", "結果が designGap・testConflict などの報告なら: 報告した（cursor は進めない。EscalationRaised も）", "StageReported"], ["goto", "⑤ へ（解けたら同じステージをもう一度）"]],
+      [["policy", "ReviewLoop: reviewers に挙げたレビュー（1 ラウンド目は first、2 ラウンド目からは later）の StageCompleted を受けたら、結果の指摘を台帳に立てる"], ["command", "指摘を立てる", "RaiseFinding"], ["aggregate", "ReviewLedger"], ["event", "指摘が立った", "FindingRaised"]],
+      [["policy", "Judge の StageCompleted を受けたら、判定を台帳に写す（JudgeCapability）"], ["command", "指摘を判定する", "JudgeFinding"], ["aggregate", "ReviewLedger"], ["event", "閉じた / 却下された / 開き直された", "FindingClosed / FindingRejected / FindingReopened"]],
+      [["policy", "open が残り、停滞していなければ Fix を走らせ、回数を数える"], ["command", "修正の回数を足す", "CountFix"], ["aggregate", "ReviewLedger"], ["event", "回数を足した（STALL_AFTER_FIXES（2）に達したら停滞した）", "FixCounted / FindingStalled"], ["goto", "↺ open があれば Review へ / 停滞なら ⑤ へ"]],
+      [["policy", "open が 0 件なら reviewed を作って ReviewLoop を抜ける"], ["command", "ステージを走らせる（Gate）", "BeginStage → ReportStageResult"], ["aggregate", "Task"], ["external", "git・検証コマンド"], ["event", "ステージが完了した（gated）", "StageCompleted"]],
+      [["policy", "Gate が不合格なら（StageFailed とは分ける）"], ["command", "ステージを走らせる（Gate）", "BeginStage → ReportStageResult"], ["aggregate", "Task"], ["event", "完了チェックに落ちた（cursor は直前の ReviewLoop の Fix へ戻る）", "GateFailed"]],
+      [["policy", "Gate の不合格を受けたら、落ちた項目ごとに must-fix の指摘を立てる"], ["command", "指摘を立てる", "RaiseFinding"], ["aggregate", "ReviewLedger"], ["event", "指摘が立った", "FindingRaised"], ["goto", "↺ ReviewLoop の Fix へ"]],
+      [["command", "ステージを走らせる（WritePrBody）", "BeginStage → ReportStageResult"], ["aggregate", "Task"], ["external", "claude -p"], ["event", "フローを終えた（gated・pr-body）", "TaskGated"]],
+    ],
+    hot: [
+      ["hot", "Gate が落ちた → GateFailed。落ちた項目を must-fix にして Fix へ（エスカレーションしない）", "GateEvaluator"],
+      ["hot", "testgen 抜きなのに src を変えた → タスク統括へ", "untested-change"],
+      ["hot", "2 回続けてエラー → タスク統括へ", "stage-errors"],
+    ],
+  },
+  {
+    id: "c5", title: "⑤ エスカレーション",
+    desc: "通知に載るのは「何がどこで起きたか」と「調べる先」だけ。統括は Pointers をたどってファイルを読んで調べる。段は飛ばさない: ステージ → タスク統括 → ラン統括 → /autodev → ユーザー。",
+    chains: [
+      [["policy", "ループで解けない問題が起きたら上げる"], ["command", "エスカレーションする（stall・design-gap・test-conflict など）", "Escalate"], ["aggregate", "Task"], ["event", "エスカレーションが上がった", "EscalationRaised"]],
+      [["policy", "EscalationRouter: 1 段上の統括を --resume で起こす"], ["read", "Pointers（結果の JSON・ログ・worktree）"], ["actor", "実装タスク統括（LLM）"], ["command", "フローを書き直して実行する", "AcceptFlow（run-flow）"], ["aggregate", "Task"], ["event", "フローを受け付けた", "FlowAccepted"], ["goto", "↺ ④ へ戻る"]],
+      [["actor", "実装タスク統括（LLM）"], ["command", "上へ上げる（needs-replan / needs-human）", "EscalateToRun（escalate）"], ["aggregate", "Run"], ["event", "エスカレーションが上がった（ラン）", "EscalationRaised"]],
+      [["policy", "ラン統括を起こす"], ["read", "Pointers"], ["actor", "ラン統括（LLM）"], ["command", "ユーザーに聞く", "PostQuestion（ask-user）"], ["aggregate", "Questions"], ["event", "質問が出た", "QuestionPosted"]],
+      [["policy", "反応が questions/ に質問のファイルを書き、/autodev が Monitor で拾う（driver は止まらない）"], ["actor", "ユーザー"], ["command", "回答する（requests に足す）", "AnswerQuestion"], ["aggregate", "Questions"], ["event", "回答が届いた", "QuestionAnswered"]],
+      [["policy", "回答を、上がってきた経路の逆にたどって渡す"], ["actor", "ラン統括（LLM）"], ["command", "タスク統括に回答を渡す", "ResolveEscalation（answer）"], ["aggregate", "Task"], ["event", "エスカレーションが解けた", "EscalationResolved"], ["goto", "↺ タスク統括がフローを書き直す"]],
+      [["policy", "回答が届いたら、回答で決めたことを出どころ付きでタスクに残す（QuestionId があればユーザー、無ければラン統括）"], ["command", "回答で決めたことを足す", "AddNote"], ["aggregate", "Task"], ["event", "回答で決めたことが足された（以後のステージに毎回渡す）", "NoteAdded"]],
+      [["policy", "タスクを止めたら、そのタスクの未処理のエスカレーションを閉じる"], ["command", "エスカレーションを閉じる", "CloseEscalation"], ["aggregate", "Task"], ["event", "エスカレーションが閉じた", "EscalationClosed"]],
+    ],
+    hot: [["hot", "回答待ちの間も、依存しない他のタスクは進み続ける"]],
+  },
+  {
+    id: "c6", title: "⑥ 積む",
+    desc: "git 管理タスクはイベントを受けて非同期に動き、実装タスクと並列に走る。中の仕事（ブランチを切る・積む・破棄する・概要 PR を書く）は種類を問わず 1 本の列で 1 つずつ処理する。スタックの一番上を動かすのは git 管理タスクだけ。意味の変わらない衝突は git 管理タスクの中で解き、意味が変わるならラン統括へ上げる。積む直前の Verify ではラン共通の検証（リポジトリ全体のテスト・lint など）を流し、回帰をここで止める（タスクの Gate が流すのは、そのタスクの verify だけ）。",
+    chains: [
+      [["policy", "フローを終えたら、積む列に入れる"], ["command", "列に入れる", "EnqueueStack"], ["aggregate", "Stack"], ["event", "積む頼みが入った", "StackRequested"]],
+      [["policy", "処理中が無ければ、次を取り出す"], ["actor", "git 管理タスク（プログラム）"], ["command", "次の頼みを取り出す", "TakeNextRequest"], ["aggregate", "Stack"], ["event", "頼みを取り出した", "StackRequestTaken"]],
+      [["policy", "取り出したら Rebase を走らせ、衝突したら記録する"], ["command", "Rebase を走らせる → 衝突を記録する", "BeginStage → ReportStageResult → RecordConflict"], ["aggregate", "Stack"], ["external", "git"], ["event", "衝突した", "RebaseConflicted"]],
+      [["policy", "衝突したら解かせて、両側を残したか確かめる"], ["command", "ステージを走らせる（ResolveConflict → CheckUnion → Verify）", "BeginStage → ReportStageResult"], ["aggregate", "Task（git）"], ["external", "claude -p・検証コマンド"], ["event", "ステージが完了した", "StageCompleted"]],
+      [["command", "Push → CreatePR → StackLink を走らせ、積んだ形を足す", "BeginStage → ReportStageResult → AppendEntry"], ["aggregate", "Stack"], ["external", "GitHub（gh・gh stack）"], ["event", "タスクを積んだ", "TaskStacked"]],
+      [["policy", "積んだら、タスクを終えて次のタスクを探す"], ["command", "積んだ印を付ける", "MarkStacked"], ["aggregate", "Run"], ["event", "積んだ印が付いた", "TaskMarkedStacked"], ["goto", "↺ ③ TaskScheduler へ"]],
+      [["policy", "CheckUnion か Verify が落ちた / 両方は残せない"], ["command", "rebase を取りやめて断る", "RejectRequest"], ["aggregate", "Stack"], ["event", "統合に失敗した", "IntegrationFailed"]],
+      [["policy", "git 管理タスクはラン統括へ上げる"], ["actor", "ラン統括（LLM）"], ["command", "引き継ぐタスクを差し込む", "InsertTask（takesOver）"], ["aggregate", "Run"], ["event", "差し込んだ・引き継がれた", "TaskInserted / TaskSuperseded"], ["goto", "↺ ③ へ"]],
+    ],
+  },
+  {
+    id: "c7", title: "⑦ 再計画",
+    desc: "ラン統括が頼み、同じ計画タスクが Replan → DesignLoop を回す。再計画は、走っているタスクも積んだタスクも書き換えてよい。積んだタスクは再利用を優先し、破棄するなら提案に理由を書く。確定したら、ラン統括が止めるタスクと破棄するタスクを決め、driver が即座に止める。破棄した積んだタスクから上のスタックは、閉じて積み直す。",
+    chains: [
+      [["actor", "ラン統括（LLM）"], ["command", "再計画を頼む", "RequestReplan（replan）"], ["aggregate", "Run"], ["event", "再計画が頼まれた", "ReplanRequested"]],
+      [["policy", "再計画が頼まれたら、スタックの一番上を読むためだけの worktree を切り直す（計画タスクは始め直さない）"], ["actor", "git 管理タスク（プログラム）"], ["command", "ステージを走らせる（CutBranch。HEAD を固定した trees/stack-top）", "BeginStage → ReportStageResult"], ["aggregate", "Task（git）"], ["external", "git worktree"], ["event", "worktree ができた", "WorktreeReady"]],
+      [["policy", "trees/stack-top ができたら、計画タスクの統括に再計画のフローを組ませる"], ["actor", "計画タスクの統括（プログラム）"], ["command", "フローを実行する [Replan, DesignLoop]", "AcceptFlow"], ["aggregate", "Task"], ["event", "フローを受け付けた", "FlowAccepted"], ["goto", "↺ ② 設計の確かめへ"]],
+      [["policy", "再計画の設計が確定したら、止めるタスクを選ばせる"], ["read", "Run の依存グラフ・新しい提案"], ["actor", "ラン統括（LLM）"], ["command", "タスクを止める", "StopTasks（stop-tasks）"], ["aggregate", "Run"], ["external", "claude -p（interrupt）"], ["event", "タスクを止めた", "TasksStopped"]],
+      [["policy", "提案が積んだタスクの破棄を含むなら、破棄するものを確かめさせる"], ["actor", "ラン統括（LLM）"], ["command", "積んだタスクを破棄する", "DiscardTasks（discard-tasks）"], ["aggregate", "Run"], ["event", "タスクを破棄した", "TasksDiscarded"]],
+      [["policy", "破棄したら、破棄した中で一番下の PR から上を閉じ、スタックを解いて、残した PR で作り直す"], ["actor", "git 管理タスク（プログラム）"], ["command", "ClosePRs → Unstack → Relink を走らせ、スタックを切り戻す", "BeginStage → ReportStageResult → UnstackFrom"], ["aggregate", "Stack"], ["external", "GitHub（gh pr close・gh stack unstack・gh stack link）"], ["event", "スタックを切り戻した", "StackCutBack"]],
+      [["policy", "閉じた所より上で破棄しないタスクを、積む列に戻す"], ["command", "積み直しに戻す", "ReturnToQueue"], ["aggregate", "Run"], ["event", "積む列に戻した", "TasksReturnedToQueue"], ["goto", "↺ ⑥ 積む（rebase し直して積む。PR の番号は変わる）"]],
+      [["policy", "止めたら、計画を反映する"], ["command", "計画を反映する", "ApplyPlan"], ["aggregate", "Run"], ["event", "タスクが計画された", "TasksPlanned"], ["goto", "↺ ③ へ"]],
+      [["policy", "再計画が反映されたら、そのきっかけのエスカレーション（needs-replan など）を閉じる"], ["command", "エスカレーションを閉じる", "CloseEscalation"], ["aggregate", "Task"], ["event", "エスカレーションが閉じた", "EscalationClosed"]],
+      [["policy", "範囲が変わって残ったタスク（と、きっかけのタスク）に知らせる"], ["command", "範囲が変わったと知らせる", "ChangeScope"], ["aggregate", "Task"], ["event", "範囲が変わった（新しいフローを返すまで、新しいステージを起動しない）", "ScopeChanged"]],
+      [["policy", "範囲が変わったら、タスク統括を起こす"], ["read", "新しい TaskSpec・設計の版"], ["actor", "実装タスク統括（LLM）"], ["command", "フローを組み直して実行する", "AcceptFlow（run-flow）"], ["aggregate", "Task"], ["event", "フローを受け付けた", "FlowAccepted"], ["goto", "↺ ④ へ"]],
+      [["policy", "反映が指摘の移管を含むなら、移す元を carried にする"], ["command", "指摘を移す", "CarryFinding"], ["aggregate", "ReviewLedger"], ["event", "指摘が移された（移す元は carried）", "FindingCarried"]],
+      [["policy", "指摘が移されたら、移した先の台帳に open で 1 回だけ立てる"], ["command", "指摘を立てる（移管元つき）", "RaiseFinding"], ["aggregate", "ReviewLedger"], ["event", "指摘が立った", "FindingRaised"]],
+    ],
+    hot: [
+      ["hot", "1 本も積まないまま再計画が MAX_REPLANS_WITHOUT_STACK（2）に達したら → ユーザーの回答を添えた再計画だけを受ける", "replanStreak"],
+      ["hot", "閉じるだけでは閉じた PR がスタックに残り、上の PR がマージできなくなる（GitHub の文書）。だから解いて作り直す。手順は未実測", "Unstack・Relink"],
+    ],
+  },
+  {
+    id: "c8", title: "⑧ 仕上げと状態の見え方",
+    desc: "全タスクが終端（積んだ・取り下げた・引き継がれた）になったら、ラン統括が仕上げる。外（HUD・/autodev）は autodev status --json だけを読む。",
+    chains: [
+      [["policy", "積んだ印を付けて、全タスクが終端になったら"], ["command", "積んだ印を付ける", "MarkStacked"], ["aggregate", "Run"], ["event", "積んだ印が付き、全タスクを積んだ", "TaskMarkedStacked / AllTasksStacked"]],
+      [["policy", "ラン統括を起こす"], ["actor", "ラン統括（LLM）"], ["command", "ランを終える（概要 PR を draft から外すか）", "FinishRun（finish）"], ["aggregate", "Run"], ["event", "ランが終わった", "RunFinished"]],
+      [["policy", "ランが終わったら、仕上げのまとめを書き、draft から外す"], ["actor", "git 管理タスク（プログラム）"], ["command", "ステージを走らせる（WriteOverview → RefreshOverview → ReadyOverview）", "BeginStage → ReportStageResult"], ["aggregate", "Task（git）"], ["external", "claude -p・GitHub（gh pr ready）"], ["event", "ステージが完了した（driver は終了コード 0（ランを終えた）で終える。何本積んだかは status で見る）", "StageCompleted"]],
+      [["read", "StatusQuery（autodev status --json）"], ["actor", "HUD・/autodev のエージェント"]],
+    ],
+  },
+  {
+    id: "c9", title: "⑨ パニックと再開",
+    desc: "利用枠の上限はビジネスロジックの外のインフラエラーとして扱う。",
+    chains: [
+      [["external", "利用枠の上限（429）"], ["policy", "インフラのエラーはパニックにする"], ["command", "パニックする", "Panic"], ["aggregate", "Run"], ["event", "パニックした（終了コード 3）", "RunPanicked"]],
+      [["policy", "パニックしたら、走っているステージをすべて止める"], ["command", "ステージを中断する", "InterruptStage"], ["aggregate", "Task"], ["event", "ステージが中断された", "StageInterrupted"]],
+      [["actor", "/autodev のエージェント"], ["command", "呼び直す（autodev run）", "ResumeStage"], ["aggregate", "Task"], ["external", "claude -p --resume"], ["event", "ステージが始まった（続きから）", "StageStarted"]],
+    ],
+    hot: [["hot", "--resume に失敗したら、始めた時点のコミットに戻して新しい実行を作る"]],
+  },
+];
+
+const bigPicture = [
+  ["⓪", "ランが始まった", "RunStarted"],
+  ["①", "設計が提案された", "DesignProposed"],
+  ["②", "指摘が立った", "FindingRaised"],
+  ["②", "設計が確定した", "DesignSettled"],
+  ["②", "タスクが計画された", "TasksPlanned"],
+  ["③", "タスクが始まった", "TaskStarted"],
+  ["③", "worktree ができた", "WorktreeReady"],
+  ["③", "フローを受け付けた", "FlowAccepted"],
+  ["④", "ステージが完了した ×N", "StageCompleted"],
+  ["④", "フローを終えた", "TaskGated"],
+  ["⑥", "積む頼みが入った", "StackRequested"],
+  ["⑥", "タスクを積んだ", "TaskStacked"],
+  ["⑧", "全タスクを積んだ", "AllTasksStacked"],
+  ["⑧", "ランが終わった", "RunFinished"],
+];
+
+const KIND = {
+  actor: "アクター", policy: "ポリシー", read: "読み取りモデル", command: "コマンド",
+  aggregate: "集約", external: "外部システム", event: "イベント", hot: "ホットスポット", goto: "戻り先",
+};
+
+function note([kind, text, code]) {
+  const el = document.createElement("div");
+  el.className = `note ${kind}`;
+  el.innerHTML = `<span class="kind">${KIND[kind]}</span>${text}${code ? `<code>${code}</code>` : ""}`;
+  return el;
+}
+
+function aggName(text) { return text.replace(/（.*?）/g, ""); }
+
+const chaptersEl = document.getElementById("chapters");
+const toc = document.getElementById("toc");
+const matrix = {};
+
+for (const ch of chapters) {
+  const sec = document.createElement("section");
+  sec.id = ch.id;
+  sec.innerHTML = `<h2>${ch.title}</h2><p>${ch.desc}</p>`;
+  toc.insertAdjacentHTML("beforeend", `<a href="#${ch.id}">${ch.title}</a>`);
+  for (const chain of ch.chains) {
+    const row = document.createElement("div");
+    row.className = "chain";
+    const agg = chain.find(n => n[0] === "aggregate");
+    if (agg) {
+      const name = aggName(agg[1]);
+      row.dataset.agg = name;
+      const m = (matrix[name] ??= { commands: new Set(), events: new Set() });
+      chain.filter(n => n[0] === "command").forEach(n => m.commands.add(n[2] || n[1]));
+      chain.filter(n => n[0] === "event").forEach(n => m.events.add(n[2] || n[1]));
+    }
+    chain.forEach((n, i) => {
+      if (i > 0) row.insertAdjacentHTML("beforeend", `<span class="arrow">→</span>`);
+      row.appendChild(note(n));
+    });
+    sec.appendChild(row);
+  }
+  if (ch.hot) {
+    const row = document.createElement("div");
+    row.className = "chain";
+    row.style.gap = "12px";
+    ch.hot.forEach(n => row.appendChild(note(n)));
+    sec.appendChild(row);
+  }
+  chaptersEl.appendChild(sec);
+}
+
+const bp = document.getElementById("bigpicture");
+bigPicture.forEach(([step, text, code], i) => {
+  if (i > 0) bp.insertAdjacentHTML("beforeend", `<span class="arrow">→</span>`);
+  const el = note(["event", text, code]);
+  el.insertAdjacentHTML("afterbegin", `<span class="step">${step}</span> `);
+  bp.appendChild(el);
+});
+
+const order = ["Run", "Task", "ReviewLedger", "Design", "Stack", "Questions"];
+let html = "<table><tr><th>集約</th><th>受けるコマンド</th><th>出すイベント</th></tr>";
+for (const name of order) {
+  const m = matrix[name];
+  if (!m) continue;
+  html += `<tr><td><b>${name}</b></td><td>${[...m.commands].join("<br>")}</td>` +
+          `<td>${[...m.events].map(e => `<span class="ev">${e}</span>`).join(" ")}</td></tr>`;
+}
+document.getElementById("matrixTable").innerHTML = html + "</table>";
+
+const filters = document.getElementById("filters");
+let active = null;
+for (const name of order) {
+  const b = document.createElement("button");
+  b.textContent = name;
+  b.onclick = () => {
+    active = active === name ? null : name;
+    filters.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.textContent === active));
+    document.querySelectorAll("#chapters .chain").forEach(row => {
+      row.classList.toggle("dim", !!active && row.dataset.agg !== active);
+    });
+  };
+  filters.appendChild(b);
+}
+</script>
+</body>
+</html>

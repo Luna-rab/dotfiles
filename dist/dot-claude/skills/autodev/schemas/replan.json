@@ -1,74 +1,77 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["keepCurrent", "tasks", "design", "notes", "blocked"],
+  "required": [
+    "design",
+    "tasks",
+    "verify",
+    "stop",
+    "discard",
+    "carry",
+    "decisions",
+    "deferrals"
+  ],
   "properties": {
-    "keepCurrent": {
-      "type": "boolean",
-      "description": "止まったタスクを残して続けるなら true。取り下げて割り直すなら false"
-    },
-    "current": {
-      "type": "object",
-      "description": "止まったタスクを残すとき、書き換える項目だけを入れる",
-      "additionalProperties": false,
-      "properties": {
-        "subject": { "type": "string" },
-        "dod": { "type": "string" },
-        "acceptance": { "type": "string" },
-        "scope": { "type": "string" },
-        "entrypoints": { "type": "string" },
-        "contracts": { "type": "string" },
-        "verify": {
-          "type": "array",
-          "description": "このタスクから流す検証コマンドの全部。空の一覧は「足すものは無い」",
-          "items": { "type": "string" }
-        }
-      }
-    },
+    "design": { "type": "string", "minLength": 1 },
     "tasks": {
       "type": "array",
-      "description": "止まったタスクの後ろで回す未着手のタスクを、並べ直した全部。今の未着手のタスクはこれで丸ごと置き換わる",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["subject", "tier", "dod", "acceptance"],
+        "required": [
+          "id",
+          "title",
+          "dod",
+          "acceptance",
+          "scope",
+          "entryPoints",
+          "boundary",
+          "verify",
+          "blockedBy"
+        ],
         "properties": {
-          "subject": { "type": "string" },
-          "tier": { "type": "string", "enum": ["light", "standard"] },
+          "id": { "type": "string", "pattern": "^task[1-9][0-9]*$" },
+          "title": { "type": "string", "minLength": 1 },
           "dod": { "type": "string" },
-          "acceptance": { "type": "string" },
-          "scope": { "type": "string" },
-          "entrypoints": { "type": "string" },
-          "contracts": { "type": "string" },
-          "verify": {
+          "acceptance": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "scope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "entryPoints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "boundary": { "type": "string" },
+          "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "blockedBy": {
             "type": "array",
-            "description": "このタスクから流す検証コマンド",
-            "items": { "type": "string" }
-          },
-          "blockedBy": { "type": "array", "items": { "type": "string" } },
-          "carry": {
-            "type": "array",
-            "description": "止まったタスクから、このタスクへ移す指摘の id（r3 など）",
-            "items": { "type": "string" }
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^task[1-9][0-9]*$" }
           }
         }
       }
     },
-    "design": {
-      "type": "string",
-      "description": "直した設計ファイルの全文（Markdown）。変えない部分も書き写す"
-    },
-    "verify": {
+    "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "stop": {
       "type": "array",
-      "description": "ラン共通の検証コマンドを変えるときだけ、変えたあとの全部を入れる。空にしない",
-      "items": { "type": "string" }
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^task[1-9][0-9]*$" }
     },
-    "notes": { "type": "string", "description": "何をなぜ変えたか。判断ログに残る" },
-    "decisions": { "type": "array", "items": { "type": "string" } },
-    "blocked": {
-      "type": "boolean",
-      "description": "割り方を変えても進めず、人が決める必要があるなら true"
+    "discard": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^task[1-9][0-9]*$" }
     },
-    "questions": { "type": "array", "items": { "type": "string" } }
+    "carry": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "fromTask", "toTask"],
+        "properties": {
+          "finding": { "type": "string", "pattern": "^R[1-9][0-9]*$" },
+          "fromTask": { "type": "string", "pattern": "^task[1-9][0-9]*$" },
+          "toTask": { "type": "string", "pattern": "^task[1-9][0-9]*$" }
+        }
+      }
+    },
+    "decisions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "deferrals": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }
 }

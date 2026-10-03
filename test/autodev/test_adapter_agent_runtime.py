@@ -280,6 +280,25 @@ def test_利用枠の上限に当たった事実を返す(
     assert got.api_error_status == 429
 
 
+def test_assistantにrate_limitの印があれば利用枠の上限に当たった事実を返す(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    scenario(monkeypatch, tmp_path, "assistant-rate-limit")
+    got = runtime(claude).run(make_call(tmp_path))
+    assert got.api_error_status is None
+    assert got.rate_limited
+
+
+def test_overageStatusがrejectedでも利用枠の上限に当たっていない(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """従量の超過を組織で切っていると、ふつうの呼び出しでも `overageStatus` は `rejected` になる。"""
+    scenario(monkeypatch, tmp_path, "overage-rejected-then-error")
+    got = runtime(claude).run(make_call(tmp_path))
+    assert got.is_error
+    assert not got.rate_limited
+
+
 def test_interruptを送るとresultが返る(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

@@ -70,7 +70,7 @@ PROGRESS_INTERVAL = 5.0
 CANCEL_QUEUED = "interrupt_cancel_queued_v1"
 #: フックに拒まれた呼び出しの tool_result の本文の頭（AR-26。Claude Code 2.1.281 で確かめた形）
 _HOOK_DENIAL = re.compile(r"PreToolUse:\S+ hook error")
-#: 利用枠の上限の文言。実物で確かめていない（モジュールの末尾の注を参照）
+#: 利用枠の上限の文言。上限に当てた形は実物で確かめていない（モジュールの末尾の注を参照）
 _RATE_LIMIT_TEXT = re.compile(r"usage limit|hit your limit|rate limit|rate_limit", re.IGNORECASE)
 
 
@@ -520,7 +520,8 @@ class _Collector:
         self.turns = 0
         self.last_tool: str | None = None
         self.hook_denials = 0
-        self.rate_limit_rejected = False
+        #: `rejected` の rate_limit_event か、`error: "rate_limit"` の assistant を受けた
+        self.rate_limit_seen = False
         self._messages: set[str] = set()
 
     def take(self, event: Mapping[str, Any]) -> None:
@@ -533,13 +534,18 @@ class _Collector:
             self.capabilities = tuple(str(c) for c in event.get("capabilities") or ())
             self.initialized = True
         elif kind == "assistant":
+            # 429 で終わったターンの印。本文が上限の文言に当たらないことがあるので、文言より先に見る
+            if event.get("error") == "rate_limit":
+                self.rate_limit_seen = True
             self._assistant(event)
         elif kind == "user":
             self.hook_denials += _hook_denials(event)
         elif kind == "rate_limit_event":
+            # `overageStatus` は見ない。従量の超過を組織で切っていると、ふつうの呼び出しでも
+            # `rejected` になる（段 6 の実測）
             info = event.get("rate_limit_info")
             if isinstance(info, Mapping) and info.get("status") == "rejected":
-                self.rate_limit_rejected = True
+                self.rate_limit_seen = True
 
     def _assistant(self, event: Mapping[str, Any]) -> None:
         message = event.get("message")
@@ -574,7 +580,7 @@ class _Collector:
                 exit_code=exit_code,
                 session=call.session,
                 hook_denials=self.hook_denials,
-                rate_limited=self.rate_limit_rejected or bool(_RATE_LIMIT_TEXT.search(stderr)),
+                rate_limited=self.rate_limit_seen or bool(_RATE_LIMIT_TEXT.search(stderr)),
                 interrupted=interrupted,
                 stderr=stderr,
                 capabilities=self.capabilities,
@@ -612,7 +618,7 @@ class _Collector:
             # 上限に当たったと見るのは、エラーで終わったときだけ。成功した result の後に届いた
             # rate_limit_event や、本文に出た「rate limit」の語では上限にしない
             rate_limited=is_error
-            and (self.rate_limit_rejected or status == 429 or bool(_RATE_LIMIT_TEXT.search(text))),
+            and (self.rate_limit_seen or status == 429 or bool(_RATE_LIMIT_TEXT.search(text))),
             interrupted=interrupted,
             stderr=stderr,
             capabilities=self.capabilities,
@@ -713,7 +719,9 @@ def _tail(path: Path, offset: int, limit: int = 4000) -> str:
     return data.decode("utf-8", errors="replace")[-limit:].strip()
 
 
-# 利用枠の上限の見分けは実測が無い。次のどれかで「当たった」とする:
-# - result が `is_error` で、`rate_limit_event` の `rate_limit_info.status` が `rejected` だったか、
-#   `api_error_status` が 429 か、本文に上限の文言がある
-# - result が無く、`rejected` の rate_limit_event が届いていたか、標準エラーに上限の文言がある
+# 利用枠の上限の見分け。`rate_limit_event` の欄の名前と置き場は claude 2.1.288 で実測した（ふつうの
+# 呼び出しにも毎回出て、`status` は `allowed`）。上限に当てた形は実測していない。assistant の
+# `error: "rate_limit"` は、実行ファイルの中の型の定義から読んだ。次のどれかで「当たった」とする:
+# - result が `is_error` で、`rate_limit_info.status` が `rejected` の rate_limit_event か
+#   `error: "rate_limit"` の assistant を受けたか、`api_error_status` が 429 か、本文に上限の文言がある
+# - result が無く、上の 2 つの印のどちらかを受けたか、標準エラーに上限の文言がある

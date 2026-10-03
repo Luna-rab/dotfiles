@@ -243,6 +243,45 @@ def rate_limited() -> None:
     sys.exit(1)
 
 
+def assistant_rate_limit() -> None:
+    """429 で終わったターン。assistant のイベントに `error: "rate_limit"` が付く（claude 2.1.288 の
+    実行ファイルの型の定義から読んだ形。実測ではない）。本文は上限の文言に当たらないことがある。"""
+    read_line()
+    init()
+    emit(
+        {
+            "type": "assistant",
+            "message": {"id": "m1", "content": [{"type": "text", "text": "high load"}]},
+            "parent_tool_use_id": None,
+            "error": "rate_limit",
+        }
+    )
+    result(is_error=True, result="API Error: Opus is experiencing high load")
+    drain()
+    sys.exit(1)
+
+
+def overage_rejected_then_error() -> None:
+    """ふつうの呼び出しにも、`overageStatus: rejected` の rate_limit_event が出る（段 6 の実測）。"""
+    read_line()
+    init()
+    emit(
+        {
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "allowed",
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": False,
+            },
+        }
+    )
+    result(is_error=True, subtype="error_during_execution", result="落ちた")
+    drain()
+    sys.exit(1)
+
+
 def rate_event_then_success() -> None:
     """上限の知らせが届いても、成功で終わったなら上限には当たっていない。"""
     read_line()
@@ -291,6 +330,8 @@ SCENARIOS = {
     "result-and-errors": result_and_errors,
     "rate-limited": rate_limited,
     "rate-event-then-success": rate_event_then_success,
+    "assistant-rate-limit": assistant_rate_limit,
+    "overage-rejected-then-error": overage_rejected_then_error,
     "interruptible": interruptible,
     "stubborn": stubborn,
     "lingering": lingering,

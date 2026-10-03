@@ -22,6 +22,26 @@ def session(now: float) -> dict:
     }
 
 
+def usage() -> dict:
+    """claude.ai の利用状況。月 $800 の上限のうち $5.64 使っている。"""
+    return {
+        "five_hour": None,
+        "seven_day": None,
+        "extra_usage": {
+            "is_enabled": True,
+            "monthly_limit": 80000,
+            "used_credits": 564,
+            "decimal_places": 2,
+        },
+    }
+
+
+def write_usage(path, checked_at: float) -> None:
+    """`hud/ports/usage.py` のキャッシュ。`checked_at` が新しければ取りに行かずにこれを使う。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"checked_at": checked_at, "data": usage()}), encoding="utf-8")
+
+
 def state(**over) -> dict:
     """ステージ review:adversarial が 4 分 12 秒走っているラン。task2 が実行中。"""
     now = dt.datetime.now().astimezone()

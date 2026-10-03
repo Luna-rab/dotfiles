@@ -11,13 +11,20 @@ import sys
 import time
 
 from conftest import CLAUDE_SCRIPTS
-from hud_samples import session, write_run
+from hud_samples import session, write_run, write_usage
 
 SCRIPT = CLAUDE_SCRIPTS / "statusline.py"
 
 
 def raw(stdin: str, tmp_path, columns: int) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "COLUMNS": str(columns), "AUTODEV_STATE_DIR": str(tmp_path)}
+    # 本物の OAuth トークンで利用状況を取りに行かないよう、Claude Code の設定とキャッシュを空の場所に向ける
+    env = {
+        **os.environ,
+        "COLUMNS": str(columns),
+        "AUTODEV_STATE_DIR": str(tmp_path),
+        "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=stdin,
@@ -28,10 +35,12 @@ def raw(stdin: str, tmp_path, columns: int) -> subprocess.CompletedProcess[str]:
     )
 
 
-def run(tmp_path, columns: int = 100) -> list[str]:
-    out = raw(json.dumps(session(time.time())), tmp_path, columns)
+def run(tmp_path, columns: int = 100, data: dict | None = None) -> list[str]:
+    """Claude Code が表示する行。Claude Code は各行の前後の空白を削り、空になった行を捨てる。"""
+    out = raw(json.dumps(data or session(time.time())), tmp_path, columns)
     assert out.returncode == 0, out.stderr
-    return re.sub(r"\x1b\[[0-9;]*m", "", out.stdout).splitlines()
+    shown = [line.strip() for line in out.stdout.strip().split("\n") if line.strip()]
+    return [re.sub(r"\x1b\[[0-9;]*m", "", line) for line in shown]
 
 
 def test_セッションは使用量_場所_利用枠2本の4行(tmp_path):
@@ -42,6 +51,14 @@ def test_セッションは使用量_場所_利用枠2本の4行(tmp_path):
     # 窓の 6 割が過ぎた位置（40 マスの 23 番目）に目盛りを置く
     assert lines[2][3:].index("┃") == 23
     assert lines[3] == "7d ━━━━━━━━━━━━╾─────────────────────────── 31%"
+
+
+def test_クレジットが有効なら月次の棒を利用枠の下に出す(tmp_path):
+    write_usage(tmp_path / "cache" / "claude-hud" / "usage.json", time.time())
+    lines = run(tmp_path)
+    assert len(lines) == 5
+    assert lines[4].startswith("mo ")
+    assert " 1% $5.64/$800 " in lines[4]
 
 
 def test_幅で埋めないので縮めても行頭は残る(tmp_path):
@@ -66,6 +83,17 @@ def test_幅が足りればタスクリストを右に置く(tmp_path):
     assert right == "autodev range-field ▸ task2 レビュー r1 · 4m12s 26ターン Read · 概要 PR #4"
     assert lines[2].split("  │  ")[1].startswith("  ◼ task2 範囲指定")
     assert lines[4].split("  │  ")[0].strip() == ""
+
+
+def test_利用枠が無くてもタスクリストの列はそろう(tmp_path):
+    """Enterprise などでは rate_limits が渡されず、左の行が 2 行しかない。"""
+    write_run(tmp_path)
+    data = session(time.time())
+    del data["rate_limits"]
+    lines = run(tmp_path, columns=160, data=data)
+    assert len(lines) == 5
+    side = lines[0].index("  │  ")
+    assert all(line.index("  │  ") == side for line in lines)
 
 
 def test_幅が足りなければタスクリストを下に置く(tmp_path):

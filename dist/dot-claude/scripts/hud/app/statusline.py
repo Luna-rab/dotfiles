@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 import os
@@ -16,14 +17,17 @@ import time
 from rich.console import Console
 from rich.text import Text
 
-from hud.core import git, headline, pipeline, runs, session, tasklist
-from hud.ports import autodev
+from hud.core import credit, git, headline, pipeline, runs, session, tasklist
+from hud.ports import autodev, usage
 from hud.ports import git as git_port
 from hud.render import layout
 from hud.render import session as session_view
 from hud.render import tasklist as tasklist_view
 
 DEFAULT_COLUMNS = 120
+#: 各行の頭に置く色のリセット。Claude Code は行ごとに前後の空白を削ってから表示するので、
+#: 空白で始まる行（左の行が無い段のタスクリスト、タスクの字下げ）は左に詰まってしまう
+LINE_HEAD = "\x1b[0m"
 
 
 def autodev_block(st: dict, now: dt.datetime) -> list[Text]:
@@ -56,9 +60,12 @@ def main() -> int:
     except json.JSONDecodeError:
         data = {}
     current = session.parse(data, time.time())
+    now = dt.datetime.now().astimezone()
+    month = credit.monthly(usage.usage(now.timestamp()), now)
+    if month is not None:
+        current = dataclasses.replace(current, limits=(*current.limits, month))
     output = git_port.status(current.cwd)
     rows = session_view.rows(current, git.parse(output) if output is not None else None)
-    now = dt.datetime.now().astimezone()
     block = [line for st in autodev.read_states() for line in autodev_block(st, now)]
     # 標準出力は端末ではないので、色を付けるよう明示する。折り返しは Claude Code に任せない
     console = Console(
@@ -71,5 +78,6 @@ def main() -> int:
         emoji=False,
     )
     for line in layout.layout(rows, block, columns()):
+        console.file.write(LINE_HEAD)
         console.print(line)
     return 0

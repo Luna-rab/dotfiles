@@ -188,6 +188,8 @@ class TaskLoop(Loop[Task]):
         made = STAGE_SPECS[execution.stage].produces if products is None else products
         evidence.setdefault("exit", StageExit.OK)
         evidence.setdefault("result_valid", True)
+        # 根元から上のコミットがある（Rebase は 0 件・数えられないと落ちる）
+        evidence.setdefault("commits", 1)
         if not exact:
             result = stage_result(execution.stage, **(result or {}))
         return self(
@@ -1151,6 +1153,23 @@ def test_Rebaseが衝突しなければ衝突したときだけのステージ�
     git = git_task()
     git.take(STACK_JOB)
     assert requested(git.run(ex(S.REBASE, task=G))) == [ex(S.VERIFY, task=G)]
+
+
+@pytest.mark.parametrize(
+    ("commits", "reason"), [(0, "根元から上のコミットが無い"), (None, "数えられない")]
+)
+def test_載せ直すコミットが無いか数えられないRebaseは失敗に数え根元を変えない(
+    commits: int | None, reason: str
+):
+    """数えられない（根元が無い）のを 0 件と同じく失敗にするが、理由は分ける。"""
+    git = git_task()
+    git.take(STACK_JOB)
+    events = git.run(ex(S.REBASE, task=G), commits=commits, result=None, exact=True)
+    (failed,) = of_type(events, StageFailed)
+    assert reason in failed.reason
+    assert not of_type(events, BranchRebased)
+    # 走らせて落ちたときと同じく、1 回はやり直す
+    assert requested(events) == [ex(S.REBASE, attempt=2, task=G)]
 
 
 def test_Rebaseは載せ直した先を相手のタスクの新しい根元として知らせる():

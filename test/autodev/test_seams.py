@@ -1303,6 +1303,8 @@ class World:
         evidence: dict[str, Any] = {
             "exit": StageExit.OK,
             "result_valid": True,
+            # 根元から上のコミットがある（Rebase は 0 件・数えられないと落ちる）
+            "commits": 1,
             **self._evidence(execution),
         }
         evidence.update(outcome.evidence)

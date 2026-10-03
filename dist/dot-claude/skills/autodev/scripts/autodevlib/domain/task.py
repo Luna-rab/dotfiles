@@ -101,6 +101,7 @@ from .stages import (
     StageMode,
     StageSpec,
     StepArgument,
+    has_own_commits,
     inner_with,
 )
 from .values import (
@@ -832,13 +833,14 @@ class Task(Aggregate):
         if spec.expects is not None:
             verdict = _check(spec.expects, evidence)
             if verdict is _Verdict.MISSING:
-                return self._failed(execution, command, f"{spec.kind.value} の結果が無い")
+                return self._failed(execution, command, _missing(spec))
             if verdict is _Verdict.MISMATCH:
                 if spec.expects is EvidenceCheck.GATE_PASSES:
                     assert evidence.gate is not None
                     return self._gate_failed(execution, command, evidence.gate)
-                assert spec.on_mismatch is not None
                 reason = _mismatch(spec.expects, evidence)
+                if spec.on_mismatch is None:
+                    return self._failed(execution, command, reason)
                 return self._reported(execution, command, spec.on_mismatch, reason=reason)
         # ⑤ 結果の中身と実物。成果物は、それを produces に持つステージが完了したときだけ増える（§6.2）
         try:
@@ -1559,13 +1561,26 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
         if evidence.gate is None:
             return _Verdict.MISSING
         holds = evidence.gate.passed
+    elif check is EvidenceCheck.OWN_COMMITS:
+        if evidence.commits is None:
+            return _Verdict.MISSING
+        holds = has_own_commits(evidence.commits)
     else:
         raise AssertionError(f"照らし方を書いていない: {check}")
     return _Verdict.HOLDS if holds else _Verdict.MISMATCH
 
 
+def _missing(spec: StageSpec) -> str:
+    """期待した証拠が無かった理由（失敗の理由）。"""
+    if spec.expects is EvidenceCheck.OWN_COMMITS:
+        return "タスクのブランチの根元が無く、根元から上のコミットを数えられない"
+    return f"{spec.kind.value} の結果が無い"
+
+
 def _mismatch(check: EvidenceCheck, evidence: Evidence) -> str:
     """期待した証拠と食い違った所（報告の中身）。本文や出力そのものは載せない。"""
+    if check is EvidenceCheck.OWN_COMMITS:
+        return "根元から上のコミットが無い（0 件）。ブランチは動かしていない"
     if check is EvidenceCheck.UNION_KEPT and evidence.union is not None:
         files = [f.path for f in evidence.union.files if not f.kept_both]
         return "両側の変更を残していない: " + ", ".join(files)

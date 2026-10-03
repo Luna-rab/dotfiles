@@ -173,7 +173,7 @@
 - 統合に失敗したら（`IntegrationFailed`）、反応 `abort-rebase` がそのタスクの worktree の途中の rebase を取りやめる。Rebase と CutBranch は、流す前に途中の rebase を取りやめる（`StageSpec.abandons_rebase`。実行器が流す前に取りやめる）。解きかけを `git add` した rebase は衝突の段が消え、CheckUnion が両側を読めない。CutBranch は、HEAD を切り離した worktree でも切ったブランチに移す
 - Rebase は、流す前に途中の rebase を取りやめてから、始めた時点（`start_commit`）へ戻す（`StageSpec.restores_start`。宣言するのは Rebase だけ）。HEAD が始めた時点と違うのは、rebase を終えてから結果が載る前に driver が落ちた流し直しのときだけで、そのときだけ戻る（`reset --keep`。初めて流すときの汚れた worktree は消さない）。`abandons_rebase` を宣言したステージは、begin でも HEAD を取る前に途中の rebase を取りやめる。rebase 途中の HEAD を始めた時点にすると、戻すときにタスクのコミットをブランチから落とす
 - CutBranch の切る元は `GitJob.cut_point`（`CutPoint`: 切る元・ランの base か・HEAD を切り離すか）が決める。ランの base だけは origin にあればそちらから切る（手元の base は古いことがある）。autodev が切ったブランチは手元から切る。CutBranch は切った元のコミットを結果の `base` に、Rebase は載せ直した先を `onto` に返す（流し直しでも返す）。`BranchRebased` を出すのは rebase を終えたときだけで、衝突で止まった Rebase では出さず、解いて続けたステージ（`StageSpec.finishes_rebase`。CheckUnion）が完了したときに、同じフローの Rebase が返した先で出す。統合に失敗して取りやめた道では出さない
-- Rebase が載せ直すのは、根元から上のコミット（`git rebase --onto <一番上> <Task.base_commit>`）である。積み直すブランチは前に積んだブランチ（`GitJob.previous`）から切るので、破棄した下のタスクのコミットも含むが、それは根元より下にあるので載せない。載せ直すコミットが 0 件なら、ブランチを動かさずにエラーの証拠を返す（Task が失敗に数える）。§10 の「残した一番上から切り直す」は、切り直した結果が「残した一番上＋そのタスクのコミット」になることを言う
+- Rebase が載せ直すのは、根元から上のコミット（`git rebase --onto <一番上> <Task.base_commit>`）である。積み直すブランチは前に積んだブランチ（`GitJob.previous`）から切るので、破棄した下のタスクのコミットも含むが、それは根元より下にあるので載せない。載せ直すコミットが 0 件なら、Rebase の中身はブランチを動かさずに数だけを返し、Task が失敗に数える（`EvidenceCheck.OWN_COMMITS`。根元が無く数えられない `None` も失敗にする）。載せ直すものがあるかは、中身が流す前に `stages.has_own_commits` に聞く。期待する証拠に外れたときの報告（`on_mismatch`）を書かないステージは、外れたら失敗に数える。§10 の「残した一番上から切り直す」は、切り直した結果が「残した一番上＋そのタスクのコミット」になることを言う
 
 ### 配線と統括（5b1）
 

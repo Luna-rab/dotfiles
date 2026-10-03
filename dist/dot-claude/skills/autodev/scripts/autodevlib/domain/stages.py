@@ -85,6 +85,18 @@ class EvidenceCheck(Enum):
     UNION_KEPT = "union-kept"
     #: 完了チェックが通る（Gate）。結果が無ければ形の誤り。外れたときの扱いは GateEvaluator が決める
     GATE_PASSES = "gate-passes"
+    #: タスクのブランチに根元から上のコミットが 1 件以上ある（Rebase: 載せ直すものがある）。数え
+    #: られなければ（根元が無い）形の誤り
+    OWN_COMMITS = "own-commits"
+
+
+def has_own_commits(commits: int | None) -> bool:
+    """根元から上のコミットがあるか（`EvidenceCheck.OWN_COMMITS`）。
+
+    Rebase の中身は、載せ直す前にこれを聞き、偽なら流さない。0 件で `git rebase --onto` を流すと、
+    ブランチを一番上へ黙って動かし、タスクの仕事を消す。
+    """
+    return commits is not None and commits >= 1
 
 
 class ResultField(Enum):
@@ -236,7 +248,8 @@ class StageSpec:
     #: 確かめた結果「変えない」と返して、作る成果物の実物なしに終えてよいか。前に作った成果物を
     #: そのまま使う（報告を確かめ直したときなど）。前に作っていなければ、形の誤りで落ちる
     can_keep: bool = False
-    #: 決定的なステージが期待する証拠と、外れたときの報告
+    #: 決定的なステージが期待する証拠と、外れたときの報告。報告を書かなければ、外れたら失敗に数える
+    #: （1 回はやり直し、続けて落ちたら stage-errors）
     expects: EvidenceCheck | None = None
     on_mismatch: EscalationKind | None = None
     #: 同じフローの前の Rebase が衝突したときだけ走る（§11.4 の積むときの並び）
@@ -634,11 +647,13 @@ _SPECS: tuple[StageSpec, ...] = (
         result=frozenset({_F.WORKTREE_TASK, _F.TREE, _F.BRANCH, _F.BASE}),
         abandons_rebase=True,
     ),
-    # 終えた rebase の後で結果が載らずに流し直すときは、載せ直す前の HEAD から古い根元で載せ直す
+    # 終えた rebase の後で結果が載らずに流し直すときは、載せ直す前の HEAD から古い根元で載せ直す。
+    # 載せ直すコミットが無ければ、ブランチを動かさずに落ちる（ADDENDUM §12）
     _program(
         _S.REBASE,
         _GIT,
         result=frozenset({_F.ONTO}),
+        expects=EvidenceCheck.OWN_COMMITS,
         abandons_rebase=True,
         restores_start=True,
     ),

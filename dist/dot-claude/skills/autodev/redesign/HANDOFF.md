@@ -34,21 +34,15 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 | 3 | 集約・ドメインサービス・つなぎ目の表（`test_seams.SEAMS`） | 済み |
 | 4 | インフラ（SQLite のイベントストア・メインループ）・アダプタ（claude・git・gh）・ガードのフック | 済み |
 | 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | 済み。レビューと直しを 3 巡し、nit は N1〜N3 を直した |
-| 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | ほぼ済み。CLI・`status --json`・HUD・SKILL.md をマージし、本物の claude・gh で前提を確かめて直した。sandbox の通しのラン（`unique-words`）は質問もエスカレーションも無く終了コード 0 で終えた。下のユーザーに聞く件が残っている |
+| 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | 済み。本物の claude・gh で前提を確かめて直し、sandbox の通しのランが終了コード 0 で終えた |
 | 7 | 文書を置き換え、旧 autodev の残りを消して仕上げる | 未着手 |
 
 ## 5. 次にやること
 
-### 段 6
+### 段 6 から引き継ぐこと
 
-- **本物で確かめた結果**
-  - 前提の確かめは ARCHITECTURE §14 に残した 3 件（statusline の速さ・上限に当てた形・ssh の `git push`）を除いて済んだ。外れた「見つからないセッションの `--resume`」は直した
-  - テスト用の private リポジトリ `Luna-rab/autodev-sandbox`（手元は `~/ghq/github.com/Luna-rab/autodev-sandbox`、設定は `~/.config/autodev/repos/home__naru__ghq__github.com__Luna-rab__autodev-sandbox.json`）で通しのラン `unique-words` を走らせた。概要 PR #14 とタスク PR #15 ができ、ランを終えて概要 PR は draft から外れた。マージはしていない。ランディレクトリと worktree は `~/.local/state/autodev/unique-words` に残っている
-  - sandbox には旧 autodev の PR（#2・#4・#5・#7・#8）が開いたまま残っている。触らない
-  - 気づいたこと: 概要 PR のタイトルが指示の文を頭から切っただけになる（`[autodev] textkit.words に unique_words(text: str) -> list[str] を足し、…大文`）
-- **ユーザーと決めたこと**
-  - 概要 PR のタイトルは WriteOverview に書かせる（作業場所は `feature/autodev-redesign-overview-title`）
-  - sandbox の PR #14・#15 は close し、ラン `unique-words` は purge し、リモートのブランチも消した
+- **本物で確かめるのに使うリポジトリ**: テスト用の private リポジトリ `Luna-rab/autodev-sandbox`（手元は `~/ghq/github.com/Luna-rab/autodev-sandbox`、設定は `~/.config/autodev/repos/home__naru__ghq__github.com__Luna-rab__autodev-sandbox.json`）。使うときはユーザーに知らせる。旧 autodev の PR（#2・#4・#5・#7・#8）が開いたまま残っているが、触らない
+- **ARCHITECTURE §14 に残した未決**: statusline の速さ・利用枠の上限に当てた形・ssh の `git push`
 - **HUD は後でユーザーが整理する。今は触らない。** 旧い HUD で出していて今は出せない表示（指摘の件数と中身・起動時の指示と受入条件・終えた実行の履歴・ステージの指示と出力・制限時間・エスカレーションの理由の文）は、`status --json` に足さずに残す
 - **旧 autodev を参照しているほかのファイル**: `dist/dot-claude/hooks/turnreview/core/turn.py`・`dist/dot-claude/skills/create-pr/SKILL.md`・`install.sh`・`dist/dot-vscode-server/data/Machine/settings.json`。名前とパスを出すだけで、旧い state は読まない。段 7 で見直す。`install.sh` を変えたら、もう 1 つの dotfiles の checkout にも入れる（ユーザーのメモリー）
 

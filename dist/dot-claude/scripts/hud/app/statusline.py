@@ -42,16 +42,18 @@ def run_block(st: dict, now: dt.datetime) -> list[Text]:
 
 
 def autodev_block(now: dt.datetime) -> list[Text]:
-    """`status --json` を 1 回だけ呼んで、出すランのタスクリストを並べる。"""
-    reply = autodev.statuses()
-    found = runs.listing(reply.code, reply.data, reply.message)
-    if found.error is not None:
-        return [tasklist_view.failure_row(found.error)]
-    lines = [line for st in found.runs if runs.shown(st, now) for line in run_block(st, now)]
-    broken = sum(1 for st in found.runs if runs.error_of(st))
-    if broken:
-        lines.append(tasklist_view.broken_row(broken))
-    return lines
+    """`status --json` を 1 回だけ呼んで、出すランのタスクリストを並べる。
+
+    欄の形が想定と違って落ちても、statusline 全体を traceback で消さず、理由を 1 行で出す。
+    """
+    try:
+        reply = autodev.statuses()
+        found = runs.listing(reply.code, reply.data, reply.message)
+        if found.error is not None:
+            return [tasklist_view.failure_row(found.error)]
+        return [line for st in found.runs if runs.shown(st, now) for line in run_block(st, now)]
+    except Exception as error:
+        return [tasklist_view.failure_row(f"{type(error).__name__}: {error}")]
 
 
 def columns() -> int:

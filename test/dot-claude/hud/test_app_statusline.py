@@ -11,6 +11,8 @@ import sys
 import time
 
 from conftest import CLAUDE_SCRIPTS
+from hud.app import statusline
+from hud.ports import autodev
 from hud_samples import calls, quiet, session, stamp, status, write_fake_entry, write_usage
 
 SCRIPT = CLAUDE_SCRIPTS / "statusline.py"
@@ -138,9 +140,38 @@ def test_最後のイベントが古く回答も待たないランは出さな�
     assert len(run(tmp_path, statuses=[quiet(updated_at=stale)])) == 4
 
 
-def test_読めないランは数だけを1行で出す(tmp_path):
-    lines = run(tmp_path, statuses=[{"name": "old", "error": "ValueError: x"}])
-    assert lines[4:] == ["autodev 読めないラン 1 本 · autodev-watch で見る"]
+def test_読めないランは出さない(tmp_path):
+    """古いディレクトリ 1 つで毎回赤字が出ないように。読めないランは autodev-watch でだけ見せる。"""
+    assert len(run(tmp_path, statuses=[{"name": "old", "error": "ValueError: x"}])) == 4
+
+
+def test_パニックしたランは最後のイベントが古くても出す(tmp_path):
+    st = quiet(updated_at=stamp(dt.datetime.now().astimezone() - dt.timedelta(days=2)))
+    st["run"]["phase"] = "panicked"
+    assert run(tmp_path, statuses=[st])[4].startswith("autodev add-cache ▸ パニック")
+
+
+def test_型の違う欄があってもtracebackを出さずに描く(tmp_path):
+    """`progress` は実行器が書いたファイルの中身そのままなので、崩れていることがある。"""
+    st = status()
+    execution = st["tasks"][1]["executions"][0]
+    execution["round"] = "x"
+    execution["progress"]["turns"] = "many"
+    st["tasks"][4]["escalations"] = 5
+    st["tasks"][1]["flow"]["steps"] = "broken"
+    lines = run(tmp_path, columns=120, statuses=[st, status(name="other", tasks=5)])
+    assert lines[4].startswith("autodev add-cache ▸ task1 ジャッジ r0")
+    assert any(line.startswith("autodev other ▸ ") for line in lines)
+
+
+def test_組み立ての途中で落ちても理由を1行で出す(monkeypatch):
+    def broken(st, now):
+        raise KeyError("x")
+
+    monkeypatch.setattr(autodev, "statuses", lambda: autodev.Reply(0, [status()], ""))
+    monkeypatch.setattr(statusline, "run_block", broken)
+    got = statusline.autodev_block(dt.datetime.now().astimezone())
+    assert [line.plain for line in got] == ["autodev status を読めない · KeyError: 'x'"]
 
 
 def test_statusが返らなければそう出す(tmp_path):

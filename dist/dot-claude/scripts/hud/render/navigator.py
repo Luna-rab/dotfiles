@@ -66,7 +66,7 @@ def task_row(task: dict) -> Text:
 def stage_row(item: StageItem) -> Text:
     mark, style = STAGE_MARK.get(item.mark, ("◻", DIM))
     row = Text(f"{mark} ", style=style)
-    if item.older:
-        row.append("前の版 ", style=DIM)
+    if item.note:
+        row.append(f"{item.note} ", style=DIM)
     row.append(item.label, style=DIM if item.mark in (Mark.NEXT, Mark.SKIPPED) else "")
     return row

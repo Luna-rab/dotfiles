@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 from hud.core.pipeline import Mark, Step
+from hud.core.stagelist import StageItem
 from hud.core.tasklist import Summary
-from hud.render import parts, tasklist
+from hud.render import detail, parts, tasklist
 from rich.text import Text
 
 
@@ -64,6 +67,14 @@ def test_エスカレーション中のタスクは種類を出す():
         "escalations": [{"kind": "stall"}],
     }
     assert tasklist.task_row(task, []).plain.endswith("  stall")
+
+
+def test_飛ばした段は飛ばしたと出す():
+    item = StageItem("step:1", "リベース", Mark.SKIPPED, ())
+    text = Text()
+    for part in detail.stage_detail(item, dt.datetime.now().astimezone()).renderables:
+        text.append_text(part if isinstance(part, Text) else Text(str(part)))
+    assert "飛ばした" in text.plain and "まだ走っていない" not in text.plain
 
 
 def test_まとめた行():

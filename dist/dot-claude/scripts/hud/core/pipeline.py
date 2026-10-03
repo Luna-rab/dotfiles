@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from hud.core.runs import flow_of
+from hud.core.runs import dicts, flow_of
 
 #: ステージの種類（`StageKind` の値）から、画面に出す名前へ
 FULL = {
@@ -114,7 +114,7 @@ def steps(task: dict) -> list[Step]:
     flow = flow_of(task)
     if flow is None:
         return []
-    all_steps = [step_of(e) for e in flow.get("steps") or [] if isinstance(e, dict)]
+    all_steps = [step_of(e) for e in dicts(flow.get("steps"))]
     # まとめるのは先頭から続く済んだ段だけにして、段の順を入れ替えない
     head = 0
     while head < len(all_steps) and all_steps[head].mark in (Mark.DONE, Mark.SKIPPED):

@@ -12,7 +12,7 @@ from rich.text import Text
 
 from hud.core.headline import Headline, State
 from hud.core.pipeline import Mark, Step
-from hud.core.runs import short, task_label
+from hud.core.runs import escalations, short, task_label
 from hud.core.tasklist import Summary
 from hud.render.parts import clip
 from hud.render.theme import ACCENT, ARROW, DIM, GREEN, RED, YELLOW, status_mark
@@ -78,7 +78,7 @@ def task_row(task: dict, steps: list[Step]) -> Text:
     if status == "stacked" and task.get("pr"):
         detail = Text(f"#{task['pr']}", style=DIM)
     elif status == "escalated":
-        kinds = " ".join(str(e.get("kind")) for e in task.get("escalations") or [])
+        kinds = " ".join(str(e.get("kind")) for e in escalations(task))
         detail = clip(Text(kinds or "エスカレーション中", style=YELLOW), ESCALATION_WIDTH)
     elif status in PIPELINE_STATUSES:
         detail = pipeline(steps)
@@ -95,11 +95,6 @@ def summary_row(summary: Summary) -> Text:
     if summary.status == "stacked":
         return Text("  ✔ ", style=GREEN).append(f"{summary.count} 件完了", style=DIM)
     return Text("  ◻ ", style=DIM).append(f"他 {summary.count} 件", style=DIM)
-
-
-def broken_row(count: int) -> Text:
-    """status が読めなかったランの数。statusline では 1 行にまとめ、中身は autodev-watch で見せる。"""
-    return Text(f"autodev 読めないラン {count} 本 · autodev-watch で見る", style=YELLOW)
 
 
 def failure_row(message: str) -> Text:

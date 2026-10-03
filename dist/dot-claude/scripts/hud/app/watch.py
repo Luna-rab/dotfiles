@@ -3,6 +3,9 @@
 左ペインは「ラン → タスク → 段」のリストを 1 層ずつ出し、右ペインに選んでいる項目の詳細を出す。
 ランのリストでは全ランの status を、タスクと段のリストでは選んだラン 1 つの status を呼ぶ。
 
+**status は別のスレッドで呼ぶ。** 1 回で最大 2 秒待つので、イベントループで呼ぶとその間キーも
+描き直しも止まる。呼び終えてから、結果をイベントループに戻して描き直す。
+
 | キー | すること |
 | --- | --- |
 | ↑ ↓ / ホイール | 項目を選ぶ（右ペインの詳細が変わる） |
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
 
@@ -41,6 +45,45 @@ class Level(Enum):
     STAGES = "stages"
 
 
+@dataclass(frozen=True)
+class Loaded:
+    """status を 1 回読んだ結果。"""
+
+    #: 読めた status。読み損じたら None で、前に読めたものとカーソルを残す
+    states: list[dict] | None
+    #: 読み損じた理由
+    failure: str | None = None
+    #: 選んでいたランが、全ランの一覧にも無い
+    gone: bool = False
+
+
+def load(level: Level, name: str | None, now: dt.datetime) -> Loaded:
+    """今の層に要る status だけを呼ぶ。イベントループの外のスレッドで動く。
+
+    `--name` の終了コード 1 は「ランが無い」とは限らない（CLI の捕まえていない例外も 1）ので、
+    読めなければ一覧も呼び、一覧にもそのラン名が無いときだけ消えたとみなす。
+    """
+    try:
+        if level is not Level.RUNS and name is not None:
+            reply = autodev.status(name)
+            st, failure = runs.single(reply.code, reply.data, reply.message)
+            if st is not None:
+                return Loaded([st])
+            reply = autodev.statuses()
+            found = runs.listing(reply.code, reply.data, reply.message)
+            if runs.gone(name, found):
+                return Loaded(runs.order(found.runs, now), gone=True)
+            return Loaded(None, failure)
+        reply = autodev.statuses()
+        found = runs.listing(reply.code, reply.data, reply.message)
+        if found.error is not None:
+            return Loaded(None, found.error)
+        return Loaded(runs.order(found.runs, now))
+    except Exception as error:
+        # 別のスレッドで落ちると Textual が画面ごと終える。読み損じとして出す
+        return Loaded(None, f"{type(error).__name__}: {error}")
+
+
 class Watch(App):
     TITLE = "autodev watch"
     CSS = """
@@ -65,8 +108,10 @@ class Watch(App):
         self.cursor: dict[Level, str | None] = {level: None for level in Level}
         #: ランのリストでは全ラン、深い層では選んだラン 1 つだけ
         self.states: list[dict] = []
-        #: status を呼べなかった理由。呼べていれば None
+        #: 最後に status を読み損じた理由。読めていれば None
         self.failure: str | None = None
+        #: status を呼んでいるスレッドがある。重ねて呼ばない
+        self.loading = False
         self.now = dt.datetime.now().astimezone()
         self.signature: list[tuple[str, str]] = []
 
@@ -86,22 +131,34 @@ class Watch(App):
 
     # --- 読む ------------------------------------------------------------------
 
-    def fetch(self) -> None:
-        """今の層に要る status だけを呼ぶ。ラン 1 つが消えていたら、ランのリストに戻る。"""
-        if self.level is not Level.RUNS and self.run_name is not None:
-            reply = autodev.status(self.run_name)
-            st, self.failure = runs.single(reply.code, reply.data, reply.message)
-            if st is not None:
-                self.states = [st]
-                return
-            if self.failure is not None:
-                self.states = []
-                return
+    def reload(self) -> None:
+        """status を別のスレッドで呼び始める。描き直すのは、結果が返ってから（`apply`）。"""
+        if self.loading:
+            return
+        self.loading = True
+        level, name = self.level, self.run_name
+        now = dt.datetime.now().astimezone()
+
+        def work() -> None:
+            loaded = load(level, name, now)
+            self.call_from_thread(self.apply, level, name, now, loaded)
+
+        self.run_worker(work, thread=True, group="status")
+
+    def apply(self, level: Level, name: str | None, now: dt.datetime, loaded: Loaded) -> None:
+        self.loading = False
+        if (level, name) != (self.level, self.run_name):
+            # 呼んでいる間に層を移った。前の層の結果は捨てて、今の層で呼び直す
+            self.reload()
+            return
+        self.now = now
+        if loaded.gone:
             self.level, self.run_name, self.task_id = Level.RUNS, None, None
-        reply = autodev.statuses()
-        found = runs.listing(reply.code, reply.data, reply.message)
-        self.failure = found.error
-        self.states = runs.order(found.runs, self.now)
+            self.signature = []
+        if loaded.states is not None:
+            self.states = loaded.states
+        self.failure = loaded.failure
+        self.redraw()
 
     @property
     def current_run(self) -> dict | None:
@@ -150,9 +207,8 @@ class Watch(App):
 
     # --- 描く ------------------------------------------------------------------
 
-    def reload(self) -> None:
-        self.now = dt.datetime.now().astimezone()
-        self.fetch()
+    def redraw(self) -> None:
+        """手元の status で描き直す。status は呼ばない。"""
         self.query_one("#crumb", Static).update(
             navigator.breadcrumb(
                 self.run_name if self.level is not Level.RUNS else None,
@@ -181,8 +237,14 @@ class Watch(App):
         self.query_one("#info-body", Static).update(self.info())
 
     def info(self) -> Text | Group:
-        if self.failure is not None:
+        """選んでいる項目の詳細。読み損じたときは、その理由を前に読めた詳細の上に出す。"""
+        if self.failure is None:
+            return self.item_or_run_info()
+        if not self.states:
             return detail.failure_detail(self.failure)
+        return Group(detail.failure_detail(self.failure), Text(), self.item_or_run_info())
+
+    def item_or_run_info(self) -> Text | Group:
         key = self.cursor[self.level]
         st = self.current_run if self.level is not Level.RUNS else self.find_run(key)
         if st is None or key is None:
@@ -232,6 +294,8 @@ class Watch(App):
                 self.cursor[Level.STAGES] = None
             self.task_id, self.level = key, Level.STAGES
         self.signature = []
+        # 手元の status ですぐ描き、続けて新しい層の status を呼ぶ
+        self.redraw()
         self.reload()
 
     def action_leave(self) -> None:
@@ -243,6 +307,7 @@ class Watch(App):
         else:
             return
         self.signature = []
+        self.redraw()
         self.reload()
 
 

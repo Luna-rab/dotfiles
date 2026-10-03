@@ -24,10 +24,52 @@ def test_一覧は終了コード0の配列だけを受け取る():
     assert runs.listing(None, None, "").error == "終了コード None"
 
 
-def test_1つのランは終了コード1ならランが無いとして読み損じと分ける():
+def test_終了コード0でも中身が違えばそう理由を出す():
+    assert runs.listing(0, None, "").error == "JSON の配列が返らなかった"
+    assert runs.listing(0, {"name": "a"}, "警告").error == "JSON の配列が返らなかった · 警告"
+    assert runs.single(0, [], "") == (None, "JSON のオブジェクトが返らなかった")
+
+
+def test_1つのランは終了コード1でも読み損じとして理由を返す():
+    """終了コード 1 は、CLI の捕まえていない例外でも返る。ランが無いとは決めない。"""
     assert runs.single(0, {"name": "a"}, "") == ({"name": "a"}, None)
-    assert runs.single(1, None, "そのランが無い") == (None, None)
-    assert runs.single(0, None, "") == (None, "終了コード 0")
+    assert runs.single(1, None, "Traceback") == (None, "Traceback")
+
+
+def test_ランが消えたとみなすのは一覧が読めてそこにも無いときだけ():
+    found = runs.Listing([status()])
+    assert runs.gone("nope", found)
+    assert not runs.gone("add-cache", found)
+    assert not runs.gone("nope", runs.Listing([], "終了コード 1"))
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {"tasks": 5},
+        {"questions": "q1"},
+        {"run": "running"},
+        {"stack": []},
+    ],
+)
+def test_型の違う欄があっても見出しを組める(broken):
+    head = headline.build(status(**broken), now())
+    assert head.run_name == "add-cache"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("round", "x"), ("round", None), ("progress", "broken"), ("progress", {"turns": "many"})],
+)
+def test_型の違う実行の欄は0や空として読む(field, value):
+    st = status()
+    st["tasks"][1]["executions"][0][field] = value
+    got = runs.running(st, now())
+    assert len(got) == 1 and isinstance(got[0].round, int) and isinstance(got[0].turns, int)
+
+
+def test_number_は整数だけを通す():
+    assert [runs.number(v) for v in (3, "3", None, True, 2.5)] == [3, 0, 0, 0, 0]
 
 
 def test_Zで終わる時刻を読む():
@@ -51,9 +93,12 @@ def test_statuslineに出すのは終えていないラン():
     assert not runs.shown({"name": "old", "error": "ValueError: x"}, now())
 
 
-def test_最後のイベントが古いランは回答待ちのときだけ出す():
+def test_最後のイベントが古いランは回答待ちかパニックのときだけ出す():
     assert not runs.shown(quiet(updated_at=ago(hours=4)), now())
     assert runs.shown(status(updated_at=ago(hours=4)), now())
+    panicked = quiet(updated_at=ago(days=2))
+    panicked["run"]["phase"] = "panicked"
+    assert runs.shown(panicked, now())
 
 
 def test_終えていないランを先に並べ読めないランは最後():

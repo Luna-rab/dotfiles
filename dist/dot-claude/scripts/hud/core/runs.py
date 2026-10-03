@@ -49,20 +49,52 @@ class Running:
     tool: str
 
 
+def dicts(value: Any) -> list[dict]:
+    """配列のうち、オブジェクトの要素だけ。配列でなければ空。
+
+    status の欄は崩れていることがある（`progress` は実行器が書いたファイルの中身そのまま）。
+    型を確かめずに回すと、statusline が traceback を出して落ちる。
+    """
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def items(value: Any) -> list:
+    """配列ならそのまま、配列でなければ空。"""
+    return value if isinstance(value, list) else []
+
+
+def number(value: Any) -> int:
+    """整数ならそのまま、ほかは 0。bool も整数の仲間なので外す。"""
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _failure(code: int | None, message: str, shape: str) -> str:
+    if code == 0:
+        return f"{shape}が返らなかった" + (f" · {message}" if message else "")
+    return message or f"終了コード {code}"
+
+
 def listing(code: int | None, data: Any, message: str) -> Listing:
     """`status --json`（`--name` なし）の結果。終了コード 0 で配列が返れば一覧。"""
     if code == 0 and isinstance(data, list):
-        return Listing([st for st in data if isinstance(st, dict)])
-    return Listing([], message or f"終了コード {code}")
+        return Listing(dicts(data))
+    return Listing([], _failure(code, message, "JSON の配列"))
 
 
 def single(code: int | None, data: Any, message: str) -> tuple[dict | None, str | None]:
-    """`status --json --name` の結果。（ラン, 読めない理由）。ランが無い（終了コード 1）ならどちらも None。"""
+    """`status --json --name` の結果。（ラン, 読めない理由）。
+
+    終了コード 1 は「ランが無い」だけでなく、CLI の捕まえていない例外でも返るので、ここでは
+    見分けない。ランが消えたかは、一覧にそのラン名があるかで決める（`gone`）。
+    """
     if code == 0 and isinstance(data, dict):
         return data, None
-    if code == 1:
-        return None, None
-    return None, message or f"終了コード {code}"
+    return None, _failure(code, message, "JSON のオブジェクト")
+
+
+def gone(name: str, found: Listing) -> bool:
+    """一覧が読めて、そこにもそのラン名が無い。一覧も読めなければ、消えたとは言えない。"""
+    return found.error is None and all(name_of(st) != name for st in found.runs)
 
 
 def age(stamp: Any, now: dt.datetime) -> float | None:
@@ -110,7 +142,7 @@ def awaiting(st: dict) -> bool:
 
 
 def tasks(st: dict) -> list[dict]:
-    return [t for t in st.get("tasks") or [] if isinstance(t, dict)]
+    return dicts(st.get("tasks"))
 
 
 def implementation(st: dict) -> list[dict]:
@@ -118,11 +150,16 @@ def implementation(st: dict) -> list[dict]:
 
 
 def questions(st: dict) -> list[dict]:
-    return [q for q in st.get("questions") or [] if isinstance(q, dict)]
+    return dicts(st.get("questions"))
 
 
 def executions(task: dict) -> list[dict]:
-    return [e for e in task.get("executions") or [] if isinstance(e, dict)]
+    return dicts(task.get("executions"))
+
+
+def escalations(owner: dict) -> list[dict]:
+    """ラン（`escalations[]`）かタスク（`tasks[].escalations[]`）の、開いているエスカレーション。"""
+    return dicts(owner.get("escalations"))
 
 
 def flow_of(task: dict) -> dict | None:
@@ -158,9 +195,9 @@ def running(st: dict, now: dt.datetime) -> list[Running]:
                 Running(
                     task=str(task.get("id") or "?"),
                     stage=str(execution.get("stage") or "?"),
-                    round=int(execution.get("round") or 0),
+                    round=number(execution.get("round")),
                     seconds=age(execution.get("started_at"), now),
-                    turns=int(progress.get("turns") or 0),
+                    turns=number(progress.get("turns")),
                     tool=str(progress.get("lastTool") or ""),
                 )
             )
@@ -168,10 +205,14 @@ def running(st: dict, now: dt.datetime) -> list[Running]:
 
 
 def shown(st: dict, now: dt.datetime) -> bool:
-    """statusline に出すラン。読めないランは別に数えて出すので、ここでは外す。"""
+    """statusline に出すラン。
+
+    読めないランは出さない（古いディレクトリ 1 つで毎回赤字が出る。autodev-watch のリストでだけ見せる）。
+    回答待ちとパニックは、人が動くまで進まないので、時間の窓に関わらず出し続ける。
+    """
     if error_of(st) or phase(st) == "finished":
         return False
-    if awaiting(st):
+    if awaiting(st) or phase(st) == "panicked":
         return True
     updated = age(st.get("updated_at"), now)
     return updated is not None and updated <= RECENT

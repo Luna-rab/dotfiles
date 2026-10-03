@@ -969,6 +969,19 @@ def test_回答が届く前に回答以外で閉じたエスカレーション�
     assert run.replayed().answers == run.aggregate.answers
 
 
+def test_Runで開いたことの無いidへの回答は閉じた印を付けずラン統括を起こす(planned_run: RunLoop):
+    # ラン統括が ask-user の escalation にタスクの側の id を取り違えて書いた。印を付けて起こさないと、
+    # 開いたままのエスカレーションを起こすものが無くなる
+    run = planned_run
+    run.escalate(t(1), E.NEEDS_HUMAN, source="task/task1#5")
+    run.record_answer("q-a", EventId("task/task1#5"))
+    recorded = run.events[-1]
+    assert isinstance(recorded, AnswerRecorded)
+    assert not recorded.escalation_closed
+    assert wake_for(recorded, run.aggregate.event_id) is not None
+    assert run.replayed().opened_escalations == run.aggregate.opened_escalations
+
+
 def failed(supervisor: TaskId | None, notice: str) -> ReportSupervisorFailure:
     return ReportSupervisorFailure(
         command_id=new_id(),

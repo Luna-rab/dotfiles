@@ -313,7 +313,17 @@ def interruptible() -> None:
         if message is None:
             return
         if message.get("type") == "control_request":
-            result(subtype="error_during_execution", is_error=True)
+            # claude 2.1.288 で、ツールの実行中に止めた形（段 6 の p3a2.jsonl）
+            result(
+                subtype="error_during_execution",
+                is_error=True,
+                result=None,
+                stop_reason="tool_use",
+                terminal_reason="aborted_tools",
+                errors=[
+                    "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"
+                ],
+            )
             drain()
             return
 

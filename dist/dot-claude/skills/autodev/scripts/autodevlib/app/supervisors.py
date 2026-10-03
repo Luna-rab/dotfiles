@@ -427,7 +427,10 @@ class SupervisorRunner:
                     return None
                 if _answered(outcome):
                     return outcome
-                reason = outcome.text or outcome.stderr or outcome.ending.value
+                # 実行器（`_llm_evidence`）と同じく、こちらが止めた理由を先に見る
+                reason = (
+                    outcome.interrupted or outcome.text or outcome.stderr or outcome.ending.value
+                )
                 log.warning(
                     "%s が判断を返さずに落ちた（%s %d 回目）: %s",
                     supervisor.name,

@@ -196,6 +196,27 @@ def test_落ち続けたら新しいセッションの知らせからもう1回�
     assert rig.runtime.calls[-1].session not in {c.session for c in calls}
 
 
+def test_こちらが止めたなら止めた理由を落ちた理由にする(tmp_path: Path):
+    """interrupt の result の `errors` は診断の文で、止めた理由ではない（段 6 の実測）。"""
+
+    def script(call: AgentCall) -> AgentOutcome:
+        return AgentOutcome(
+            ending=Ending.RESULT,
+            exit_code=1,
+            session=call.session,
+            subtype="error_during_execution",
+            is_error=True,
+            text="落ちた",
+            interrupted="制限時間を超えた",
+        )
+
+    rig = Rig(tmp_path, script)
+    rig.runner().wake(TASK, prompt(), SOURCE)
+    failure = rig.take()
+    assert isinstance(failure, ReportSupervisorFailure)
+    assert failure.reason.endswith(": 制限時間を超えた")
+
+
 def test_判断を返さずに普通に終わったら同じセッションに差し戻す(tmp_path: Path):
     outcomes = iter([None, FLOW])
 

@@ -688,10 +688,13 @@ def _message_text(event: Mapping[str, Any]) -> str:
 
 def _errors(value: Any) -> str:
     """result の `errors`。`error_max_turns`・`error_during_execution` の result は `result` の欄を
-    持たず、理由はここにだけ載る（claude 2.1.288 で確かめた）。"""
+    持たず、理由はここにだけ載る（claude 2.1.288 で確かめた）。interrupt で止めたときに載る
+    `[ede_diagnostic]` の文は claude の中の診断で、失敗の理由ではないので外す。"""
     if not isinstance(value, Sequence) or isinstance(value, str):
         return ""
-    return "\n".join(str(e) for e in value if isinstance(e, str) and e)
+    return "\n".join(
+        e for e in value if isinstance(e, str) and e and not e.startswith("[ede_diagnostic]")
+    )
 
 
 def _deferred(value: Any) -> DeferredToolUse | None:

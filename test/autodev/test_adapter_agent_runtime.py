@@ -338,6 +338,8 @@ def test_interruptを送るとresultが返る(
     assert got.ending is Ending.RESULT
     assert got.subtype == "error_during_execution"
     assert got.interrupted == "止める"
+    # `errors` の診断の文は、失敗の理由にしない
+    assert got.text == ""
     sent = [json.loads(line) for line in json.loads(record.read_text(encoding="utf-8"))["stdin"]]
     control = [m for m in sent if m["type"] == "control_request"]
     assert control[0]["request"] == {"subtype": "interrupt", "cancel_queued": True}

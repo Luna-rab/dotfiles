@@ -81,7 +81,7 @@ from ..domain.value_objects.stage_exit import StageExit
 from ..domain.value_objects.stream_id import StreamId
 from ..domain.value_objects.task_id import TaskId
 from ..infra.files import utc_now
-from ..infra.status import remove_progress, write_progress
+from ..infra.status.status import remove_progress, write_progress
 from . import files, outputs
 from .mainloop import Ticket
 from .programs import (

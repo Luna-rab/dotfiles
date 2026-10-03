@@ -11,8 +11,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from ..domain import codec
-from ..domain.commands.base import Command
+from ...domain import codec
+from ...domain.commands.base import Command
 
 
 @dataclass(frozen=True)

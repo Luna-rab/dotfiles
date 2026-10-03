@@ -64,7 +64,7 @@ from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_status import TaskStatus
-from autodevlib.infra.requests import RequestBox
+from autodevlib.infra.store.requests import RequestBox
 from test_seams import (
     STUCK_PREFIX,
     Outcome,

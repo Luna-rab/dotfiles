@@ -69,7 +69,7 @@ driver が走っていれば、置いた回答をそのまま受け取る。回�
 取り下げた質問に答えると、`answer` は 1 で落ち、標準エラーに取り下げた理由が出る。ユーザーに
 「その質問は取り下げられた」と理由を添えて伝え、次の質問を待つ。答え済み・無い質問・空の回答も 1 で落ちる。
 
-状態を知りたいときは `autodev.py status --json --name <ラン名>` を読む（形は `scripts/autodevlib/infra/status_sections.py`）。
+状態を知りたいときは `autodev.py status --json --name <ラン名>` を読む（形は `scripts/autodevlib/infra/status/status_sections.py`）。
 
 ## 3. 終わったとき
 

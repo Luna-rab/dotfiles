@@ -30,12 +30,12 @@ from autodevlib.domain.value_objects.question_id import QuestionId
 from autodevlib.domain.value_objects.repository import Repository
 from autodevlib.domain.value_objects.run_name import RunName
 from autodevlib.domain.value_objects.stream_id import StreamId
-from autodevlib.infra import status as status_module
-from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.lock import DriverLock
 from autodevlib.infra.paths import RunPaths
 from autodevlib.infra.repo_config import config_path
-from autodevlib.infra.requests import RequestBox
+from autodevlib.infra.status import status as status_module
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.requests import RequestBox
 from conftest import SCRIPTS_ROOT, SKILL_ROOT
 from executor_fakes import commit, make_repo, sh
 from fake_claude_run import ASK_ID, QUESTION

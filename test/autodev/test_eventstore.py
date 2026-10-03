@@ -14,8 +14,8 @@ from autodevlib.domain.events.record import UnknownEventType, to_record
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.event_id import EventId
 from autodevlib.domain.value_objects.stream_id import StreamId
-from autodevlib.infra import db
-from autodevlib.infra.eventstore import (
+from autodevlib.infra.store import db
+from autodevlib.infra.store.eventstore import (
     CorruptStream,
     EventReader,
     EventStore,

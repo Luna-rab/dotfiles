@@ -20,10 +20,10 @@ from ..domain.commands.questions import AnswerQuestion
 from ..domain.events.run import RunStarted
 from ..domain.value_objects.execution_id import ExecutionId
 from ..domain.value_objects.stream_id import StreamId
-from ..infra.eventstore import EventReader
 from ..infra.paths import RunPaths
 from ..infra.repo_config import RepoConfig
-from ..infra.requests import RequestBox, UnreadableRequest
+from ..infra.store.eventstore import EventReader
+from ..infra.store.requests import RequestBox, UnreadableRequest
 from .driver import Driver
 from .executor import from_parts
 

@@ -20,14 +20,14 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, TypeVar
 
-from ..domain.aggregates.base import Aggregate
-from ..domain.events.base import Event
-from ..domain.events.record import EventRecord, from_record, to_record
-from ..domain.value_objects.command_id import CommandId
-from ..domain.value_objects.event_id import EventId
-from ..domain.value_objects.stream_id import StreamId
+from ...domain.aggregates.base import Aggregate
+from ...domain.events.base import Event
+from ...domain.events.record import EventRecord, from_record, to_record
+from ...domain.value_objects.command_id import CommandId
+from ...domain.value_objects.event_id import EventId
+from ...domain.value_objects.stream_id import StreamId
+from ..files import utc_now
 from . import db
-from .files import utc_now
 
 R = TypeVar("R", bound="EventReader")
 

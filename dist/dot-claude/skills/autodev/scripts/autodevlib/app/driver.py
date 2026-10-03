@@ -47,9 +47,9 @@ from ..domain.value_objects.event_id import EventId
 from ..domain.value_objects.interrupt_cause import InterruptCause
 from ..domain.value_objects.issuer import Issuer
 from ..domain.value_objects.stream_id import StreamId
-from ..infra.eventstore import EventStore
 from ..infra.paths import RunPaths
-from ..infra.rejections import RejectionLog
+from ..infra.store.eventstore import EventStore
+from ..infra.store.rejections import RejectionLog
 from .executor import StageExecutor, StagePrompt
 from .mainloop import Delivery, Inbox, LoopExit, MainLoop, Outcome, Subscriber
 from .prompts import Prompts, skill_root

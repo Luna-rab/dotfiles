@@ -10,8 +10,8 @@ from autodevlib.domain.commands.run import StartTask
 from autodevlib.domain.commands.task import ResumeStage
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.issuer import Issuer
-from autodevlib.infra.eventstore import EventStore
-from autodevlib.infra.requests import Request, RequestBox, UnreadableRequest
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.requests import Request, RequestBox, UnreadableRequest
 
 
 @pytest.fixture

@@ -49,12 +49,12 @@ from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_kind import TaskKind
 from autodevlib.domain.value_objects.task_spec import TaskSpec
-from autodevlib.infra import db
-from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.paths import RunPaths
-from autodevlib.infra.rejections import Rejection
-from autodevlib.infra.requests import RequestBox
-from autodevlib.infra.status import read_progress, write_progress
+from autodevlib.infra.status.status import read_progress, write_progress
+from autodevlib.infra.store import db
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.rejections import Rejection
+from autodevlib.infra.store.requests import RequestBox
 
 STACK = StreamId.stack()
 BRANCH = BranchName("stack/r--task1")

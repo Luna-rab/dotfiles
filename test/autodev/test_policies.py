@@ -31,8 +31,8 @@ from autodevlib.domain.value_objects.issuer_kind import IssuerKind
 from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
-from autodevlib.infra.eventstore import EventStore
-from autodevlib.infra.rejections import Rejection
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.rejections import Rejection
 
 SEAMS = {seam.name: seam for seam in seams.SEAMS}
 ROWS: dict[str, Policy] = {policy.name: policy for policy in (*POLICIES, *FOLLOW_UPS.values())}

@@ -50,11 +50,11 @@ from .domain.value_objects.issuer import Issuer
 from .domain.value_objects.question_id import QuestionId
 from .domain.value_objects.repository import Repository
 from .domain.value_objects.run_name import RunName
-from .infra.eventstore import EventReader
 from .infra.lock import DriverBusy, DriverLock
 from .infra.paths import RunPaths
 from .infra.repo_config import RepoConfigError, config_path, load_repo_config
-from .infra.requests import RequestBox
+from .infra.store.eventstore import EventReader
+from .infra.store.requests import RequestBox
 
 OK = 0
 FAILED = int(ExitCode.FAILED)
@@ -206,7 +206,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    from .infra.status import all_statuses, run_status  # noqa: PLC0415
+    from .infra.status.status import all_statuses, run_status  # noqa: PLC0415
 
     if args.name is None:
         _emit(all_statuses())

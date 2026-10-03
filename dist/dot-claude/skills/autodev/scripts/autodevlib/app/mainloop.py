@@ -54,11 +54,11 @@ from ..domain.value_objects.execution_id import ExecutionId
 from ..domain.value_objects.interrupt_cause import InterruptCause
 from ..domain.value_objects.issuer import Issuer
 from ..domain.value_objects.stream_id import StreamId
-from ..infra.eventstore import AggregateFactory, EventStore, StoredEvent, decoded, replay
 from ..infra.paths import RunPaths
-from ..infra.rejections import Rejection
-from ..infra.requests import Request, RequestBox, UnreadableRequest
-from ..infra.status import prune_progress
+from ..infra.status.status import prune_progress
+from ..infra.store.eventstore import AggregateFactory, EventStore, StoredEvent, decoded, replay
+from ..infra.store.rejections import Rejection
+from ..infra.store.requests import Request, RequestBox, UnreadableRequest
 
 log = logging.getLogger(__name__)
 

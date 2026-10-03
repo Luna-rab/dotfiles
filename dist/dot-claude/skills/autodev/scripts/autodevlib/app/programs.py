@@ -259,8 +259,8 @@ def rebase(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     載せ直すのは、根元（`Task.base_commit`）から HEAD までのコミットだけ（`git rebase --onto <一番上>
     <根元>`）。積み直すブランチは前に積んだブランチから切るので、破棄した下のタスクのコミットも含むが、
     それは根元より下にあるので載せない（ADDENDUM §10）。載せ直すコミットが無ければ、ブランチを一番上へ
-    動かさずに落ちる（タスクの仕事を黙って消さない）。途中の rebase は、流す前に実行器が取りやめている
-    （`StageSpec.abandons_rebase`）。
+    動かさずに落ちる（タスクの仕事を黙って消さない）。流す前に実行器が、途中の rebase を取りやめ、始めた
+    時点へ戻している（`StageSpec.abandons_rebase`・`restores_start`）。
     """
     job = _job(ctx)
     git, tree = tools.git, ctx.tree
@@ -486,9 +486,20 @@ def relink(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
 #: 決定的なステージの種類 → 中身
 def run_program(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    """ステージの中身を流す。宣言（`StageSpec.abandons_rebase`）があれば、途中の rebase を先に取りやめる。"""
-    if ctx.spec.abandons_rebase and (ctx.tree / ".git").exists():
-        tools.git.rebase_abort(ctx.tree)
+    """ステージの中身を流す。宣言があれば、途中の rebase を先に取りやめ（`StageSpec.abandons_rebase`）、
+    始めた時点へ戻す（`StageSpec.restores_start`）。取りやめてから戻すのは、rebase の途中で reset すると
+    rebase の状態が残るためである。
+
+    戻すのは `reset --keep` で、`--hard` と clean は使わない。初めて流すときは HEAD が始めた時点なので
+    何も変わらず、汚れた worktree はステージの中身（git rebase）が断って落ちる。黙って消すと気づけない。
+    流し直しは中身を終えた後なので、追跡していないファイルは残っていない。
+    """
+    spec, tree = ctx.spec, ctx.tree
+    if (tree / ".git").exists():
+        if spec.abandons_rebase:
+            tools.git.rebase_abort(tree)
+        if spec.restores_start and ctx.start_commit is not None:
+            tools.git.reset_keep(tree, str(ctx.start_commit))
     return PROGRAMS[ctx.execution.stage](ctx, tools)
 
 

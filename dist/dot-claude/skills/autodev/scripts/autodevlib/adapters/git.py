@@ -239,6 +239,11 @@ class Git:
         self._ok(tree, "reset", "--quiet", "--hard", commit)
         self._ok(tree, "clean", "-fdq")
 
+    def reset_keep(self, tree: str | os.PathLike[str], commit: str) -> None:
+        """`commit` に戻す。HEAD と `commit` の間で変わるファイルにコミットしていない変更があれば、
+        消さずに落ちる（`reset --keep`）。HEAD がもう `commit` なら何もしない（汚れた worktree も残す）。"""
+        self._ok(tree, "reset", "--quiet", "--keep", commit)
+
     def restore_conflicts(self, tree: str | os.PathLike[str], paths: Sequence[str]) -> None:
         """rebase の途中で、解きかけたファイルを衝突の印のある状態に戻す（index の段から作り直す）。"""
         if paths:

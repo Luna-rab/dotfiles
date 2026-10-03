@@ -551,13 +551,50 @@ def test_同じworktreeの次のbeginは止めた実行が終わるまで待つ(
     assert ex(S.IMPL) not in env.executor._live
 
 
-def stuck_stop(env: Env, tree: Path, *, finished: bool = False) -> executor_module._Live:
-    """`tree` で止めたことにした実行（`finished` でなければ、いつまでも終わらない）。"""
+def stuck_stop(env: Env, tree: Path) -> executor_module._Live:
+    """`tree` で止めたことにした、いつまでも終わらない実行。"""
     live = executor_module._Live(tree, stopped=True)
-    if finished:
-        live.done.set()
     env.executor._stopping.append(live)
     return live
+
+
+def test_走り出した直後に止めた実行は自分の終わりを待たず同じworktreeの次の仕事も待たせない(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+):
+    """run のスレッドが止めた実行を待つ前に止めると、その走りは止めている実行の一覧に入っている。"""
+    impl_task(env)
+    monkeypatch.setattr(executor_module, "STOP_WAIT_SECONDS", 5.0)
+    env.begin(ex(S.IMPL))
+    entered, release = threading.Event(), threading.Event()
+    progress = env.executor._progress
+
+    def held(context, body):
+        entered.set()
+        release.wait(10)
+        progress(context, body)
+
+    monkeypatch.setattr(env.executor, "_progress", held)
+    env.executor.run(ex(S.IMPL), env.world.inbox.expect(ex(S.IMPL)))
+    assert entered.wait(10)
+    env.executor.interrupt(ex(S.IMPL))
+    tree = env.paths.task_tree(T1)
+    lock = tree / sh(tree, "rev-parse", "--git-path", "index.lock").strip()
+    lock.write_text("", encoding="utf-8")
+    begun = time.monotonic()
+    release.set()
+    env.executor.join(10)
+    assert time.monotonic() - begun < 2
+    assert env.executor._stopping == [] and env.world.submitted() == []
+    # 止めた走りは何も走らせない（claude を起こさず、起こした跡も残さない）
+    assert env.runtime.calls == []
+    assert not env.paths.stage_log(ex(S.IMPL)).is_file()
+    # 止めた当の走りは lock を片付けない。片付けるのは次の仕事
+    assert lock.exists() and tree in env.executor._unswept
+    begun = time.monotonic()
+    env.executor.abort_rebase(T1)
+    env.executor.join(10)
+    assert time.monotonic() - begun < 2
+    assert not lock.exists()
 
 
 def test_止めた実行を待つのはそのworktreeだけでほかのworktreeのbeginは待たせない(
@@ -593,14 +630,34 @@ def test_止めた実行が終わらなければbeginは始めずに待ち直し
     assert [e.execution for e in of_type(events, StageRequested)] == [ex(S.IMPL, attempt=2)]
 
 
-def test_止めた実行が終わったと確かめたら残ったindex_lockを消す(env: Env):
+def test_止めた実行が残したindex_lockは走り終えた後の次の仕事が消し一度だけ消す(env: Env):
+    """止めた走りは終わるとすぐ止めている実行の一覧から外れる。外れた後に来た次の仕事でも消す。"""
     impl_task(env)
     tree = env.paths.task_tree(T1)
     lock = tree / sh(tree, "rev-parse", "--git-path", "index.lock").strip()
-    lock.write_text("", encoding="utf-8")
-    stuck_stop(env, tree, finished=True)
-    assert of_type(env.begin(ex(S.IMPL)), StageStarted)
+    running = threading.Event()
+
+    def killed_mid_git(call: AgentCall, process: FakeProcess):
+        lock.write_text("", encoding="utf-8")  # SIGKILL で止めた git が片付けずに終わった
+        running.set()
+        process.stop.wait(10)
+        return outcome(call, None, is_error=True, interrupted=process.interrupted)
+
+    env.begin(ex(S.IMPL))
+    env.runtime.behaviors.append(killed_mid_git)
+    env.executor.run(ex(S.IMPL), env.world.inbox.expect(ex(S.IMPL)))
+    assert running.wait(10)
+    env.executor.interrupt(ex(S.IMPL))
+    env.executor.join()
+    assert env.executor._stopping == [] and lock.exists()
+    env.executor.abort_rebase(T1)
+    env.executor.join()
     assert not lock.exists()
+    # 片付けた後に現れた lock は、止めた実行のものではないので消さない
+    lock.write_text("", encoding="utf-8")
+    env.executor.abort_rebase(T1)
+    env.executor.join()
+    assert lock.exists()
 
 
 def test_止めた実行が無ければindex_lockを消さない(env: Env):

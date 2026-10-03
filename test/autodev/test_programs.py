@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from autodev_harness import POLICY, new_id, of_type
+from autodevlib.adapters._proc import CommandFailed
 from autodevlib.app import programs
 from autodevlib.app.programs import Tools
 from autodevlib.app.stage_context import (
@@ -22,7 +23,7 @@ from autodevlib.app.stage_context import (
     TargetFacts,
     TaskRow,
 )
-from autodevlib.domain.commands import AcceptFlow, OpenTask
+from autodevlib.domain.commands import AcceptFlow, BeginStage, OpenTask
 from autodevlib.domain.events import StageCompleted, StageStarted, WorktreeReady
 from autodevlib.domain.flow import FlowStep, git_job_flow
 from autodevlib.domain.values import (
@@ -309,6 +310,57 @@ def test_途中のrebaseが残っていてもRebaseは取りやめてから流�
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
     assert rebase(env, job).conflicts == ("a.txt",)
     assert env.git.conflict_sides(tree, "a.txt").base is not None
+
+
+def test_rebaseを終えた後に流し直しても始めた時点へ戻してから載せ直す(env: Env):
+    """driver が、rebase を終えてから結果（BranchRebased）が載る前に落ち、呼び直した driver が同じ実行を
+    根元が古いまま流し直す。戻さずに流すと、一番上のコミットまで載せ直して、ありもしない衝突を作る。"""
+    top = overview(env)
+    tree = task_tree(env)
+    commit(tree, "mine.py", "task\n")
+    commit(top, "a.txt", "1\n")
+    head = commit(top, "a.txt", "2\n")
+    start = CommitSha(sh(tree, "rev-parse", "HEAD").strip())
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    ctx = context(env, S.REBASE, job=job, start_commit=start)
+    assert programs.run_program(ctx, tools(env)).conflicts == ()
+    outcome = programs.run_program(ctx, tools(env))
+    assert outcome.conflicts == () and outcome.result == {"onto": head}
+    assert sh(tree, "rev-parse", "HEAD^").strip() == head
+    assert (tree / "mine.py").is_file()
+
+
+def test_rebaseが衝突で止まったままのworktreeで始めたRebaseはタスクのコミットを消さない(env: Env):
+    """前の Rebase の衝突を取りやめないまま次の試みが始まった（abort_rebase が待ち切れなかった・
+    IntegrationFailed の後に driver が落ちた）。rebase 途中の HEAD を始めた時点にすると、流す前に
+    そこへ戻して、タスクのコミットをブランチから落とす。"""
+    tree, _ = conflicting(env)
+    tip = sh(tree, "rev-parse", str(B1)).strip()
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    ctx = context(env, S.REBASE, job=job)
+    env.executor._begin(ctx, env.world.inbox.expect(ctx.execution))
+    (begun,) = env.world.submitted()
+    assert isinstance(begun, BeginStage) and str(begun.head) == tip
+    assert not env.git.rebase_in_progress(tree)
+    ctx = context(env, S.REBASE, job=job, start_commit=begun.head)
+    assert programs.run_program(ctx, tools(env)).conflicts == ("a.txt",)
+    assert sh(tree, "rev-parse", str(B1)).strip() == tip
+
+
+def test_初めて流すRebaseは汚れたworktreeを消さない(env: Env):
+    """戻すのは流し直しの分だけ。汚れた worktree は、git rebase が断って落ちる（黙って消さない）。"""
+    overview(env)
+    tree = task_tree(env)
+    commit(tree, "mine.py", "task\n")
+    (tree / "mine.py").write_text("書きかけ\n", encoding="utf-8")
+    (tree / "scratch.txt").write_text("追跡していない\n", encoding="utf-8")
+    start = CommitSha(sh(tree, "rev-parse", "HEAD").strip())
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    ctx = context(env, S.REBASE, job=job, start_commit=start)
+    with pytest.raises(CommandFailed):
+        programs.run_program(ctx, tools(env))
+    assert (tree / "mine.py").read_text(encoding="utf-8") == "書きかけ\n"
+    assert (tree / "scratch.txt").is_file()
 
 
 def test_rebase途中のworktreeにCutBranchを当てても落ちない(env: Env):

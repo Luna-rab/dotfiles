@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from autodev_harness import CLI, DRIVER, POLICY, SESSION, Loop, names, new_id, of_type
 from autodev_samples import stage_result
@@ -111,6 +113,8 @@ IMPL_FLOW = (
     FlowStep(S.WRITE_PR_BODY),
 )
 PASSED = GateReport(tuple(GateItemResult(item, True) for item in GateItem))
+#: `--resume` で起こした claude が、init も result も出さずに自分で終わった証拠
+LOST_SESSION: dict[str, Any] = {"resumed": True, "ended_without_result": True, "initialized": False}
 
 
 def gate(*failed: GateItem) -> GateReport:
@@ -983,8 +987,8 @@ def test_再開に失敗したら始めた時点のコミットから新しい�
         ex(S.IMPL),
         exit=StageExit.ERROR,
         result_valid=False,
-        session_lost=True,
         error="resume 失敗",
+        **LOST_SESSION,
     )
     assert events == [
         ExecutionRestarted(ex(S.IMPL), "resume 失敗", HEAD),
@@ -992,6 +996,26 @@ def test_再開に失敗したら始めた時点のコミットから新しい�
     ]
     with pytest.raises(Rejected, match="interrupted・deferred でない（restarted）"):
         task(ResumeStage(command_id=new_id(), issuer=CLI, task=T1, execution=ex(S.IMPL)))
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [
+        # init を出した後に落ちた（続けた後で落ちた。作り直すと続けた仕事を捨てる）
+        {**LOST_SESSION, "initialized": True},
+        # --resume で起こしていない
+        {**LOST_SESSION, "resumed": False},
+        # こちらが kill した（result を返さずに自分で終わったのではない）
+        {**LOST_SESSION, "ended_without_result": False},
+    ],
+)
+def test_続けられなかった印が揃わなければ作り直さず失敗に数える(task: TaskLoop, facts: dict):
+    task.flow(*IMPL_FLOW)
+    task.begin(ex(S.IMPL))
+    events = task.report(
+        ex(S.IMPL), exit=StageExit.ERROR, result_valid=False, error="落ちた", **facts
+    )
+    assert of_type(events, StageFailed) and not of_type(events, ExecutionRestarted)
 
 
 # --- 範囲の変更と止める ---

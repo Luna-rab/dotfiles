@@ -411,7 +411,7 @@ class Task(Aggregate):
         `agent_started` は、この実行の claude をもう起こした跡（ログ）があるか。初めて始めたはずの
         実行に跡があるのは、StageStarted を配り直して走らせ直すときで、前の起動が同じセッション id を
         使っている。新しく立てると重なるので、止めた実行として `--resume` で続ける。続けられなければ、
-        結果の証拠（`Evidence.session_lost`）を見て作り直す（`_judge_result`）。
+        結果の証拠を見て作り直す（`_session_lost`）。
         """
         record = self.executions[execution]
         mode = _START_MODES.get(record.resumed_from, StartMode.FRESH)
@@ -799,8 +799,8 @@ class Task(Aggregate):
         evidence = command.evidence
         spec = STAGE_SPECS[execution.id.stage]
         # ⓪ `--resume` で続けられなかった。失敗に数えず、始めた時点から新しい実行で作り直す
-        # （DOMAIN_MODEL §9.2）。フックに止められ続けて打ち切ったのなら、続けられなかったのではない
-        if evidence.session_lost and not cut_off_by_denials(evidence.hook_denials):
+        # （DOMAIN_MODEL §9.2）
+        if _session_lost(evidence):
             reason = evidence.error or "--resume で続けられなかった"
             events: list[Event] = [ExecutionRestarted(execution.id, reason, execution.start_commit)]
             return events + self._follow_up(events)
@@ -1568,6 +1568,21 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
     else:
         raise AssertionError(f"照らし方を書いていない: {check}")
     return _Verdict.HOLDS if holds else _Verdict.MISMATCH
+
+
+def _session_lost(evidence: Evidence) -> bool:
+    """`--resume` で起こした claude が、続けるセッションを開けなかったか（ADDENDUM §12 の実行器）。
+
+    印は、init を出さずに result も返さずに自分で終わったことだけ。init を出した後に落ちたのは続けた
+    後で落ちたので、作り直すとその実行の仕事を捨てる。標準エラーの文言は版で変わりうるので見ない。
+    フックに止められ続けて打ち切ったのなら、続けられなかったのではない。
+    """
+    return (
+        evidence.resumed
+        and evidence.ended_without_result
+        and not evidence.initialized
+        and not cut_off_by_denials(evidence.hook_denials)
+    )
 
 
 def _missing(spec: StageSpec) -> str:

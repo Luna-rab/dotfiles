@@ -2,22 +2,77 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from autodev_fakes import Queue, enqueue, execution, factory, task
 from autodevlib.app.mainloop import MainLoop
-from autodevlib.domain.values import RunName, StreamId
+from autodevlib.domain.events import (
+    DesignAmbiguous,
+    DesignProposed,
+    DesignSettled,
+    EscalationRaised,
+    Event,
+    FlowAccepted,
+    OverviewRecorded,
+    QuestionPosted,
+    RunFinished,
+    RunPanicked,
+    RunStarted,
+    StageCompleted,
+    StageRequested,
+    StageStarted,
+    TaskMarkedStacked,
+    TaskOpened,
+    TasksPlanned,
+    TasksStopped,
+    TaskStacked,
+    TaskStarted,
+    TaskStatusChanged,
+)
+from autodevlib.domain.flow import Cursor, Flow, FlowStep
+from autodevlib.domain.values import (
+    ArtifactKind,
+    ArtifactRef,
+    BranchName,
+    CommandId,
+    CommitSha,
+    DesignVersion,
+    EscalationKind,
+    EventId,
+    ExecutionId,
+    Instruction,
+    ParallelLimit,
+    PlannedTask,
+    Pointers,
+    PrNumber,
+    Proposal,
+    QuestionId,
+    Repository,
+    RunName,
+    StackEntry,
+    StageKind,
+    StreamId,
+    TaskId,
+    TaskKind,
+    TaskSpec,
+    TaskStatus,
+)
+from autodevlib.infra import status_sections
 from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.paths import RunPaths, state_root
 from autodevlib.infra.rejections import Rejection, RejectionLog, read_rejections
 from autodevlib.infra.status import (
+    all_statuses,
     build_status,
     prune_progress,
     read_progress,
     remove_progress,
+    run_status,
     write_progress,
 )
+from autodevlib.infra.status_sections import Replayed
 
 
 @pytest.fixture
@@ -25,8 +80,8 @@ def paths(tmp_path: Path) -> RunPaths:
     return RunPaths.of(RunName("demo"), {"AUTODEV_STATE_DIR": str(tmp_path)})
 
 
-def waiting(aggregates) -> list[str]:
-    queue = aggregates.get(StreamId.stack())
+def waiting(view: Replayed) -> list[str]:
+    queue = view.aggregates.get(StreamId.stack())
     return [t.value for t in queue.waiting] if isinstance(queue, Queue) else []
 
 
@@ -39,10 +94,15 @@ def test_再生した集約に差し込んだ欄と進み具合と拒んだ記�
     loop.process(enqueue(1, "c3"))
     write_progress(paths, execution(1), {"turns": 3, "tool": "Bash"})
     # driver の書く接続を開いたまま読む
-    status = build_status(paths, factory, {"stack": waiting})
+    status = build_status(
+        paths,
+        factory,
+        {"stack": waiting, "progress": lambda view: dict(view.progress)},
+    )
+    assert status["format"] == 1
     assert status["name"] == "demo"
     assert status["last_seq"] == 2
-    assert status["streams"] == {"stack": 2}
+    assert status["updated_at"]
     assert status["stack"] == ["task1", "task2"]
     assert status["progress"] == {"task1-Impl-r0-a1": {"turns": 3, "tool": "Bash"}}
     assert [(r["command_id"], r["reason"]) for r in status["rejections"]] == [
@@ -94,8 +154,8 @@ def test_ランが無ければ作らずに落ちる(paths: RunPaths):
 
 
 def test_骨組みの欄と同じ名前は差し込めない(paths: RunPaths):
-    with pytest.raises(ValueError, match="progress"):
-        build_status(paths, factory, {"progress": waiting})
+    with pytest.raises(ValueError, match="rejections"):
+        build_status(paths, factory, {"rejections": waiting})
 
 
 def test_進み具合は書き直せて消せて読めないものは飛ばす(paths: RunPaths):
@@ -138,3 +198,332 @@ def test_ランディレクトリの中のパス():
     assert paths.answer("toolu_1") == Path("/s/demo/answers/toolu_1.json")
     assert paths.task_tree(task(2)) == Path("/s/demo/trees/task2")
     assert paths.task_results(task(2)) == Path("/s/demo/tasks/task2/results")
+
+
+# --- 本物の集約で再生した欄（status_sections.SECTIONS） ---
+
+RUN = StreamId.run()
+PLANNING = TaskId.planning()
+GIT = TaskId.git()
+T1 = TaskId.numbered(1)
+T2 = TaskId.numbered(2)
+HEAD = CommitSha("a" * 40)
+OVERVIEW = StackEntry(GIT, BranchName("autodev/demo"), PrNumber(4), BranchName("main"))
+PLAN = (
+    PlannedTask(T1, TaskSpec("パーサを足す")),
+    PlannedTask(T2, TaskSpec("CLI に出す"), frozenset({T1})),
+)
+ARTIFACTS = (ArtifactRef(ArtifactKind.BRIEF, "brief.md"), ArtifactRef(ArtifactKind.DESIGN, "1"))
+
+
+def ex(task: TaskId, stage: StageKind, round: int = 0) -> ExecutionId:
+    return ExecutionId(task, stage, round, 1)
+
+
+class Seed:
+    """イベントの列を、driver を通さずにそのまま events.db へ書く。"""
+
+    def __init__(self, paths: RunPaths) -> None:
+        self.store = EventStore.open(paths.events_db)
+        self.versions: dict[StreamId, int] = {}
+        self.commands = 0
+
+    def __call__(self, stream: StreamId, *events: Event) -> None:
+        version = self.versions.get(stream, 0)
+        self.commands += 1
+        self.store.append(CommandId(f"c{self.commands}"), stream, version, events)
+        self.versions[stream] = version + len(events)
+
+
+def started(name: str = "demo") -> RunStarted:
+    return RunStarted(
+        RunName(name),
+        Instruction("足す"),
+        Repository("/repo"),
+        BranchName("main"),
+        ParallelLimit(2),
+    )
+
+
+def seed_running(seed: Seed) -> None:
+    """計画を反映し、task1 が Impl を走らせ、計画タスクが ask で回答を待っているラン。"""
+    seed(RUN, started(), TaskStarted(PLANNING, TaskKind.PLANNING), TaskStarted(GIT, TaskKind.GIT))
+    seed(StreamId.design(), DesignProposed(Proposal(DesignVersion(1), PLAN)))
+    seed(
+        StreamId.design(),
+        DesignSettled(Proposal(DesignVersion(1), PLAN), ex(PLANNING, StageKind.DESIGN_JUDGE, 1)),
+    )
+    seed(RUN, TasksPlanned(DesignVersion(1), PLAN, (), ARTIFACTS, replan=False))
+    seed(
+        RUN,
+        TaskStarted(
+            T1, TaskKind.IMPLEMENTATION, spec=PLAN[0].spec, branch=BranchName("stack/demo--task-1")
+        ),
+    )
+    seed(StreamId.stack(), OverviewRecorded(OVERVIEW))
+
+    t1 = StreamId.task(T1)
+    flow = Flow(
+        (
+            FlowStep(StageKind.TEST_GEN),
+            FlowStep(StageKind.RESOLVE_CONFLICT),
+            FlowStep(StageKind.IMPL),
+            FlowStep(StageKind.GATE),
+        ),
+        1,
+    )
+    seed(
+        t1,
+        TaskOpened(TaskKind.IMPLEMENTATION, PLAN[0].spec, branch=BranchName("stack/demo--task-1")),
+        FlowAccepted(flow),
+        StageRequested(ex(T1, StageKind.TEST_GEN), 0),
+        StageStarted(ex(T1, StageKind.TEST_GEN), HEAD),
+        # ResolveConflict を飛ばした先へ進む
+        StageCompleted(ex(T1, StageKind.TEST_GEN), cursor=Cursor(2)),
+        StageRequested(ex(T1, StageKind.IMPL), 2),
+        StageStarted(ex(T1, StageKind.IMPL), HEAD),
+    )
+
+    planning = StreamId.task(PLANNING)
+    seed(
+        planning,
+        TaskOpened(TaskKind.PLANNING),
+        FlowAccepted(Flow((FlowStep(StageKind.REPLAN),), 1)),
+        StageRequested(ex(PLANNING, StageKind.REPLAN), 0),
+        StageStarted(ex(PLANNING, StageKind.REPLAN), HEAD),
+        EscalationRaised(
+            EscalationKind.ASK, Pointers(), task=PLANNING, origin=ex(PLANNING, StageKind.REPLAN)
+        ),
+    )
+    seed(
+        RUN,
+        TaskStatusChanged(PLANNING, TaskStatus.RUNNING, TaskStatus.ESCALATED, "EscalationRaised"),
+        EscalationRaised(
+            EscalationKind.ASK, Pointers(), task=PLANNING, source=EventId("task/planning#5")
+        ),
+    )
+    seed(
+        StreamId.questions(),
+        QuestionPosted(QuestionId("q1"), "どちらの形にするか", EventId("run#7")),
+    )
+    seed(
+        StreamId.design(),
+        DesignProposed(Proposal(DesignVersion(2), PLAN)),
+        DesignAmbiguous(ex(PLANNING, StageKind.DESIGN_JUDGE, 1)),
+    )
+
+
+def test_走っているランのタスクと実行と回答待ちを見せる(paths: RunPaths):
+    seed_running(Seed(paths))
+    write_progress(paths, ex(T1, StageKind.IMPL), {"turns": 7, "lastTool": "Edit"})
+
+    status = run_status(paths)
+
+    assert status["run"].pop("started_at") <= status["updated_at"]
+    assert status["run"] == {
+        "phase": "running",
+        "awaiting_answer": True,
+        "repository": "/repo",
+        "base": "main",
+        "limit": 2,
+        "resumes": 0,
+    }
+    assert [(t["id"], t["kind"], t["status"]) for t in status["tasks"]] == [
+        ("planning", "planning", "escalated"),
+        ("git", "git", "running"),
+        ("task1", "implementation", "running"),
+        ("task2", "implementation", "pending"),
+    ]
+    task1 = status["tasks"][2]
+    assert task1["title"] == "パーサを足す"
+    assert task1["branch"] == "stack/demo--task-1"
+    assert task1["pr"] is None
+    assert [(s["stage"], s["state"]) for s in task1["flow"]["steps"]] == [
+        ("TestGen", "done"),
+        ("ResolveConflict", "skipped"),
+        ("Impl", "current"),
+        ("Gate", "pending"),
+    ]
+    assert [(e["id"], e["status"]) for e in task1["executions"]] == [
+        ("task1-TestGen-r0-a1", "completed"),
+        ("task1-Impl-r0-a1", "running"),
+    ]
+    running = task1["executions"][1]
+    assert running["progress"] == {"turns": 7, "lastTool": "Edit"}
+    assert running["started_at"]
+    assert status["tasks"][3]["blocked_by"] == ["task1"]
+    assert status["tasks"][3]["flow"] is None
+    assert status["tasks"][0]["escalations"] == [
+        {"id": "task/planning#5", "kind": "ask", "origin": "planning-Replan-r0-a1"}
+    ]
+
+    assert status["escalations"] == [
+        {
+            "id": "run#7",
+            "kind": "ask",
+            "task": "planning",
+            "source": "task/planning#5",
+            "for_user": False,
+            "answer_only": False,
+            "failures": 0,
+        }
+    ]
+    assert status["questions"] == [
+        {"id": "q1", "body": "どちらの形にするか", "escalation": "run#7"}
+    ]
+    assert status["stack"]["overview"] == {
+        "task": "git",
+        "branch": "autodev/demo",
+        "pr": 4,
+        "base": "main",
+    }
+    assert status["stack"]["top"] == "autodev/demo"
+    assert status["plan"] == {
+        "planning": False,
+        "planned": True,
+        "applied_design": 1,
+        "replans_without_stack": 0,
+        "design": {
+            "versions": [1, 2],
+            "settled": 1,
+            "proposal": {
+                "version": 2,
+                "state": "awaiting",
+                "round": 1,
+                "awaiting": "design-ambiguous",
+            },
+        },
+    }
+    json.dumps(status)
+
+
+def test_積んだタスクと止めたタスクとランの終わりを見分けられる(paths: RunPaths):
+    seed = Seed(paths)
+    seed(RUN, started(), TaskStarted(PLANNING, TaskKind.PLANNING), TaskStarted(GIT, TaskKind.GIT))
+    seed(RUN, TasksPlanned(DesignVersion(1), PLAN, (), ARTIFACTS, replan=False))
+    seed(RUN, TaskStarted(T1, TaskKind.IMPLEMENTATION, spec=PLAN[0].spec))
+    seed(
+        RUN,
+        TaskStatusChanged(T1, TaskStatus.RUNNING, TaskStatus.GATED, "TaskGated"),
+        TaskStatusChanged(T1, TaskStatus.GATED, TaskStatus.STACKING, "GitJobTaken"),
+        TaskMarkedStacked(T1, PrNumber(5)),
+        TasksStopped(frozenset({T2})),
+        RunFinished(ready_overview=True),
+    )
+    entry = StackEntry(T1, BranchName("stack/demo--task-1"), PrNumber(5), OVERVIEW.branch)
+    seed(StreamId.stack(), OverviewRecorded(OVERVIEW), TaskStacked(entry))
+
+    status = run_status(paths)
+    # git 管理タスクの仕上げが残っている
+    assert status["run"]["phase"] == "finishing"
+    by_id = {t["id"]: t for t in status["tasks"]}
+    assert (by_id["task1"]["status"], by_id["task1"]["pr"]) == ("stacked", 5)
+    assert (by_id["task2"]["status"], by_id["task2"]["terminal"]) == ("dropped", True)
+    assert by_id["planning"]["status"] == "finished"
+    assert status["stack"]["entries"] == [
+        {"task": "task1", "branch": "stack/demo--task-1", "pr": 5, "base": "autodev/demo"}
+    ]
+
+    seed(RUN, TaskStatusChanged(GIT, TaskStatus.RUNNING, TaskStatus.FINISHED, "FlowFinished"))
+    assert run_status(paths)["run"]["phase"] == "finished"
+
+
+def test_パニックしたランは終えた後でもパニックと見せる(paths: RunPaths):
+    seed = Seed(paths)
+    seed(RUN, started(), TaskStarted(GIT, TaskKind.GIT))
+    assert run_status(paths)["run"]["phase"] == "planning"
+    seed(RUN, RunFinished(ready_overview=False), RunPanicked("利用枠"))
+    assert run_status(paths)["run"]["phase"] == "panicked"
+
+
+def test_StartRunを拒まれてイベントが無いランも読める(paths: RunPaths):
+    EventStore.open(paths.events_db).close()
+    status = run_status(paths)
+    assert (status["last_seq"], status["updated_at"]) == (0, None)
+    assert status["run"]["phase"] == "not-started"
+    assert (status["tasks"], status["stack"]["overview"], status["plan"]["design"]["proposal"]) == (
+        [],
+        None,
+        None,
+    )
+
+
+def test_全ランをラン名の順に返し読めないランはerrorで残す(tmp_path: Path):
+    env = {"AUTODEV_STATE_DIR": str(tmp_path)}
+    for name in ("zeta", "alpha"):
+        Seed(RunPaths.of(RunName(name), env))(RUN, started(name))
+    # events.db の無い所はランではない
+    (tmp_path / "pr-body-markers").mkdir()
+    (tmp_path / "Bad_Name").mkdir()
+    (tmp_path / "Bad_Name" / "events.db").write_bytes(b"")
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / "events.db").write_bytes(b"not sqlite")
+
+    found = all_statuses(env)
+    assert [(s["name"], "error" in s) for s in found] == [
+        ("Bad_Name", True),
+        ("alpha", False),
+        ("broken", True),
+        ("zeta", False),
+    ]
+    assert found[0]["error"].startswith("InvalidValue: ")
+    assert all_statuses({"AUTODEV_STATE_DIR": str(tmp_path / "none")}) == []
+
+
+def test_欄を作る所の不具合では全ランをerrorで残して警告する(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    env = {"AUTODEV_STATE_DIR": str(tmp_path)}
+    for name in ("alpha", "beta"):
+        Seed(RunPaths.of(RunName(name), env))(RUN, started(name))
+
+    def broken_section(view: Replayed) -> None:
+        raise KeyError("x")
+
+    monkeypatch.setitem(status_sections.SECTIONS, "run", broken_section)
+
+    assert all_statuses(env) == [
+        {"name": "alpha", "error": "KeyError: 'x'"},
+        {"name": "beta", "error": "KeyError: 'x'"},
+    ]
+    assert [r.levelname for r in caplog.records] == ["WARNING", "WARNING"]
+
+
+def test_型の違う集約を空の集約に置き換えない(paths: RunPaths):
+    loop = MainLoop(
+        EventStore.open(paths.events_db), factory, [], on_rejected=RejectionLog(paths.rejections)
+    )
+    loop.process(enqueue(1, "c1"))
+    with pytest.raises(TypeError, match="Queue"):
+        build_status(paths, factory, {"stack": lambda view: view.stack})
+
+
+def test_書き直す前のフローで走っている実行はフローの版で見分けられる(paths: RunPaths):
+    seed = Seed(paths)
+    seed(RUN, started(), TaskStarted(T1, TaskKind.IMPLEMENTATION, spec=PLAN[0].spec))
+    old = ex(T1, StageKind.IMPL)
+    seed(
+        StreamId.task(T1),
+        TaskOpened(TaskKind.IMPLEMENTATION, PLAN[0].spec),
+        FlowAccepted(
+            Flow((FlowStep(StageKind.TEST_GEN), FlowStep(StageKind.IMPL)), 1), cursor=Cursor(1)
+        ),
+        StageRequested(old, 1),
+        StageStarted(old, HEAD),
+        FlowAccepted(Flow((FlowStep(StageKind.TEST_GEN),), 2)),
+        StageRequested(ex(T1, StageKind.TEST_GEN), 0),
+        StageCompleted(ex(T1, StageKind.TEST_GEN), cursor=Cursor(1)),
+    )
+    # 完了した実行の進み具合のファイルが残っていても見せない
+    write_progress(paths, old, {"turns": 3})
+    write_progress(paths, ex(T1, StageKind.TEST_GEN), {"turns": 9})
+
+    (task1,) = run_status(paths)["tasks"]
+    assert [
+        (e["id"], e["flow_version"], e["step"], e["progress"]) for e in task1["executions"]
+    ] == [
+        ("task1-Impl-r0-a1", 1, 1, {"turns": 3}),
+        ("task1-TestGen-r0-a1", 2, 0, None),
+    ]
+    assert task1["flow"]["version"] == 2

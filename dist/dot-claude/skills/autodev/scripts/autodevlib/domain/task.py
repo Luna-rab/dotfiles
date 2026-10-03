@@ -235,6 +235,16 @@ class Execution:
         return (self.step, self.id.stage, self.id.round)
 
 
+class StepState(Enum):
+    """フローの段 1 つが、いまどこまで進んだか（`Task.step_states`）。"""
+
+    DONE = "done"
+    #: cursor が越えたが、その段で完了した実行が無い（衝突しなかった Rebase の後の段など）
+    SKIPPED = "skipped"
+    CURRENT = "current"
+    PENDING = "pending"
+
+
 @dataclass(frozen=True)
 class OpenEscalation:
     id: EventId
@@ -371,6 +381,38 @@ class Task(Aggregate):
     @property
     def current_step(self) -> FlowStep | None:
         return self.flow.at(self.cursor) if self.flow is not None else None
+
+    @property
+    def flow_finished(self) -> bool:
+        """今のフローを最後まで終えた（FlowFinished を出した）。"""
+        return self.flow is not None and self.finished_version == self.flow.version
+
+    def step_states(self) -> tuple[StepState, ...]:
+        """今のフローの段ごとの進み具合（Flow.steps の順）。フローが無ければ空。"""
+        flow = self.flow
+        if flow is None:
+            return ()
+        ran = {step for (version, step, _, _) in self.completed if version == flow.version}
+        states: list[StepState] = []
+        for index in range(len(flow.steps)):
+            if index < self.cursor.step:
+                states.append(StepState.DONE if index in ran else StepState.SKIPPED)
+            elif index == self.cursor.step:
+                states.append(StepState.CURRENT)
+            else:
+                states.append(StepState.PENDING)
+        return tuple(states)
+
+    def current_executions(self) -> list[Execution]:
+        """今のフローの実行と、書き直す前のフローでまだ走っている実行（始めた順）。
+
+        書き直す前のフローの実行も、走っている間は claude と worktree を使っているので外さない。
+        """
+        return [
+            e
+            for e in self.executions.values()
+            if not self._is_obsolete(e) or e.status is _X.RUNNING
+        ]
 
     def running_executions(self) -> list[ExecutionId]:
         """running のまま残っている実行（メインループが起動時とパニックのときに聞く。ADDENDUM §9）。"""
@@ -642,7 +684,7 @@ class Task(Aggregate):
         if flow is None:
             return []
         if after.cursor.is_done(flow):
-            if after.finished_version == flow.version or after.halted:
+            if after.flow_finished or after.halted:
                 return []
             done: list[Event] = [FlowFinished(flow.version, flow.job)]
             if after.kind is TaskKind.IMPLEMENTATION:
@@ -708,7 +750,7 @@ class Task(Aggregate):
         ものは、計画タスクの ask を replan で閉じた後の再計画のフローや、git 管理タスクの統合の失敗を
         閉じた後の次の仕事のフローを受けるためである。
         """
-        return self.flow is None or self.finished_version == self.flow.version or self.halted
+        return self.flow is None or self.flow_finished or self.halted
 
     # --- 実行 ---
 
@@ -1258,8 +1300,7 @@ class Task(Aggregate):
     def _abandon(self, command: AbandonFlow) -> list[Event]:
         """今のフローを捨てる。統括の次のフローを待つ。"""
         self._require_opened()
-        flow = self.flow
-        if flow is None or self.halted or self.finished_version == flow.version:
+        if self.flow is None or self.halted or self.flow_finished:
             return []
         return self._abandon_flow(command.reason)
 

@@ -31,13 +31,11 @@ from enum import IntEnum
 from ..adapters.guard import write_hook_settings
 from ..domain.aggregate import Aggregate
 from ..domain.commands import ResumeRun, StartRun
-from ..domain.design import Design
 from ..domain.events import RunStarted
 from ..domain.policies import RECEIVERS
 from ..domain.questions import Questions
-from ..domain.review import ReviewLedger
 from ..domain.run import Run
-from ..domain.stack import Stack
+from ..domain.streams import aggregate_for
 from ..domain.supervision import Supervisor, wake_for
 from ..domain.task import Task
 from ..domain.values import CommandId, EventId, InterruptCause, Issuer, StreamId
@@ -69,21 +67,6 @@ class ExitCode(IntEnum):
     PANICKED = 3
     #: 回答待ちで、進められるタスクが無い。回答を置いて同じラン名で呼び直す
     AWAITING_ANSWER = 4
-
-
-def aggregate_for(stream: StreamId) -> Aggregate:
-    """ストリーム → イベントが無いときの集約。"""
-    if stream == StreamId.run():
-        return Run(stream)
-    if stream == StreamId.design():
-        return Design(stream)
-    if stream == StreamId.stack():
-        return Stack(stream)
-    if stream == StreamId.questions():
-        return Questions(stream)
-    if stream.is_review:
-        return ReviewLedger(stream)
-    return Task(stream)
 
 
 def _run(aggregates: Mapping[StreamId, Aggregate]) -> Run:

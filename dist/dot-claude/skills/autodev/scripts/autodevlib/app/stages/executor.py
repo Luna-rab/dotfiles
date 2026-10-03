@@ -151,7 +151,7 @@ class AgentProcessLike(Protocol):
 
 
 class AgentStarter(Protocol):
-    """`adapters.agent_runtime.AgentRuntime` の受け口（検査で偽物に差し替える）。"""
+    """`adapters.claude.agent_runtime.AgentRuntime` の受け口（検査で偽物に差し替える）。"""
 
     def start(
         self, call: AgentCall, on_progress: Callable[[Progress], None] | None = None

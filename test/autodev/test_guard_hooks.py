@@ -1,4 +1,4 @@
-"""ガードのフック（deny-writes.py・park-on-ask.py）と、その翻訳（adapters/guard.py・adapters/shell.py）。
+"""ガードのフック（deny-writes.py・park-on-ask.py）と、その翻訳（adapters/claude/guard.py・adapters/process/shell.py）。
 
 止めるか通すかはドメインの Guard が決める（test_domain_guard.py）。ここでは、コマンド行とパスが
 正しい宛先・場所・操作に翻訳され、その結果として通す場合と止める場合を

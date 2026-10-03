@@ -1,4 +1,4 @@
-"""シグナルで driver を止める（`app/stopping.py`）。1 回目は Panic、拒まれたか 2 回目なら子を止めて終える。"""
+"""シグナルで driver を止める（`app/driving/stopping.py`）。1 回目は Panic、拒まれたか 2 回目なら子を止めて終える。"""
 
 from __future__ import annotations
 

@@ -225,7 +225,7 @@ class Driver:
     def drive(self, start: StartRequest | None = None) -> ExitCode:
         """ランを進め、終了コードを返す。`start` は新しいラン名のときだけ渡す。
 
-        シグナルのハンドラは頭から子を待ち終えるまで付けておく（`app/stopping.py`）。付いていない間に
+        シグナルのハンドラは頭から子を待ち終えるまで付けておく（`app/driving/stopping.py`）。付いていない間に
         シグナルが来ると、子を待たずに driver だけが終わり、子が残る。
         """
         self.paths.root.mkdir(parents=True, exist_ok=True)

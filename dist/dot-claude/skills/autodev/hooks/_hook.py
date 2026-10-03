@@ -1,6 +1,6 @@
 """ガードのフック（deny-writes.py・park-on-ask.py）の共通の入口。
 
-autodevlib を読み込み、標準入力と環境変数を `adapters/guard.run_hook` に渡して、返事を書き出す。
+autodevlib を読み込み、標準入力と環境変数を `adapters/claude/guard.run_hook` に渡して、返事を書き出す。
 読み込めないときは止める（終了コード 2）。フックが黙って落ちると、ガードが消えたまま走る。
 """
 

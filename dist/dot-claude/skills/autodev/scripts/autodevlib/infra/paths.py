@@ -179,7 +179,7 @@ class RunPaths:
 
     @property
     def children(self) -> Path:
-        """driver が起こした子プロセスの控え（`adapters/children.py`）。"""
+        """driver が起こした子プロセスの控え（`adapters/process/children.py`）。"""
         return self.root / "children"
 
     @property

@@ -1,4 +1,4 @@
-"""反応と実行器が書き出すランディレクトリのファイル（`app/files.py`）。2 回書いても同じ中身になる。"""
+"""反応と実行器が書き出すランディレクトリのファイル（`app/stages/files.py`）。2 回書いても同じ中身になる。"""
 
 from __future__ import annotations
 

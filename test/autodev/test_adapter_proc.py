@@ -1,4 +1,4 @@
-"""コマンドを 1 回流す共通の部品（adapters/_proc.py）。"""
+"""コマンドを 1 回流す共通の部品（adapters/process/_proc.py）。"""
 
 from __future__ import annotations
 

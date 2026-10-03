@@ -1,4 +1,4 @@
-"""組み立ての根（`app/driver.py`）の検査で使う、偽の実行器と偽の AgentRuntime。
+"""組み立ての根（`app/driving/driver.py`）の検査で使う、偽の実行器と偽の AgentRuntime。
 
 偽の実行器は、test_seams の台本（`Script`）どおりにステージの結果を返す。LLM のステージでは、本物の
 プロンプトの組み立て（`Prompts.prompt`）を呼んで、組んだプロンプトを残す。偽の AgentRuntime は、統括の

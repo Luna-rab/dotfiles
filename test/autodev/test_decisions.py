@@ -1,4 +1,4 @@
-"""統括の判断の JSON をコマンドに置き換える表（`app/decisions.py`）。"""
+"""統括の判断の JSON をコマンドに置き換える表（`app/supervision/decisions.py`）。"""
 
 from __future__ import annotations
 

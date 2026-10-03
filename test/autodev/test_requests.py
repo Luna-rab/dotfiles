@@ -1,4 +1,4 @@
-"""driver の外からの要求（`infra/requests.py`）。"""
+"""driver の外からの要求（`infra/store/requests.py`）。"""
 
 from __future__ import annotations
 

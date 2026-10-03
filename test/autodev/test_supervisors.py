@@ -1,4 +1,4 @@
-"""LLM の統括を起こす口（`app/supervisors.py`）。偽の AgentRuntime と本物の Inbox で、ターンの扱いを見る。
+"""LLM の統括を起こす口（`app/supervision/supervisors.py`）。偽の AgentRuntime と本物の Inbox で、ターンの扱いを見る。
 
 メインループの代わりに、検査が Inbox から札を受け取り、`settled` を呼ぶ。
 """

@@ -1,4 +1,4 @@
-"""決定的なステージの中身（`app/programs.py`）。本物の git（bare の origin を含む）と偽の gh で確かめる。
+"""決定的なステージの中身（`app/stages/programs/`）。本物の git（bare の origin を含む）と偽の gh で確かめる。
 
 中身は、ドメインが決めたこと（仕事の相手）を実行して、起きた事実を返すだけである。合否は返さない
 （Gate の項目ごとの合否は GateEvaluator が、外れたときの扱いは Task が決める）。

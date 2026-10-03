@@ -1,4 +1,4 @@
-"""メインループ（`app/mainloop.py`）。偽の集約（`autodev_fakes`）と偽のポリシーで、配達とコマンドの処理の手順を確かめる。"""
+"""メインループ（`app/driving/mainloop.py`）。偽の集約（`autodev_fakes`）と偽のポリシーで、配達とコマンドの処理の手順を確かめる。"""
 
 from __future__ import annotations
 

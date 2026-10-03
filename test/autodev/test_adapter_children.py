@@ -1,4 +1,4 @@
-"""子プロセスの控え（`adapters/children.py`）: pid と開始時刻と boot_id で、同じプロセスかを見分ける。"""
+"""子プロセスの控え（`adapters/process/children.py`）: pid と開始時刻と boot_id で、同じプロセスかを見分ける。"""
 
 from __future__ import annotations
 

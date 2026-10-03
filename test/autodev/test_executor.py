@@ -1,4 +1,4 @@
-"""実行器（`app/executor.py`）。偽の AgentRuntime と、tmp_path の本物の git リポジトリで確かめる。
+"""実行器（`app/stages/executor.py`）。偽の AgentRuntime と、tmp_path の本物の git リポジトリで確かめる。
 
 実行器が返したコマンドを本物の Task 集約に通し、集めた証拠から Task が決めた結果（完了・失敗・
 エスカレーション）までを見る。実行器は判断しないので、結果を変えるのは証拠だけである。

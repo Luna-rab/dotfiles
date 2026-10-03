@@ -1,4 +1,4 @@
-"""イベントストア（`infra/eventstore.py`・`infra/db.py`）。SQLite のファイルは tmp_path に作る。"""
+"""イベントストア（`infra/store/eventstore.py`・`infra/store/db.py`）。SQLite のファイルは tmp_path に作る。"""
 
 from __future__ import annotations
 

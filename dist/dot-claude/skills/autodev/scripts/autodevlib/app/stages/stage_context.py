@@ -130,7 +130,7 @@ class TargetFacts:
 class StageContext:
     execution: ExecutionId
     #: Flow.steps の段と、ステージの cwd（絶対パス。CutBranch では、切る worktree）。プロンプトの
-    #: 組み立て（`app/prompts.py`）が読むのはこの 3 つだけで、位置で渡されることがあるので先頭に置く
+    #: 組み立て（`app/stages/prompts/`）が読むのはこの 3 つだけで、位置で渡されることがあるので先頭に置く
     step: FlowStep
     tree: Path
     #: Flow.steps の添字

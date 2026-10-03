@@ -510,6 +510,10 @@ class Executor:
         elif (tree / ".git").exists():
             self._git.rebase_abort(tree)
 
+    def _stopped(self, live: _Live) -> bool:
+        with self._lock:
+            return live.stopped
+
     def _wait_stopped(self, tree: Path, besides: _Live | None = None) -> bool:
         """同じ worktree で止めた実行が終わるまで待つ。待ち切れなければ偽。新しいフローのステージを、止めた
         ステージ（決定的なステージの子プロセスを含む）と同じ worktree で同時に走らせない。
@@ -532,7 +536,10 @@ class Executor:
                 live.tree == tree and live is not besides
                 for live in (*self._live.values(), *self._stopping)
             )
-            sweep = tree in self._unswept and not busy
+            # 止めた当の走りは片付けない。まだ自分の子プロセスが lock を持っているかもしれず、印は
+            # 自分が走り終えた後の次の仕事が下ろす
+            itself_stopped = besides is not None and besides.stopped
+            sweep = tree in self._unswept and not busy and not itself_stopped
             if sweep:
                 self._unswept.discard(tree)
         if sweep and (tree / ".git").exists():
@@ -577,12 +584,16 @@ class Executor:
         try:
             with ticket:
                 self._progress(context, {"stage": execution.stage.value, "state": "running"})
-                command: Command
+                command: Command | None = None
                 if not self._wait_stopped(context.tree, besides=live):
                     # 止めた実行（止めた後に再開したこの実行の前の走りを含む）が、同じ worktree で
                     # まだ終わっていない。並べて走らせない
                     error = RuntimeError("同じ worktree で止めた実行が終わらない")
                     command = self._report(context, _error(error), None, llm=llm)
+                elif self._stopped(live):
+                    # 待つ前か待つ間に止めた。走らせると claude を余計に起こしてから止めることになり、
+                    # 起こした跡（ログ）が残って再開の起こし方（`Task.how_to_start`）を変える
+                    pass
                 else:
                     try:
                         # interrupt が、このスレッドが流す子プロセス（git・検証コマンド）を止められる
@@ -594,9 +605,7 @@ class Executor:
                     except Exception as error:
                         log.exception("%s を走らせる途中で落ちた", execution)
                         command = self._report(context, _error(error), None, llm=llm)
-                with self._lock:
-                    stopped = live.stopped
-                if not stopped:
+                if command is not None and not self._stopped(live):
                     ticket.submit(command)
         finally:
             self._settle(execution, live)

@@ -29,8 +29,8 @@ from .adapters.claude.guard import ANSWER_FILE_OPTION
 from .adapters.github import git as git_adapter
 from .adapters.github.git import Git
 from .adapters.process._proc import CommandFailed
-from .app import assembly, cleanup
-from .app.driver import ExitCode, StartRequest
+from .app.driving import assembly, cleanup
+from .app.driving.driver import ExitCode, StartRequest
 from .domain.commands.questions import AnswerQuestion
 from .domain.commands.run import StartRun
 from .domain.events.run import RunStarted

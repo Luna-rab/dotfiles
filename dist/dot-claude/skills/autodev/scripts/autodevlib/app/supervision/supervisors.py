@@ -39,23 +39,23 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ..adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
-from ..adapters.claude.guard import guard_context, stage_env
-from ..domain.commands.base import Command
-from ..domain.commands.run import Panic, ReportSupervisorFailure
-from ..domain.supervision import SUPERVISOR_GUARD, Supervisor
-from ..domain.value_objects.command_id import CommandId
-from ..domain.value_objects.event_id import EventId
-from ..domain.value_objects.issuer import Issuer
-from ..domain.value_objects.session_id import SessionId
-from ..domain.value_objects.task_id import TaskId
-from ..infra.files import write_atomic
-from ..infra.paths import RunPaths
+from ...adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
+from ...adapters.claude.guard import guard_context, stage_env
+from ...domain.commands.base import Command
+from ...domain.commands.run import Panic, ReportSupervisorFailure
+from ...domain.supervision import SUPERVISOR_GUARD, Supervisor
+from ...domain.value_objects.command_id import CommandId
+from ...domain.value_objects.event_id import EventId
+from ...domain.value_objects.issuer import Issuer
+from ...domain.value_objects.session_id import SessionId
+from ...domain.value_objects.task_id import TaskId
+from ...infra.files import write_atomic
+from ...infra.paths import RunPaths
+from ..driving.mainloop import Inbox, Ticket
+from ..stages.prompts.assets import schema_text
+from ..stages.prompts.render import render_rejection
+from ..stages.stage_context import StagePrompt
 from .decisions import RUN_DECISIONS, TASK_DECISIONS, DecisionError, to_command
-from .mainloop import Inbox, Ticket
-from .stages.prompts.assets import schema_text
-from .stages.prompts.render import render_rejection
-from .stages.stage_context import StagePrompt
 
 log = logging.getLogger(__name__)
 

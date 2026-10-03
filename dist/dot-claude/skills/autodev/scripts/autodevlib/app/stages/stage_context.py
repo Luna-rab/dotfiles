@@ -43,7 +43,7 @@ from ...domain.value_objects.verify_command import VerifyCommand
 from ...infra.paths import RunPaths
 
 if TYPE_CHECKING:
-    from ..mainloop import Delivery
+    from ..driving.mainloop import Delivery
 
 
 #: 実行をどう始めるか。どれにするかは Task が決める（`Task.how_to_start`）

@@ -82,7 +82,7 @@ from ...domain.value_objects.stream_id import StreamId
 from ...domain.value_objects.task_id import TaskId
 from ...infra.files import utc_now
 from ...infra.status.status import remove_progress, write_progress
-from ..mainloop import Ticket
+from ..driving.mainloop import Ticket
 from . import files, outputs
 from .programs.common import ProgramOutcome, Tools, VerifyRunner, own_commits
 from .programs.registry import run_program
@@ -91,7 +91,7 @@ from .prompts.assets import asset_name, skill_root
 from .stage_context import ResumeMode, RunSetting, StageContext, StagePrompt, run_setting, snapshot
 
 if TYPE_CHECKING:
-    from ..driver import DriverParts
+    from ..driving.driver import DriverParts
 
 log = logging.getLogger(__name__)
 

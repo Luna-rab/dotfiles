@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 import pytest
 import test_seams as seams
-from autodevlib.app.mainloop import Delivery, LoopExit, MainLoop, Subscriber
+from autodevlib.app.driving.mainloop import Delivery, LoopExit, MainLoop, Subscriber
 from autodevlib.domain.aggregates.base import Aggregate
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.task import Escalate

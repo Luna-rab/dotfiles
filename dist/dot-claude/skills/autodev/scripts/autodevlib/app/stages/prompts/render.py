@@ -26,7 +26,7 @@ from ....domain.value_objects.event_id import EventId
 from ....domain.value_objects.stream_id import StreamId
 from ....domain.value_objects.task_id import TaskId
 from ....infra.paths import RunPaths
-from ...mainloop import Delivery
+from ...driving.mainloop import Delivery
 from ..stage_context import StageContext, StagePrompt
 from .assets import asset_name, contract_inputs, contract_path
 from .sources import SOURCES, Block, Sources, _camel_keys, _json

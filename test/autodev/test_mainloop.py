@@ -19,7 +19,7 @@ from autodev_fakes import (
     requested,
     task,
 )
-from autodevlib.app.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
+from autodevlib.app.driving.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
 from autodevlib.domain.aggregates.base import Aggregate
 from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.base import Command

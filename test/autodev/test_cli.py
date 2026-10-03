@@ -348,7 +348,7 @@ def test_answerは確かめる間にdriverが回答を拾っても2つ目の回�
     それが起きても、どちらの読み取りからも回答が消えない。"""
     seed_questions(world.paths, withdrawn=False)
     assert world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "60")[0] == 0
-    from autodevlib.app import assembly  # noqa: PLC0415
+    from autodevlib.app.driving import assembly  # noqa: PLC0415
 
     def pick_up() -> None:
         """driver が回答を拾った: QuestionAnswered を足し、requests の行を消す。"""

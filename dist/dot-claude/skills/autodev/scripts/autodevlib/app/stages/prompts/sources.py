@@ -34,7 +34,7 @@ from ....domain.value_objects.stage_kind import StageKind
 from ....domain.value_objects.stream_id import StreamId
 from ....domain.value_objects.task_id import TaskId
 from ....infra.paths import RunPaths
-from ...mainloop import Delivery
+from ...driving.mainloop import Delivery
 from .assets import skill_root
 
 _A = ArtifactKind

@@ -15,10 +15,10 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from ..domain import codec
-from ..domain.commands.base import Command
-from ..domain.commands.questions import PostQuestion
-from ..domain.commands.run import (
+from ...domain import codec
+from ...domain.commands.base import Command
+from ...domain.commands.questions import PostQuestion
+from ...domain.commands.run import (
     AnswerEscalation,
     ApplyReplan,
     EscalateToRun,
@@ -27,11 +27,11 @@ from ..domain.commands.run import (
     RequestReplan,
     StopTasks,
 )
-from ..domain.commands.task import AcceptFlow
-from ..domain.value_objects.base import InvalidValue
-from ..domain.value_objects.command_id import CommandId
-from ..domain.value_objects.issuer import Issuer
-from ..domain.value_objects.task_id import TaskId
+from ...domain.commands.task import AcceptFlow
+from ...domain.value_objects.base import InvalidValue
+from ...domain.value_objects.command_id import CommandId
+from ...domain.value_objects.issuer import Issuer
+from ...domain.value_objects.task_id import TaskId
 
 #: タスク統括（実装タスク）の判断
 TASK_DECISIONS: Mapping[str, type[Command]] = {"run-flow": AcceptFlow, "escalate": EscalateToRun}

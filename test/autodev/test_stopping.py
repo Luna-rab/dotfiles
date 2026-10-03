@@ -7,7 +7,7 @@ import signal
 import threading
 from collections.abc import Callable
 
-from autodevlib.app.stopping import SignalStop
+from autodevlib.app.driving.stopping import SignalStop
 
 
 class Recorder:

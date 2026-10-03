@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from autodevlib.app.mainloop import Delivery, Subscriber
+from autodevlib.app.driving.mainloop import Delivery, Subscriber
 from autodevlib.domain.aggregates.base import Aggregate, Rejected, applies, handles
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.stack import EnqueueStack

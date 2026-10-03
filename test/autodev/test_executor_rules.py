@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from autodev_harness import DRIVER, POLICY, new_id, of_type
 from autodevlib.adapters.claude.schema import ecma_pattern, normalize_nulls, violations
-from autodevlib.app.mainloop import Delivery
+from autodevlib.app.driving.mainloop import Delivery
 from autodevlib.app.stages.executor import from_parts
 from autodevlib.app.stages.markers import fill
 from autodevlib.app.stages.stage_context import ResumeMode, RunSetting, snapshot

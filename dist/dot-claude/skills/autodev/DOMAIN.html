@@ -283,14 +283,16 @@ table.tr td:nth-child(4) { overflow-wrap: anywhere; }
 /* 1 回のランのシーケンス図。参加者 1 人が 2 列を持ち、矢印は送り手の列の中心から受け手の列の中心まで引く */
 .seq {
   display: grid;
-  grid-template-columns: 1.8rem repeat(16, minmax(4.1rem, 1fr));
+  grid-template-columns: 1.8rem repeat(16, minmax(3.2rem, 1fr));
   font-size: 0.78rem;
   line-height: 1.4;
 }
 .seq .p {
   z-index: 1;
-  margin: 0 0.15rem 0.2rem;
-  padding: 0.35rem 0.2rem;
+  margin: 0 0.1rem 0.2rem;
+  padding: 0.35rem 0.1rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
   background: var(--bg);
   border: 1px solid var(--muted);
   border-radius: 6px;

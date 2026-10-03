@@ -781,3 +781,15 @@ def test_ConfirmRedはタスクのverifyが落ちれば完了し全部通ればr
         assert of_type(events, expected), events
         if expected is EscalationRaised:
             assert of_type(events, EscalationRaised)[0].kind is EscalationKind.RED_CHECK_FAILED
+
+
+def test_joinの待ち時間は全体の上限で走りの数だけ延びない(env: Env):
+    release = threading.Event()
+    threads = [threading.Thread(target=release.wait, daemon=True) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    env.executor._threads.extend(threads)
+    began = time.monotonic()
+    env.executor.join(0.5)
+    assert time.monotonic() - began < 1.0
+    release.set()

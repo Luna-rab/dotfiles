@@ -43,6 +43,7 @@ import contextlib
 import logging
 import queue
 import threading
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -331,7 +332,9 @@ class Executor:
     # --- 検査と終わり方のため ---
 
     def join(self, timeout: float = 30.0) -> None:
-        """順番待ちと、走っている実行が終わるまで待つ。"""
+        """順番待ちと、走っている実行が終わるまで待つ。`timeout` は全体の上限で、待つものの数だけ
+        延ばさない（driver が終わる前の待ちが、走っていた実行の数に比例して延びない）。"""
+        deadline = time.monotonic() + timeout
         with self._lock:
             trees = list(self._lanes)
         marks = []
@@ -340,11 +343,11 @@ class Executor:
             self._enqueue(tree, mark.set)
             marks.append(mark)
         for mark in marks:
-            mark.wait(timeout)
+            mark.wait(max(0.0, deadline - time.monotonic()))
         with self._lock:
             threads = list(self._threads)
         for thread in threads:
-            thread.join(timeout)
+            thread.join(max(0.0, deadline - time.monotonic()))
 
     def interrupt_all(self) -> None:
         """パニックのとき。走っている実行をすべて止める。"""

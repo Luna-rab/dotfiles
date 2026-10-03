@@ -22,16 +22,15 @@ flowchart TD
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import shlex
-import signal
-import threading
+import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
+from ..adapters import children
 from ..adapters._proc import KILL_AFTER_SECONDS
 from ..adapters.agent_runtime import INTERRUPT_GRACE
 from ..adapters.guard import write_hook_settings
@@ -54,6 +53,7 @@ from .executor import StageExecutor, StagePrompt
 from .mainloop import Delivery, Inbox, LoopExit, MainLoop, Outcome, Subscriber
 from .prompts import Prompts, skill_root
 from .reactions import reactions
+from .stopping import SignalStop
 from .supervisors import AgentRuntimeLike, SupervisorRunner, SupervisorSetting
 
 log = logging.getLogger(__name__)
@@ -236,9 +236,38 @@ class Driver:
                     self.executor.begin(execution, self.inbox.expect(execution))
 
     def drive(self, start: StartRequest | None = None) -> ExitCode:
-        """ランを進め、終了コードを返す。`start` は新しいラン名のときだけ渡す。"""
+        """ランを進め、終了コードを返す。`start` は新しいラン名のときだけ渡す。
+
+        シグナルのハンドラは頭から子を待ち終えるまで付けておく（`app/stopping.py`）。付いていない間に
+        シグナルが来ると、子を待たずに driver だけが終わり、子が残る。
+        """
         self.paths.root.mkdir(parents=True, exist_ok=True)
         write_hook_settings(self.paths.guard)
+        children.track_in(self.paths.children)
+        stopper = SignalStop(
+            panic=self._submit_panic, kill=self._kill_children, stop=self.inbox.stop
+        )
+        try:
+            with stopper:
+                return self._drive(start, stopper)
+        finally:
+            children.track_in(None)
+
+    def _submit_panic(self, cause: str, rejected: Callable[[str], None]) -> None:
+        self.inbox.expect().submit(
+            Panic(
+                command_id=CommandId(f"signal/{uuid.uuid4().hex}"),
+                issuer=Issuer.driver(),
+                cause=cause,
+            ),
+            reply=lambda _command, reason: rejected(reason),
+        )
+
+    def _kill_children(self) -> None:
+        for child in children.kill_survivors(self.paths.children):
+            log.warning("子をグループごと止めた: pid %d（%s）", child.pid, child.command)
+
+    def _drive(self, start: StartRequest | None, stopper: SignalStop) -> ExitCode:
         store = EventStore.open(self.paths.events_db)
         try:
             kwargs = {} if self._poll_interval is None else {"poll_interval": self._poll_interval}
@@ -276,51 +305,29 @@ class Driver:
                     self._restore_prompt, reported=_run(loop.aggregates).reported_failure
                 )
                 self._begin_left_requested()
-            with self._stopping_on_signals():
-                outcome = loop.run()
-            if outcome.exit is LoopExit.STOPPED and _run(loop.aggregates).panicked:
+            outcome = loop.run()
+            stopped = outcome.exit is LoopExit.STOPPED
+            if stopped and (_run(loop.aggregates).panicked or stopper.received):
                 # 走っている実行を interrupted にし、反応（実行器の interrupt）に止めさせる
                 loop.interrupt_running(InterruptCause.PANIC, PANIC)
                 loop.drain()
-                # 子は新しいセッションで起こしているので、driver が先に終わると止まらずに残る
-                self.executor.join(STOP_JOIN_SECONDS)
+                # 子は新しいセッションで起こしているので、driver が先に終わると止まらずに残る。
+                # ステージと統括を同時に止め、同じ締め切りまで待つ
+                self.supervisors.shutdown()
+                deadline = time.monotonic() + STOP_JOIN_SECONDS
+                self.executor.join(max(0.0, deadline - time.monotonic()))
+                self.supervisors.join(max(0.0, deadline - time.monotonic()))
+                if left := children.survivors(self.paths.children):
+                    log.error(
+                        "待ち切れずに残った子: %s",
+                        ", ".join(f"pid {c.pid}（{c.command}）" for c in left),
+                    )
+            if stopper.received and outcome.exit is not LoopExit.FINISHED:
+                return ExitCode.PANICKED
             return exit_code(outcome, loop.aggregates)
         finally:
             self.supervisors.shutdown()
             store.close()
-
-    @contextlib.contextmanager
-    def _stopping_on_signals(self) -> Iterator[None]:
-        """SIGTERM・SIGINT を受けたら、パニックと同じ道で止める（終了コード 3。呼び直せば、止めた
-        ステージを `--resume` で続ける）。
-
-        ハンドラはメインループのスレッドで、メインループの途中に割り込んで走る。Inbox の錠を
-        メインループが握っている所に割り込むと待ち合って止まるので、Panic を渡すのは別のスレッドに
-        任せる。シグナルを受けられるのはメインスレッドだけなので、ほかのスレッドで回すときは置かない。
-        """
-        if threading.current_thread() is not threading.main_thread():
-            yield
-            return
-
-        def submit(name: str) -> None:
-            self.inbox.expect().submit(
-                Panic(
-                    command_id=CommandId(f"signal/{uuid.uuid4().hex}"),
-                    issuer=Issuer.driver(),
-                    cause=f"{name} を受けた",
-                )
-            )
-
-        def handle(signum: int, _frame: object) -> None:
-            name = signal.Signals(signum).name
-            threading.Thread(target=submit, args=(name,), daemon=True).start()
-
-        previous = {sig: signal.signal(sig, handle) for sig in (signal.SIGTERM, signal.SIGINT)}
-        try:
-            yield
-        finally:
-            for sig, handler in previous.items():
-                signal.signal(sig, handler)
 
 
 def default_status_command(paths: RunPaths) -> str:

@@ -24,17 +24,22 @@ disable-model-invocation: true
 
 ## 1. 起動する
 
-次の 3 つを確定する。足りないものはユーザーに聞き、推測で埋めない。
+次を確定する。足りないものはユーザーに聞き、推測で埋めない。
 
 | 引数 | 決め方 |
 | --- | --- |
 | `--name` | ラン名。英小文字・数字・`-` で 1〜49 字。`-` で始めず、`--` と末尾の `-` を含めない。指示の主題から付ける |
 | `--repo` | 対象リポジトリ。新しいランでは必須 |
-| `--instruction` | 受入条件が一意に定まる文。長ければ `--instruction-file <パス>`（`-` で標準入力） |
+| 指示 | 受入条件が一意に定まる文 |
 | `--base` | ユーザーが指定したときだけ付ける。省くと origin の既定ブランチ |
 
+指示と回答は、引用符で囲んだヒアドキュメント（`<<'EOF'`）で `-`（標準入力）に渡す。`"..."` で囲むと、
+文の中の `"`・`$`・バッククォートで壊れ、`$(...)` は実行される。
+
 ```bash
-~/.claude/skills/autodev/scripts/autodev.py run --name <ラン名> --repo <リポジトリ> --instruction "<指示>"
+~/.claude/skills/autodev/scripts/autodev.py run --name <ラン名> --repo <リポジトリ> --instruction-file - <<'EOF'
+<指示>
+EOF
 ```
 
 **Bash の `run_in_background` で走らせる**（1 タスクで 30 分以上かかる）。終わると終了コードが届く。
@@ -42,13 +47,14 @@ disable-model-invocation: true
 ## 2. 待っている間
 
 ランディレクトリは、`run` が標準エラーに出す「記録: <パス>」である（既定は `~/.local/state/autodev/<ラン名>`）。
-その `questions/` を Monitor で見る（`timeout_ms` は上限にし、切れたら張り直す）。
+その `questions/` を Monitor で見る（`timeout_ms` は上限にし、切れたら張り直す）。Monitor が出した
+パス（渡し済みの質問）は会話の中で覚えておき、張り直すときは改行で区切って `seen` の初めの値にする。
 
 ```bash
-dir=<ランディレクトリ>/questions; seen=""
+dir=<ランディレクトリ>/questions; seen="<渡し済みの質問のパス>"
 while true; do
-  cur=$(grep -l '"status": "open"' "$dir"/*.json 2>/dev/null | sort)
-  comm -13 <(echo "$seen") <(echo "$cur"); seen=$cur; sleep 2
+  cur=$(grep -rlE --include='*.json' '"status"[[:space:]]*:[[:space:]]*"open"' "$dir" 2>/dev/null | sort)
+  [ -n "$cur" ] && comm -13 <(echo "$seen" | sort) <(echo "$cur"); seen=$cur; sleep 2
 done
 ```
 
@@ -57,10 +63,12 @@ done
 **質問にはあなたが答えず、ユーザーに聞く。** 回答は次で置く。
 
 ```bash
-~/.claude/skills/autodev/scripts/autodev.py answer --name <ラン名> --question <質問 ID> --answer "<回答>"
+~/.claude/skills/autodev/scripts/autodev.py answer --name <ラン名> --question <質問 ID> --answer-file - <<'EOF'
+<回答>
+EOF
 ```
 
-driver が走っていれば、置いた回答をそのまま受け取る。呼び直すのは `run` が 4 で終わった後だけ。
+driver が走っていれば、置いた回答をそのまま受け取る。回答を置いた後に `run` を呼び直すのは、`run` が 4 で終わったときだけ。
 
 取り下げた質問に答えると、`answer` は 1 で落ち、標準エラーに取り下げた理由が出る。ユーザーに
 「その質問は取り下げられた」と理由を添えて伝え、次の質問を待つ。答え済み・無い質問・空の回答も 1 で落ちる。
@@ -72,7 +80,7 @@ driver が走っていれば、置いた回答をそのまま受け取る。呼�
 
 | コード | すること |
 | --- | --- |
-| 0 | `status --json` の `tasks[]` で、`kind` が `implementation` のものを `status` で分けて報告する: `stacked`（積んだ）・`dropped`（止めた）・`discarded`（破棄した）。概要 PR は `stack.overview.pr`。0 は「全部積んだ」ではない。マージしない |
+| 0 | `status --json` の `tasks[]` で、`kind` が `implementation` のものを `status` で分けて報告する: `stacked`（積んだ）・`dropped`（止めた）・`discarded`（破棄した）・`superseded`（引き継がれた。引き継いだ先は `superseded_by`）。概要 PR は `stack.overview.pr`。0 は「全部積んだ」ではない。マージしない |
 | 4 | 回答待ちで、進められるタスクが無い。`status --json` の `questions[]` をユーザーに渡し、答えを `answer` で置いてから `run --name <ラン名>` を呼び直す |
 | 3 | パニック（利用枠の上限など。SIGTERM・SIGINT で止めたときも 3）。`run` の標準エラーとランディレクトリの `logs/` で原因を確かめてユーザーに伝え、原因が消えたら `run --name <ラン名>` を呼び直す |
 | 1 | 起動できなかった。標準エラーの理由をユーザーに伝える。直せるもの（認証・gh stack・リポジトリの設定・ラン名）はユーザーと直してから呼び直す |
@@ -89,9 +97,10 @@ driver が走っていれば、置いた回答をそのまま受け取る。呼�
 | `autodev.py clean --name <ラン名>` | 終了コード 0 で終えたランの worktree を外す | worktree だけ。ランディレクトリの記録は残す |
 | `autodev.py purge --name <ラン名>` | やめたラン・もう見ないランを消す | 手元の worktree・ブランチ・ランディレクトリ。PR とリモートのブランチは残る |
 
-`--force` は、止める理由（`clean` なら終えていない・回答待ち・パニック、`purge` なら走っている実行・push していない
-コミット）があっても消す。コミットしていない変更や、呼び直して続ける道を失う。ユーザーが承知したときだけ付ける。
-driver が走っている間は `--force` でも消さない。
+止まったら、標準エラーに出た理由をユーザーに示す。`--force` はその理由を越えて消すので、ユーザーが承知したときだけ付ける。
+`--force` でも消さないのは、driver か、前の driver が起こしたプロセスが走っているとき。
+`clean` も `purge` も、worktree の未コミットの変更や、切り離した HEAD にしか無いコミットがあると止まる。
+squash マージや rebase マージを済ませたランの `purge` は `--force` が要る。PR がマージ済みなら `--force` で消してよい。
 
 ## 5. しないこと
 

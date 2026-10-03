@@ -33,7 +33,7 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 | 2 | ドメインの土台（値・コマンド・イベント・ステージの定義・フローの検査） | 済み |
 | 3 | 集約・ドメインサービス・つなぎ目の表（`test_seams.SEAMS`） | 済み |
 | 4 | インフラ（SQLite のイベントストア・メインループ）・アダプタ（claude・git・gh）・ガードのフック | 済み |
-| 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | ほぼ済み。レビューと直しを 2 巡した。3 巡目のレビューで出た should-fix を直す作業が残っている（§6） |
+| 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | ほぼ済み。3 巡目の should-fix（S1〜S5）は直した。nit の N1〜N3 を直す作業と push が残っている（§6） |
 | 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | 未着手 |
 | 7 | 文書を置き換え、旧 autodev の残りを消して仕上げる | 未着手 |
 
@@ -63,61 +63,39 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 ### 段 5 を締める（段 6 より先にやる）
 
-段 5 の 2 回目の直しをまとめたレビューは返ってきた。must-fix は無く、should-fix が 6 件、nit が 5 件あった。まだ直していない。次の手順で段 5 を締める。
+3 巡目のレビューで出た should-fix の S1〜S5 は直し、レビューを通してマージした。次の手順で段 5 を締める。
 
-1. 下の S1〜S5 を `medium-worker` に直させ、`medium-reviewer` でレビューしてからマージし、検査を通す。S6 は段 6 の CLI を作るときの約束なので、段 6 に回す
-2. nit（N1〜N5）は直すかどうかをユーザーに聞く
-3. `feature/autodev-redesign` を origin に push する。ユーザーが頼んだのは段 5 を締めた後の push である。作業用の `feature/autodev-redesign-*` は push しない。PR は作らない
-4. 段 6 に入る前に止まって、ユーザーに報告する
+1. nit の N1〜N3 を `medium-worker` に直させ、`medium-reviewer` でレビューしてからマージし、検査を通す（作業場所は `feature/autodev-redesign-domain-judgments`）
+2. `feature/autodev-redesign` を origin に push する。ユーザーが頼んだのは段 5 を締めた後の push である。作業用の `feature/autodev-redesign-*` は push しない。PR は作らない
+3. 段 6 に入る前に止まって、ユーザーに報告する
 
-パスは `dist/dot-claude/skills/autodev/scripts/autodevlib/` を省いて書く。レビューで確かめた結論は次の 3 つ。
+パスは `dist/dot-claude/skills/autodev/scripts/autodevlib/` を省いて書く。
 
-- 段を飛ばさない規則は守られている
-- 根元の値は、S3 の場面を除いて正しい
-- 同じ worktree で 2 つ同時に走る道は無い
+**直す nit（ユーザーが選んだ）**
 
-**should-fix**
+- **N1**: 載せ直すコミットが 0 件なら失敗にする判断が、`app/programs.py:272-276` にある。ドメインの規則にして、programs は事実を渡すだけにする
+- **N2**: `session_lost` を決める式（`resumed and NO_RESULT and not initialized`）が、`app/executor.py:801` にある。事実を Evidence に載せ、Task が判定する
+- **N3**: 根元が無いときに、コミット数を 0 として証拠に出している（`app/executor.py:648` あたり）。「数えられない」と「0 件」を見分ける
 
-- **S1. 戻すのを飛ばした後に begin が失敗すると、次の試みが戻さないまま始まる**
-  - 根拠: `app/executor.py:489-497`・`domain/task.py:446-447`・`:720-729`
-  - 何が起きるか: 作り直しの `_restart` が待ち切れずに戻さず、次の試みの begin も失敗して FAILED になる。すると `reset_before_start` は、すぐ前の試みが RESTARTED でないので None を返す。
-  - 直し方: 始めていない試み（`start_commit is None`）を飛ばして遡る。並びの検査を足す
-- **S2. 回答が届く前にエスカレーションが閉じると、ラン統括が返せる判断の無い ANSWER で起こされ、出口の無い輪になる**
-  - 根拠: `domain/run.py:899-912`・`domain/supervision.py:146-149`・`domain/questions.py:72-80`
-  - 何が起きるか: ユーザーの回答とラン統括の stop-tasks・replan が前後すると、ラン統括は `answer` を拒まれる。差し戻しを使い切って supervisor-failed になり、ユーザーに聞き、答えるとまた同じ知らせで起きる。
-  - 直し方: ドメインで止める。閉じたエスカレーションへの回答は AnswerRecorded に印を付け、`_wake_run` はその印を見て起こさない。または記録しない
-- **S3. driver が落ちた後に Rebase を流し直すと、終わった rebase をもう一度かけて、ありもしない衝突を作る**
-  - 根拠: `app/programs.py:270-279`・`domain/task.py:749-759`・`app/executor.py:425-432`
-  - 何が起きるか: rebase を終えてから結果が載る前に落ちると、根元が古いまま `--onto` を流し直す。レビューが git で再現した。
-  - 直し方: StageSpec に「流し直す前に `start_commit` へ戻す」を宣言し（`abandons_rebase` と同じ形）、実行器はそれに従う。検査を足す
-- **S4. 残った `index.lock` が、ふつうの場面ではほとんど消えない**
-  - 根拠: `app/executor.py:514`・`:521`・`:371-377`
-  - 何が起きるか: 止めた走りは、終わるとすぐ `_stopping` から外れる。そのため、lock を消す条件に当たらない。検査（`test/autodev/test_executor.py:554-603`）は、実際のコードが作らない状態を手で作って通している。
-  - 直し方: interrupt したら worktree ごとに「止めた後に片付けていない」印を立て、次の仕事が lock を確かめたら下ろす
-- **S5. 走り出した直後に止めた実行が、自分の終わりを 120 秒待つ**
-  - 根拠: `app/executor.py:514`（`waiting` が `besides` を除いていない）・`:562`
-  - 何が起きるか: 同じ worktree の begin なども一緒に待つ。
-  - 直し方: `waiting` から `besides` を除くか、`_run` の初めで止めた走りなら抜ける
-- **S6（段 6 へ回す）. 取り下げた後に届いた回答は、`rejected.jsonl` に残るだけで `/autodev` に見えない**
+**段 6 へ回す**
+
+- **S6. 取り下げた後に届いた回答は、`rejected.jsonl` に残るだけで `/autodev` に見えない**
   - 根拠: `domain/questions.py:83-92`・`app/files.py:63-86`
   - 段 6 で: `autodev answer` が `questions/<id>.json` の status を確かめ、withdrawn なら reason を添えて落ちるようにする。SKILL.md にも書く
-
-**nit（直すかはユーザーに聞く）**
-
-- **N1**: 載せ直すコミットが 0 件なら失敗にする判断が、`app/programs.py:272-276` にある。ドメインの関数にして、programs はそれを呼ぶだけにする案がある
-- **N2**: `session_lost` を決める式（`resumed and NO_RESULT and not initialized`）が、`app/executor.py:773` にある。事実を Evidence に載せ、Task が判定する案がある
-- **N3**: 根元が無いときに、コミット数を 0 として証拠に出している（`app/executor.py:620-622`）
-- **N4**: 検査用の `join()` は、待ち直しで後ろへ回した begin を待たない（`app/executor.py:324-333`）。メインループには響かない
-- **N5**: SIGKILL のタイマーは、子が SIGTERM で終わっても 10 秒後に必ず送る（`adapters/_proc.py:50-53`・`:106-114`）。そのあいだに pid が使い回されると、別の子を殺しうる。ただしレビューの推測である
 
 **設計として残る点（すぐ直すものではない。ユーザーに伝える）**
 
 - 答えて続けられる仕事（`answer_only`）は、答えて続ける輪に上限が無い
 - ラン統括が応じずにユーザーが答えて起こし直した（RETRY）とき、その回答は元のエスカレーションには使えない。そのためユーザーに 2 回聞くことになる
+- ラン統括の `ask-user` は、Run で開いていないエスカレーションの id でも質問を出せる（`domain/questions.py:55-76` は Run の状態を見ない）。開いたことの無い id への回答はラン統括を起こすので止まりはしないが、閉じた id で質問を出す道は残る。塞ぐなら、ask-user を Run が受けて確かめ、ポリシーが `PostQuestion` を出す形にする
 
 ### 直さないと決めたもの
 
 - 古いイベントの列から読み戻すと、`EscalationRaised.failures` が抜けて 0 になり、上げを 1 回少なく数える。作り直しの途中で古い列がまだ無いので、直さない
+- イベントの版を上げずに欄を足したので、直す前に記録したランの列は、新しい欄が既定値で読み戻る（`AnswerRecorded.escalation_closed` など）。同じ理由で直さない
+- N4（検査用の `join()` が、待ち直しで後ろへ回した begin を待たない）。メインループには響かない
+- N5（SIGKILL のタイマーは、子が SIGTERM で終わっても 10 秒後に必ず `killpg` を送る）。10 秒のうちに pid が一周しないと起きない
+- S4 の直しで残る隙間。lock を確かめてから消すまでの数 ms に、同じ worktree の別の実行が git を始めうる。起きても git が落ちてステージの失敗になり、黙って壊れはしない
 
 ## 7. 触らないもの
 

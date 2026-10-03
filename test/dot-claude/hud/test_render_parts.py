@@ -34,23 +34,36 @@ def test_幅に収まらなければkeepの小さい部品から落とす():
     assert parts.fit(row, 3).plain == "aaaa"
 
 
-def test_ステージの並びを記号つきで描く():
+def test_段の並びを記号つきで描く():
     steps = [
-        Step("…", "", Mark.ELIDED),
-        Step("修正", "2", Mark.FAILED),
-        Step("レビュー", "2", Mark.CURRENT),
-        Step("ジャッジ", "", Mark.NEXT),
+        Step("…", None, Mark.ELIDED),
+        Step("実装", None, Mark.DONE),
+        Step("リベース", None, Mark.SKIPPED),
+        Step("ジャッジ", 2, Mark.CURRENT),
+        Step("完了チェック", None, Mark.NEXT),
     ]
-    assert tasklist.pipeline(steps).plain == "… › 修正 r2 ✘ › レビュー r2 ◼ › ジャッジ"
+    assert (
+        tasklist.pipeline(steps).plain == "… › 実装 ✔ › リベース – › ジャッジ r2 ◼ › 完了チェック"
+    )
 
 
 def test_タスク行は右に続くものがあるときだけ件名の幅をそろえる():
     running = tasklist.task_row(
-        {"id": "task2", "subject": "範囲", "status": "running"}, [Step("実装", "0", Mark.CURRENT)]
+        {"id": "task2", "title": "範囲", "status": "running"}, [Step("実装", None, Mark.CURRENT)]
     )
-    pending = tasklist.task_row({"id": "task3", "subject": "CLI", "status": "pending"}, [])
+    pending = tasklist.task_row({"id": "task3", "title": "CLI", "status": "pending"}, [])
     assert running.plain == "  ◼ task2 範囲" + " " * 18 + "  実装 ◼"
     assert pending.plain == "  ◻ task3 CLI"
+
+
+def test_エスカレーション中のタスクは種類を出す():
+    task = {
+        "id": "task4",
+        "title": "移行",
+        "status": "escalated",
+        "escalations": [{"kind": "stall"}],
+    }
+    assert tasklist.task_row(task, []).plain.endswith("  stall")
 
 
 def test_まとめた行():

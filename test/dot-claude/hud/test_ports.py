@@ -1,13 +1,15 @@
-"""外とのやり取り（`hud/ports/git.py`・`hud/ports/autodev.py`）。本物の git と一時ディレクトリで確かめる。"""
+"""外とのやり取り（`hud/ports/git.py`・`hud/ports/autodev.py`）。本物の git と、偽の autodev の入口で確かめる。"""
 
 from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
+from conftest import SCRIPTS_ROOT
 from hud.ports import autodev, git, usage
+from hud_samples import calls, status, write_fake_entry, write_usage
 from hud_samples import usage as sample_usage
-from hud_samples import write_run, write_usage
 
 
 def test_git_statusの出力を返しgitの外ならNone(tmp_path):
@@ -20,33 +22,43 @@ def test_git_statusの出力を返しgitの外ならNone(tmp_path):
     assert git.status(str(tmp_path)) is None
 
 
-def test_ランディレクトリを読む(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
-    write_run(tmp_path)
-    (tmp_path / "broken").mkdir()
-    (tmp_path / "broken" / "state.json").write_text("{", encoding="utf-8")
-    assert [st["name"] for st in autodev.read_states()] == ["range-field"]
-    assert autodev.read_review("range-field", "task2")["items"]["r1"]["rating"] == "must-fix"
-    assert autodev.read_review("range-field", "task9") is None
-    assert autodev.read_overview("range-field") == "範囲を指定して切り出す。"
+def test_入口は同じcheckoutのautodevスキルから引く(monkeypatch):
+    monkeypatch.delenv(autodev.ENTRY_ENV, raising=False)
+    assert Path(autodev.entry()) == SCRIPTS_ROOT / "autodev.py"
+    assert Path(autodev.entry()).is_file()
 
 
-def test_ステージのログと指示をコード名とラウンドで引く(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
-    write_run(tmp_path)
-    log = autodev.stage_file("range-field", "task2", "review:adversarial", "1", ".jsonl")
-    assert log.endswith("logs/task2/review-adversarial-1.jsonl")
-    assert len(autodev.read_lines(log)) == 4
-    prompt = autodev.stage_file("range-field", "task2", "review:adversarial", "1", ".prompt.md")
-    assert "敵対的レビュー" in str(autodev.read_text(prompt))
-    assert autodev.read_text(prompt.replace("-1.", "-9.")) is None
+def fake_env(tmp_path, monkeypatch, statuses: list[dict]) -> None:
+    for key, value in write_fake_entry(tmp_path, statuses).items():
+        monkeypatch.setenv(key, value)
 
 
-def test_ログのファイル名を書かれた順に並べる(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
-    write_run(tmp_path)
-    assert autodev.log_names("range-field", "task0") == ["plan-0.jsonl"]
-    assert autodev.log_names("range-field", "task9") == []
+def test_一覧はstatus_jsonを名前なしで呼ぶ(tmp_path, monkeypatch):
+    fake_env(tmp_path, monkeypatch, [status(), {"name": "old", "error": "ValueError: x"}])
+    reply = autodev.statuses()
+    assert (reply.code, [st["name"] for st in reply.data]) == (0, ["add-cache", "old"])
+    assert calls(tmp_path) == ["status --json"]
+
+
+def test_1つのランはnameを付けて呼びランが無ければ終了コード1(tmp_path, monkeypatch):
+    fake_env(tmp_path, monkeypatch, [status()])
+    assert autodev.status("add-cache").data["name"] == "add-cache"
+    missing = autodev.status("nope")
+    assert (missing.code, missing.data, missing.message) == (1, None, "autodev: そのランが無い")
+    assert calls(tmp_path) == ["status --json --name add-cache", "status --json --name nope"]
+
+
+def test_入口が無い_JSONでない_返らないときも落ちない(tmp_path, monkeypatch):
+    monkeypatch.setenv(autodev.ENTRY_ENV, str(tmp_path / "none.py"))
+    assert autodev.statuses().code is None
+    entry = tmp_path / "noisy.py"
+    entry.write_text("print('not json')", encoding="utf-8")
+    monkeypatch.setenv(autodev.ENTRY_ENV, str(entry))
+    assert (autodev.statuses().code, autodev.statuses().data) == (0, None)
+    entry.write_text("import time; time.sleep(5)", encoding="utf-8")
+    monkeypatch.setattr(autodev, "TIMEOUT", 0.2)
+    slow = autodev.statuses()
+    assert slow.code is None and "返らなかった" in slow.message
 
 
 def usage_env(tmp_path, monkeypatch, fetched) -> list[str]:

@@ -1,68 +1,46 @@
-"""autodev-watch のステージのリスト（`hud/core/stagelist.py`）。"""
+"""autodev-watch の段のリスト（`hud/core/stagelist.py`）。"""
 
 from __future__ import annotations
 
-import pytest
+import copy
+
 from hud.core import stagelist
 from hud.core.pipeline import Mark
-from hud.core.runs import Stage
+from hud_samples import ADDENDUM_TASK
 
 
-def stage(name: str, round_label: str, task: str = "task1") -> Stage:
-    return Stage(name=name, task=task, round=round_label, seconds=10.0, turns=0, tool="")
+def rows(items: list[stagelist.StageItem]) -> list[tuple[str, str, int, bool]]:
+    return [(i.label, i.mark.value, len(i.runs), i.older) for i in items]
 
 
-def rows(items: list[stagelist.StageItem]) -> list[tuple[str, str]]:
-    return [(i.label, i.mark.value) for i in items]
-
-
-def test_レビュー2つをまとめずにステージを1行ずつ並べる():
-    task = {
-        "id": "task1",
-        "stages": [
-            {"name": "testgen", "round": "0", "ok": True},
-            {"name": "impl", "round": "0", "ok": True},
-            {"name": "review:normal", "round": "1", "ok": True},
-        ],
-    }
-    got = stagelist.for_task(task, [stage("review:adversarial", "1")])
+def test_今のフローの段ごとに実行を持たせる():
+    got = stagelist.for_task(ADDENDUM_TASK)
     assert rows(got) == [
-        ("テスト作成 r0", "done"),
-        ("実装 r0", "done"),
-        ("通常レビュー r1", "done"),
-        ("敵対的レビュー r1", "current"),
-        ("ジャッジ", "next"),
-        ("PR 本文", "next"),
+        ("テスト作成", "done", 0, False),
+        ("ジャッジ r2", "current", 1, False),
+        ("完了チェック", "next", 0, False),
     ]
+    assert got[1].runs[0]["id"] == "task1-Judge-r2-a1"
 
 
-def test_これからのステージはコードを持たずキーで見分ける():
-    got = stagelist.for_task({"id": "task1", "stages": []}, [])
-    assert [i.code for i in got] == [None] * 5
-    assert got[0].key == "next:テスト作成"
+def test_前の版のフローの実行は今の段に重ねず後ろに並べる():
+    """`step` が 2 でも、書き直す前のフローの添字なので、今の Gate の段ではない。"""
+    task = copy.deepcopy(ADDENDUM_TASK)
+    task["flow"]["version"] = 2
+    task["executions"][0]["step"] = 2
+    got = stagelist.for_task(task)
+    assert [len(i.runs) for i in got[:3]] == [0, 0, 0]
+    assert rows(got[3:]) == [("ジャッジ r2", "current", 1, True)]
+    assert got[3].key == "exec:task1-Judge-r2-a1"
 
 
-def test_失敗したステージを印で分ける():
-    task = {"id": "task1", "stages": [{"name": "impl", "round": "0", "ok": False}]}
-    assert stagelist.for_task(task, [])[0].mark is Mark.FAILED
+def test_フローが無くても実行は見せる():
+    task = copy.deepcopy(ADDENDUM_TASK)
+    task["flow"] = None
+    task["executions"][0]["status"] = "failed"
+    got = stagelist.for_task(task)
+    assert [(i.older, i.mark) for i in got] == [(True, Mark.FAILED)]
 
 
-def test_タスクに属さないステージはログのファイル名から組む():
-    got = stagelist.for_run(
-        ["plan-0.jsonl", "summary-0.jsonl"], [stage("summary", "0", task="task0")]
-    )
-    assert rows(got) == [("計画 r0", "done"), ("まとめ r0", "current")]
-
-
-@pytest.mark.parametrize(
-    ("name", "want"),
-    [
-        ("review-normal-1.jsonl", ("review:normal", "1")),
-        ("impl-0-2.jsonl", ("impl", "0-2")),
-        ("pr-body-0.jsonl", ("pr-body", "0")),
-        ("impl-0.jsonl.err", None),
-        ("unknown-1.jsonl", None),
-    ],
-)
-def test_ログのファイル名からステージとラウンドを読む(name, want):
-    assert stagelist.parse_log_name(name) == want
+def test_段のキーは添字で決まり読み直しても変わらない():
+    assert [i.key for i in stagelist.for_task(ADDENDUM_TASK)] == ["step:0", "step:1", "step:2"]

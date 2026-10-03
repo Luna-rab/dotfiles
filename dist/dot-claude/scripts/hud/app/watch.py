@@ -1,7 +1,7 @@
-"""autodev のランを見る画面（Textual）。2 秒ごとに読み直すだけで、何も書き込まない。
+"""autodev のランを見る画面（Textual）。2 秒ごとに `autodev status --json` を呼び直すだけで、何も書き込まない。
 
-左ペインは「ラン → タスク → ステージ」のリストを 1 層ずつ出し、右ペインに選んでいる項目の
-詳細を出す。
+左ペインは「ラン → タスク → 段」のリストを 1 層ずつ出し、右ペインに選んでいる項目の詳細を出す。
+ランのリストでは全ランの status を、タスクと段のリストでは選んだラン 1 つの status を呼ぶ。
 
 | キー | すること |
 | --- | --- |
@@ -23,18 +23,16 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import ContentSwitcher, Footer, OptionList, RichLog, Static
+from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from hud.core import activity, headline, pipeline, review, runs, stagelist
+from hud.core import headline, pipeline, runs, stagelist
 from hud.core.pipeline import Mark
 from hud.ports import autodev
 from hud.render import detail, navigator
 from hud.render.theme import DIM
 
 REFRESH_SECONDS = 2.0
-#: ステージの出力に出す、ログの末尾のイベント数
-LOG_EVENTS = 300
 
 
 class Level(Enum):
@@ -48,9 +46,7 @@ class Watch(App):
     CSS = """
     #left { width: 1fr; }
     #crumb { height: 1; padding: 0 1; }
-    #right { width: 2fr; border-left: solid $panel; }
-    #info { padding: 0 1; }
-    #stage { padding: 0 1; }
+    #right { width: 2fr; border-left: solid $panel; padding: 0 1; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         # OptionList も enter を持ち、フッターに出さない設定になっている。priority で先に受け取らないと
@@ -67,20 +63,20 @@ class Watch(App):
         self.task_id: str | None = None
         #: 層ごとに選んでいる項目。読み直しても同じ項目にカーソルを保つ
         self.cursor: dict[Level, str | None] = {level: None for level in Level}
+        #: ランのリストでは全ラン、深い層では選んだラン 1 つだけ
         self.states: list[dict] = []
+        #: status を呼べなかった理由。呼べていれば None
+        self.failure: str | None = None
         self.now = dt.datetime.now().astimezone()
         self.signature: list[tuple[str, str]] = []
-        self.log_source: tuple[str | None, int] = (None, 0)
 
     def compose(self) -> ComposeResult:
         with Horizontal():
             with Vertical(id="left"):
                 yield Static(id="crumb")
                 yield OptionList(id="list")
-            with ContentSwitcher(id="right", initial="info"):
-                with VerticalScroll(id="info"):
-                    yield Static(id="info-body")
-                yield RichLog(id="stage", markup=False, wrap=True)
+            with VerticalScroll(id="right"):
+                yield Static(id="info-body")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -90,6 +86,23 @@ class Watch(App):
 
     # --- 読む ------------------------------------------------------------------
 
+    def fetch(self) -> None:
+        """今の層に要る status だけを呼ぶ。ラン 1 つが消えていたら、ランのリストに戻る。"""
+        if self.level is not Level.RUNS and self.run_name is not None:
+            reply = autodev.status(self.run_name)
+            st, self.failure = runs.single(reply.code, reply.data, reply.message)
+            if st is not None:
+                self.states = [st]
+                return
+            if self.failure is not None:
+                self.states = []
+                return
+            self.level, self.run_name, self.task_id = Level.RUNS, None, None
+        reply = autodev.statuses()
+        found = runs.listing(reply.code, reply.data, reply.message)
+        self.failure = found.error
+        self.states = runs.order(found.runs, self.now)
+
     @property
     def current_run(self) -> dict | None:
         return self.find_run(self.run_name)
@@ -97,40 +110,29 @@ class Watch(App):
     def find_run(self, name: str | None) -> dict | None:
         return next((st for st in self.states if runs.name_of(st) == name), None)
 
-    def stages_of(self, st: dict) -> list[runs.Stage]:
-        return runs.live_stages(st, self.now)
-
-    def head_of(self, st: dict) -> headline.Headline:
-        stages = self.stages_of(st)
-        return headline.build(st, stages, runs.is_active(st, stages, self.now))
-
     def task(self) -> dict | None:
         st = self.current_run or {}
         return next((t for t in runs.tasks(st) if str(t.get("id")) == self.task_id), None)
 
     def stage_items(self) -> list[stagelist.StageItem]:
-        st = self.current_run
-        if st is None or self.task_id is None:
-            return []
-        stages = self.stages_of(st)
-        if self.task_id == stagelist.RUN_TASK:
-            names = autodev.log_names(str(self.run_name), stagelist.RUN_TASK)
-            return stagelist.for_run(names, stages)
         task = self.task()
-        return stagelist.for_task(task, stages) if task else []
+        return stagelist.for_task(task) if task else []
 
     def options(self) -> list[tuple[str, Text]]:
         """今の層のリストの項目（キーと行）。"""
         if self.level is Level.RUNS:
-            return [(runs.name_of(st), navigator.run_row(self.head_of(st))) for st in self.states]
+            return [(runs.name_of(st), self.run_row(st)) for st in self.states]
         st = self.current_run
         if st is None:
             return []
         if self.level is Level.TASKS:
-            active = any(s.task == stagelist.RUN_TASK for s in self.stages_of(st))
-            rows = [(stagelist.RUN_TASK, navigator.run_task_row(active))]
-            return rows + [(str(t.get("id")), navigator.task_row(t)) for t in runs.tasks(st)]
+            return [(str(t.get("id")), navigator.task_row(t)) for t in runs.tasks(st)]
         return [(item.key, navigator.stage_row(item)) for item in self.stage_items()]
+
+    def run_row(self, st: dict) -> Text:
+        if runs.error_of(st):
+            return navigator.broken_run_row(runs.name_of(st))
+        return navigator.run_row(headline.build(st, self.now))
 
     def default_key(self, keys: list[str]) -> str | None:
         """その層に初めて入ったときに選ぶ項目。走っているもの、無ければ先頭。"""
@@ -150,9 +152,7 @@ class Watch(App):
 
     def reload(self) -> None:
         self.now = dt.datetime.now().astimezone()
-        self.states = runs.order(autodev.read_states(), self.now)
-        if self.level is not Level.RUNS and self.current_run is None:
-            self.level, self.run_name, self.task_id = Level.RUNS, None, None
+        self.fetch()
         self.query_one("#crumb", Static).update(
             navigator.breadcrumb(
                 self.run_name if self.level is not Level.RUNS else None,
@@ -178,67 +178,31 @@ class Watch(App):
             listing.highlighted = keys.index(str(self.cursor[self.level]))
 
     def show_detail(self) -> None:
-        switcher = self.query_one(ContentSwitcher)
+        self.query_one("#info-body", Static).update(self.info())
+
+    def info(self) -> Text | Group:
+        if self.failure is not None:
+            return detail.failure_detail(self.failure)
         key = self.cursor[self.level]
         st = self.current_run if self.level is not Level.RUNS else self.find_run(key)
         if st is None or key is None:
-            switcher.current = "info"
-            self.query_one("#info-body", Static).update(Text("autodev のランが無い", style=DIM))
-            return
+            return Text("autodev のランが無い", style=DIM)
+        error = runs.error_of(st)
+        if error is not None:
+            return detail.broken_detail(runs.name_of(st), error)
+        if self.level is Level.RUNS:
+            return detail.run_detail(headline.build(st, self.now), st, self.now)
+        return self.item_info(st, key)
+
+    def item_info(self, st: dict, key: str) -> Text | Group:
+        """タスクか段を選んだときの詳細。"""
         if self.level is Level.STAGES:
             item = next((i for i in self.stage_items() if i.key == key), None)
-            if item is not None and item.code is not None:
-                switcher.current = "stage"
-                self.show_stage(item)
-                return
-        switcher.current = "info"
-        self.query_one("#info-body", Static).update(self.info(st, key))
-
-    def info(self, st: dict, key: str) -> Text | Group:
-        if self.level is Level.RUNS:
-            return detail.run_detail(
-                self.head_of(st), st, runs.overview_head(autodev.read_overview(key))
-            )
-        if self.level is Level.STAGES:
-            return Text("まだ走っていない", style=DIM)
-        if key == stagelist.RUN_TASK:
-            head = self.head_of(st)
-            return Text(navigator.RUN_TASK_LABEL + "\n\n", style="bold").append(
-                f"いま: {head.doing}\nEnter で計画ステージとまとめステージの一覧に入る", style=DIM
-            )
+            return detail.stage_detail(item, self.now) if item else Text("")
         task = next((t for t in runs.tasks(st) if str(t.get("id")) == key), None)
         if task is None:
             return Text("")
-        stages = self.stages_of(st)
-        mine = [s for s in stages if s.task == key]
-        found = review.summarize(autodev.read_review(runs.name_of(st), key))
-        return detail.task_detail(task, pipeline.steps(task, stages), mine, found)
-
-    def show_stage(self, item: stagelist.StageItem) -> None:
-        """渡した指示と出力を 1 つのペインに続けて出す。
-
-        同じログが伸びただけなら書き直さずに足す（書き直すとスクロール位置が先頭に戻る）。
-        開いたときは指示の先頭を見せ、末尾まで読み進めているときだけ新しい出力を追う。
-        """
-        run_name, task_id, code = str(self.run_name), str(self.task_id), str(item.code)
-        path = autodev.stage_file(run_name, task_id, code, item.round, ".jsonl")
-        pane = self.query_one("#stage", RichLog)
-        events = activity.parse(autodev.read_lines(path), LOG_EVENTS)
-        source, seen = self.log_source
-        if path != source or len(events) < seen:
-            pane.clear()
-            pane.auto_scroll = False
-            prompt = autodev.read_text(
-                autodev.stage_file(run_name, task_id, code, item.round, ".prompt.md")
-            )
-            pane.write(detail.stage_prompt(prompt))
-            pane.write(detail.stage_output_heading())
-            seen = 0
-        else:
-            pane.auto_scroll = pane.is_vertical_scroll_end
-        for event in events[seen:]:
-            pane.write(detail.activity_line(event))
-        self.log_source = (path, len(events))
+        return detail.task_detail(task, pipeline.steps(task), self.now)
 
     # --- 操作 ------------------------------------------------------------------
 
@@ -256,6 +220,10 @@ class Watch(App):
         if key is None or self.level is Level.STAGES:
             return
         if self.level is Level.RUNS:
+            st = self.find_run(key)
+            # 読めないランには入らない。status --name も同じ理由で読めない
+            if st is None or runs.error_of(st):
+                return
             if key != self.run_name:
                 self.cursor[Level.TASKS] = None
             self.run_name, self.level = key, Level.TASKS

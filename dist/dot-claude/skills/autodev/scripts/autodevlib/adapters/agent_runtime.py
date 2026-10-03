@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from ..domain.values import SessionId
-from ._proc import merged_env
+from ._proc import merged_env, run
 
 #: 外して起動する変数（AR-01）
 REMOVED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
@@ -492,6 +492,10 @@ class AgentRuntime:
         self, call: AgentCall, on_progress: Callable[[Progress], None] | None = None
     ) -> AgentOutcome:
         return self.start(call, on_progress).wait()
+
+    def available(self) -> bool:
+        """`claude` が起動できるか（LEDGER GH-15。走り出す前に確かめる）。"""
+        return run([self.claude, "--version"], env=dict.fromkeys(REMOVED_ENV)).ok
 
 
 class _Collector:

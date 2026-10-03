@@ -1,0 +1,78 @@
+"""CLI が使う組み立て: 本物の実行器と AgentRuntime で driver を組む・走り出す前に道具を確かめる・
+ランディレクトリの記録を読む。
+
+ここは判断を持たない。記録を読むときは集約を再生してドメインに聞き（`Questions.handle`）、答えを
+そのまま CLI に返す。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ..adapters import git
+from ..adapters.agent_runtime import AgentRuntime
+from ..adapters.forge import Forge
+from ..domain.aggregate import Rejected
+from ..domain.commands import AnswerQuestion
+from ..domain.events import RunStarted
+from ..domain.questions import Questions
+from ..domain.values import StreamId
+from ..infra.eventstore import EventReader
+from ..infra.paths import RunPaths
+from ..infra.repo_config import RepoConfig
+from .driver import Driver
+from .executor import from_parts
+
+
+def build_driver(paths: RunPaths, config: RepoConfig) -> Driver:
+    """ステージと統括は同じ AgentRuntime で起こす。claude と gh は PATH から探す（検査は偽物を先に置く）。"""
+    agent = AgentRuntime()
+    arguments = config.executor_arguments()
+    return Driver(
+        paths,
+        executor=lambda parts: from_parts(parts, agent, **arguments),
+        runtime=agent,
+    )
+
+
+def missing_tools(cwd: Path) -> list[str]:
+    """走り出す前に足りない道具。1 つでもあれば走らない（LEDGER GH-15。途中で気づくと、worktree と
+    概要 PR だけが残る）。"""
+    missing: list[str] = []
+    if not AgentRuntime().available():
+        missing.append("claude が起動できない（PATH にあるか、`claude --version` が通るか）")
+    if not git.available():
+        missing.append("git が PATH に無い")
+    missing += Forge().missing(cwd)
+    return missing
+
+
+# --- ランディレクトリの記録 ---
+
+
+def run_started(paths: RunPaths) -> RunStarted | None:
+    """そのランの RunStarted。events.db が無い・まだ始めていないなら None。"""
+    if not paths.events_db.is_file():
+        return None
+    with EventReader.open(paths.events_db) as reader:
+        for stored in reader.read_stream(StreamId.run()):
+            event = stored.decode()
+            if isinstance(event, RunStarted):
+                return event
+    return None
+
+
+def answer_refusal(paths: RunPaths, command: AnswerQuestion) -> str | None:
+    """要求を足す前に、Questions がその回答を受けるかを確かめる。受けないなら理由（取り下げた質問なら、
+    取り下げた理由も入る。S6）。
+
+    driver が要求を拾った所で拒むと `rejected.jsonl` に残るだけで、`/autodev` は気づけない。判断は
+    `Questions.handle` のもので、ここは状態を変えずに借りるだけ。
+    """
+    with EventReader.open(paths.events_db) as reader:
+        history = [(s.decode(), s.command_id) for s in reader.read_stream(StreamId.questions())]
+    try:
+        Questions.replay(StreamId.questions(), history).handle(command)
+    except Rejected as rejected:
+        return str(rejected)
+    return None

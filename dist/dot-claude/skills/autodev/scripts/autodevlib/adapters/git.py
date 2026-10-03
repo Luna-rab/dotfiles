@@ -56,6 +56,17 @@ class WorktreeMismatch(RuntimeError):
     """在る worktree が、求めたものと違う（別のブランチ・ランディレクトリの外の古いディレクトリ）。"""
 
 
+def toplevel(path: str | os.PathLike[str]) -> Path | None:
+    """`path` を含む git のリポジトリの根。リポジトリの中でなければ None。"""
+    got = run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], env=_ENV)
+    return Path(got.out.strip()) if got.ok and got.out.strip() else None
+
+
+def available() -> bool:
+    """`git` が PATH にあって起動できるか（LEDGER GH-15）。"""
+    return run(["git", "--version"], env=_ENV).ok
+
+
 class Git:
     def __init__(self, repo: str | os.PathLike[str]) -> None:
         #: 対象リポジトリ（worktree を足す元）

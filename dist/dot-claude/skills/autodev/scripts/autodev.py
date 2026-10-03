@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""autodev の入口。作り直しの途中で、まだ動かない。
+"""autodev の入口。中身は `autodevlib/cli.py`。
 
-SKILL.md がこのパスを起動するので、置き場だけ先に残してある。設計は
-`redesign/IMPLEMENTING.md`。動く版は main にある。
+PATH には無いので、絶対パスで起動する（LEDGER CL-01）。このファイルの置き場が `sys.path` の先頭に
+入るので、隣の `autodevlib` をそのまま import できる。
 """
 
 from __future__ import annotations
 
-import sys
+from autodevlib.cli import main
 
 if __name__ == "__main__":
-    sys.stderr.write("autodev: 作り直しの途中で、まだ動かない（動く版は main にある）\n")
-    raise SystemExit(1)
+    raise SystemExit(main())

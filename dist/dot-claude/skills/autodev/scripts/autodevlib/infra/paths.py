@@ -162,3 +162,8 @@ class RunPaths:
     @property
     def guard(self) -> Path:
         return self.root / "guard.json"
+
+    @property
+    def driver_lock(self) -> Path:
+        """driver が走っている間握る錠（`infra/lock.py`）。"""
+        return self.root / "driver.lock"

@@ -9,7 +9,7 @@
   `carried` は終端
 - **指摘にはそれぞれ判定する者がいる**（JudgeCapability）。タスクの台帳のレビューの指摘は Judge、
   Gate の項目の指摘は Gate、設計の台帳の指摘は DesignJudge。指摘の状態を動かせるのは、その台帳の
-  持ち主のタスクで走った、その指摘を判定する者の実行の結果だけ。判定を締める（EvaluateStall・
+  持ち主のタスクで走った、その指摘を判定する者の実行の結果だけ。判定を締める（RecordJudgement・
   RecordGateResult）ときに見るのも、その判定する者が判定する指摘だけである。Judge が G- の指摘を
   見ると、Judge には閉じられない G- の指摘で ReviewLoop を抜けられず、Gate との間で回り続ける
 - 状態を変えるときは、コメントを必ず残す

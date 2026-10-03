@@ -343,15 +343,16 @@ def _answer_log(s: Sources) -> Value:
     """ランの中の回答の全部。ユーザーの回答（質問の id 付き）と、ラン統括が自分で答えたもの。"""
     found: list[dict[str, Any]] = []
     for eid, event in s.events(AnswerRecorded):
-        found.append(
-            {
-                "origin": "user",
-                "question": event.question.value,
-                "escalation": event.escalation.value if event.escalation else None,
-                "answer": event.answer,
-                "event": eid.value,
-            }
-        )
+        entry: dict[str, Any] = {
+            "origin": "user",
+            "question": event.question.value,
+            "escalation": event.escalation.value if event.escalation else None,
+            "answer": event.answer,
+            "event": eid.value,
+        }
+        if event.escalation_closed:
+            entry["escalationClosed"] = True
+        found.append(entry)
     for eid, event in s.events(EscalationAnswered):
         if event.question is None:
             found.append(

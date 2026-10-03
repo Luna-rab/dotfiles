@@ -140,7 +140,8 @@ def _wake_run(event: Event) -> Wake | None:
         # ユーザーが受ける上げ（ラン統括が応じなかった）は、ポリシーが質問にする
         route = EscalationRouter.route(StreamId.run(), event.kind, event.task)
         return Wake(run, Notice.ESCALATION) if route.level is SupervisorLevel.RUN else None
-    if isinstance(event, AnswerRecorded):
+    # 答える先のエスカレーションがもう閉じていた回答では起こさない（ラン統括が返せる判断が無い）
+    if isinstance(event, AnswerRecorded) and not event.escalation_closed:
         # ラン統括が応じなかったので聞いた質問への回答なら、その知らせから起こし直す
         notice = Notice.ANSWER if event.failed_notice is None else Notice.RETRY
         return Wake(run, notice, event.failed_notice)

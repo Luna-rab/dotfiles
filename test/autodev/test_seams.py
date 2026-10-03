@@ -166,6 +166,7 @@ from autodevlib.domain.run import Run
 from autodevlib.domain.services.escalation_router import task_of_stream
 from autodevlib.domain.stack import Stack
 from autodevlib.domain.stages import STAGE_SPECS, Handoff, StageMode
+from autodevlib.domain.supervision import wake_for
 from autodevlib.domain.task import ExecutionStatus, Task
 from autodevlib.domain.values import (
     MAX_JOB_RETURNS,
@@ -1685,6 +1686,48 @@ def test_ユーザーに聞いた後に回答以外で閉じたエスカレー�
     assert isinstance(questions, Questions)
     assert not questions.awaiting_answer
     assert "withdraw-questions" in world.fired
+
+
+def asks_user_when_woken(world: World, eid: EventId, event: Event) -> list[Command]:
+    """ラン統括: asks_user と同じだが、回答には wake_for が起こすときだけ応じる（driver と同じ）。"""
+    if isinstance(event, AnswerRecorded) and wake_for(event, eid) is None:
+        return []
+    return asks_user(world, eid, event)
+
+
+def test_回答とラン統括の再計画が前後したら回答に閉じた印が立ちランは終わりまで進む():
+    # 起こさないことそのものは、test_supervision.py の表と test_run.py で確かめている
+    world = World(
+        impl_supervisor, run_supervisor(), asks_user_when_woken, script=replan_on_ask_script
+    )
+    start(world)
+    world.run_stages()
+    escalation = world.last_id(EscalationRaised, StreamId.run())
+    # ユーザーが答えた（QuestionAnswered）後、その回答が Run に届く前に、ラン統括が再計画で閉じた。
+    # 質問はもう answered なので取り下げられない
+    world.process(
+        AnswerQuestion(
+            command_id=world.command_id(),
+            issuer=Issuer.cli(),
+            question=QuestionId("q-scope"),
+            answer="A",
+        )
+    )
+    world.process(
+        RequestReplan(
+            command_id=world.command_id(),
+            issuer=RUN_SUPERVISOR,
+            reason="指示を読み直して割り直す",
+            trigger=escalation,
+        )
+    )
+    world.pump()
+    world.run_stages()
+    (recorded,) = world.events(AnswerRecorded)
+    assert recorded.escalation_closed
+    # ラン統括が回答に応じなくても、再計画からランが仕上げまで進む
+    assert world.events(EscalationAnswered) == []
+    assert world.run.finished
 
 
 def refused_script(world: World, execution: ExecutionId) -> Outcome | None:

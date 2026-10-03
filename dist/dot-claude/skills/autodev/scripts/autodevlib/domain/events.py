@@ -258,6 +258,10 @@ class AnswerRecorded(Event):
     #: ラン統括が応じられなかったので聞いた質問なら、その知らせ。ラン統括を新しいセッションで、
     #: この知らせで起こし直す（回答はそのエスカレーションを閉じる）
     failed_notice: EventId | None = None
+    #: 届いたとき、質問を出したエスカレーションはもう回答以外で閉じていた（回答と stop-tasks・replan
+    #: が前後した）。答える先が無いので、ラン統括を起こさない。起こすと answer を拒まれ続け、
+    #: supervisor-failed から同じ知らせで起こし直す輪になる
+    escalation_closed: bool = False
 
 
 @dataclass(frozen=True)

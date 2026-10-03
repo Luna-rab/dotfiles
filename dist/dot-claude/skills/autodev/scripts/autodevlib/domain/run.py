@@ -216,6 +216,9 @@ class Run(Aggregate):
         #: 破棄して、まだ閉じ終えていない数。0 になるまで、ランは終わらない
         self.cuts_pending = 0
         self.escalations: dict[EventId, RunEscalation] = {}
+        #: 開いたことのある Run のエスカレーション（閉じても消さない）。回答が届いたときに、答える先が
+        #: 閉じたのか、もともと Run のエスカレーションではない id（取り違え）なのかを分ける
+        self.opened_escalations: set[EventId] = set()
         self.answers: dict[QuestionId, RecordedAnswer] = {}
         #: タスクを 1 本も積まないまま続けた再計画の数
         self.replan_streak = 0
@@ -911,7 +914,17 @@ class Run(Aggregate):
                 ),
                 EscalationClosed(asked.id, "ユーザーが答えた", asked.task),
             ]
-        return [AnswerRecorded(command.question, command.answer, command.escalation)]
+        # 閉じたエスカレーションへの回答も記録する（ユーザーの言葉を回答の記録に残す）。拒むと、
+        # 質問は answered のまま Run に届かない。開いたことの無い id（取り違え）には印を付けない。
+        # 付けるとラン統括が起きず、取り違えた側で開いているエスカレーションを起こすものが無くなる
+        return [
+            AnswerRecorded(
+                command.question,
+                command.answer,
+                command.escalation,
+                escalation_closed=asked is None and command.escalation in self.opened_escalations,
+            )
+        ]
 
     @handles(AnswerEscalation)
     def _answer(self, command: AnswerEscalation) -> list[Event]:
@@ -1144,6 +1157,7 @@ class Run(Aggregate):
             event.failures,
             event.answer_only,
         )
+        self.opened_escalations.add(self.event_id)
         # ラン統括が応じなかった上げは、応じなかった知らせのタスクに関わる
         concerned = event.task
         if concerned is None and event.failed_notice is not None:

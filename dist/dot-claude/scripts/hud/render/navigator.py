@@ -44,6 +44,10 @@ def run_row(head: Headline) -> Text:
     mark = "◼" if head.state is State.RUNNING else " "
     row = Text(f"{mark} ", style=ACCENT).append(head.run_name)
     row.append(f"  {head.phase}", style=PHASE_ROW_STYLE.get(head.phase, DIM))
+    if head.stopped:
+        row.append(" · driver 停止", style=RED)
+    if head.leftovers:
+        row.append(" · 子が残っている", style=RED)
     if head.waiting:
         row.append(" · 回答待ち", style=YELLOW)
     row.append(f"  {head.stacked}/{head.total}", style=DIM)

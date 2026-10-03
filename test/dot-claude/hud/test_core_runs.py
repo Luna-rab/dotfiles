@@ -134,9 +134,38 @@ def test_走っている実行が無ければフェーズだけを出し止ま�
     assert (head.state, head.doing, head.waiting) == (headline.State.QUIET, "実行中", ())
 
 
-def test_パニックは走っている実行より先に見せる():
-    st = status(run={**status()["run"], "phase": "panicked"})
-    assert headline.build(st, now()).state is headline.State.PANICKED
+def test_パニックは走っている実行より先に見せ原因を1行にして添える():
+    st = status(run={**status()["run"], "phase": "panicked", "panic_cause": "利用枠\n  上限"})
+    head = headline.build(st, now())
+    assert (head.state, head.panic_cause) == (headline.State.PANICKED, "利用枠 上限")
+
+
+@pytest.mark.parametrize(
+    ("phase", "running", "want"),
+    [
+        ("running", False, True),
+        ("planning", False, True),
+        ("running", True, False),
+        # 呼び直すのを待つフェーズ・終えたフェーズでは、driver がいなくて当たり前
+        ("panicked", False, False),
+        ("finished", False, False),
+        # driver_running の無い古い形では、止まっているとは言わない
+        ("running", None, False),
+    ],
+)
+def test_driverが走っているはずのフェーズで走っていなければ止まっていると見る(phase, running, want):
+    run = {**status()["run"], "phase": phase, "driver_running": running}
+    if running is None:
+        del run["driver_running"]
+    assert headline.build(status(run=run), now()).stopped is want
+
+
+def test_前のdriverの子のpidを整数だけ拾う():
+    st = status(run={**status()["run"], "live_children": [41, "x", True, 42]})
+    assert headline.build(st, now()).leftovers == (41, 42)
+    assert (
+        headline.build(status(run={**status()["run"], "live_children": 5}), now()).leftovers == ()
+    )
 
 
 def test_積んだ数の分母に止めた_引き継がれた_破棄したタスクを入れない():

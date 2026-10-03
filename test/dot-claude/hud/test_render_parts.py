@@ -5,10 +5,12 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from hud.core import headline
 from hud.core.pipeline import Mark, Step
 from hud.core.stagelist import StageItem
 from hud.core.tasklist import Summary
-from hud.render import detail, parts, tasklist
+from hud.render import detail, navigator, parts, tasklist
+from hud_samples import quiet
 from rich.text import Text
 
 
@@ -75,6 +77,31 @@ def test_飛ばした段は飛ばしたと出す():
     for part in detail.stage_detail(item, dt.datetime.now().astimezone()).renderables:
         text.append_text(part if isinstance(part, Text) else Text(str(part)))
     assert "飛ばした" in text.plain and "まだ走っていない" not in text.plain
+
+
+def detail_lines(st: dict, now: dt.datetime) -> list[str]:
+    group = detail.run_detail(headline.build(st, now), st, now)
+    return [r.plain if isinstance(r, Text) else "" for r in group.renderables]
+
+
+def test_ランの詳細とリストの行にdriverの止まり方とパニックの原因を出す():
+    now = dt.datetime.now().astimezone()
+    stopped = quiet()
+    stopped["run"].update(driver_running=False, live_children=[4242])
+    head = headline.build(stopped, now)
+    lines = detail_lines(stopped, now)
+    assert lines[2] == (
+        "driver が止まっている（run --name add-cache で呼び直す）"
+        " · 前の driver の子が生きている pid 4242"
+    )
+    assert navigator.run_row(head).plain == (
+        "  add-cache  実行中 · driver 停止 · 子が残っている  1/4"
+    )
+
+    panicked = quiet()
+    panicked["run"].update(phase="panicked", driver_running=False, panic_cause="利用枠の上限" * 20)
+    # 詳細には切らずに全文を出す
+    assert detail_lines(panicked, now)[2] == f"パニックの原因: {'利用枠の上限' * 20}"
 
 
 def test_まとめた行():

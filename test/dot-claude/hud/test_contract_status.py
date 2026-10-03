@@ -42,7 +42,8 @@ def test_本物のstatusを読んでstatuslineが描いて0で終わる(tmp_path
         env={
             **os.environ,
             **write_fake_entry(tmp_path, statuses),
-            "COLUMNS": "120",
+            # driver が止まっている印で見出しが長くなるので、回答待ちまで切らずに出す幅にする
+            "COLUMNS": "200",
             "CLAUDE_CONFIG_DIR": str(tmp_path / "claude"),
             "XDG_CACHE_HOME": str(tmp_path / "cache"),
         },
@@ -53,5 +54,7 @@ def test_本物のstatusを読んでstatuslineが描いて0で終わる(tmp_path
     # seed_running のランでは、計画タスクの Replan と task1 の Impl が走っている
     head = next(line for line in lines if line.startswith("autodev demo ▸ "))
     assert "planning 再計画 r0 · task1 実装 r0" in head
+    # 記録の上では走っているが、driver.lock を握るプロセスが無い
+    assert "driver が止まっている（run --name demo で呼び直す）" in head
     assert "回答待ち q1" in head
     assert any("◼ task1 パーサを足す" in line for line in lines), lines

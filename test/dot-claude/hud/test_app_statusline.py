@@ -151,6 +151,30 @@ def test_パニックしたランは最後のイベントが古くても出す(t
     assert run(tmp_path, statuses=[st])[4].startswith("autodev add-cache ▸ パニック")
 
 
+def test_パニックの原因を幅を切って添える(tmp_path):
+    st = quiet()
+    st["run"].update(
+        phase="panicked", driver_running=False, panic_cause="利用枠の上限に当たった" * 5
+    )
+    lines = run(tmp_path, columns=200, statuses=[st])
+    head = next(line for line in lines if "autodev add-cache ▸ " in line)
+    assert "autodev add-cache ▸ パニック · 呼び直すまで進まない · 利用枠の上限に" in head
+    assert "…" in head
+    # パニックの後に driver がいないのは当たり前なので、止まっているとは言わない
+    assert "driver が止まっている" not in head
+
+
+def test_driverが止まっていれば呼び直し方と残った子のpidを出す(tmp_path):
+    st = quiet()
+    st["run"].update(driver_running=False, live_children=[4242, 4343])
+    assert run(tmp_path, columns=200, statuses=[st])[4] == (
+        "autodev add-cache ▸ 実行中 · スタック済み 1/4"
+        " · driver が止まっている（run --name add-cache で呼び直す）"
+        " · 前の driver の子が生きている pid 4242 4343"
+        " · エスカレーション 1 · 概要 PR #4"
+    )
+
+
 def test_型の違う欄があってもtracebackを出さずに描く(tmp_path):
     """`progress` は実行器が書いたファイルの中身そのままなので、崩れていることがある。"""
     st = status()

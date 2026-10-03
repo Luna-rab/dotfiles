@@ -25,7 +25,7 @@ from hud.core.runs import (
 )
 from hud.core.stagelist import OLDER, OUTSIDE, StageItem
 from hud.render.parts import bar
-from hud.render.tasklist import pipeline
+from hud.render.tasklist import driver_notes, pipeline
 from hud.render.theme import (
     ACCENT,
     BOLD,
@@ -67,7 +67,14 @@ def run_detail(head: Headline, st: dict, now: dt.datetime) -> Group:
         title.append(" · 回答待ち", style=YELLOW)
     if head.overview_pr:
         title.append(f" · 概要 PR #{head.overview_pr}", style=DIM)
-    parts: list[Any] = [title, run_meta(st, now), Text()]
+    parts: list[Any] = [title, run_meta(st, now)]
+    notes = driver_notes(head)
+    if head.panic_cause:
+        notes.append(f" · パニックの原因: {head.panic_cause}", style=RED)
+    if notes.plain:
+        # 頭の「 · 」は見出しに続けるときの区切りなので、行の頭では落とす
+        parts.append(notes[3:])
+    parts.append(Text())
 
     pct = head.stacked / head.total * 100 if head.total else 0.0
     progress = Text("進み具合  ", style=BOLD).append_text(bar(pct, PROGRESS_BAR_WIDTH))

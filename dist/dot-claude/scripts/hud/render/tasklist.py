@@ -19,6 +19,8 @@ from hud.render.theme import ACCENT, ARROW, DIM, GREEN, RED, YELLOW, status_mark
 
 SUBJECT_WIDTH = 22
 ESCALATION_WIDTH = 24
+#: statusline に出すパニックの原因の幅。全文は autodev-watch の詳細に出す
+PANIC_CAUSE_WIDTH = 40
 #: 段の並びを出すタスクの状態。積む順番を待つ間も、フローの最後の段まで見せる
 PIPELINE_STATUSES = ("running", "gated", "stacking")
 
@@ -29,6 +31,10 @@ def headline(head: Headline) -> Text:
     line.append(" ▸ ", style=DIM)
     if head.state is State.PANICKED:
         line.append(f"{head.doing} · 呼び直すまで進まない", style=RED)
+        if head.panic_cause:
+            line.append(" · ").append_text(
+                clip(Text(head.panic_cause, style=RED), PANIC_CAUSE_WIDTH)
+            )
     elif head.state is State.RUNNING:
         line.append(head.doing)
         if head.elapsed is not None:
@@ -37,6 +43,7 @@ def headline(head: Headline) -> Text:
             line.append(f" {head.turns}ターン {head.tool}".rstrip(), style=DIM)
     else:
         line.append(f"{head.doing} · スタック済み {head.stacked}/{head.total}", style=DIM)
+    line.append_text(driver_notes(head))
     if head.waiting:
         line.append(f" · 回答待ち {' '.join(head.waiting)}", style=YELLOW)
     if head.escalated:
@@ -44,6 +51,17 @@ def headline(head: Headline) -> Text:
     if head.overview_pr:
         line.append(f" · 概要 PR #{head.overview_pr}", style=DIM)
     return line
+
+
+def driver_notes(head: Headline) -> Text:
+    """driver が止まっている・前の driver の子が残っている。どちらも人が動くまで直らない。"""
+    out = Text()
+    if head.stopped:
+        out.append(f" · driver が止まっている（run --name {head.run_name} で呼び直す）", style=RED)
+    if head.leftovers:
+        pids = " ".join(map(str, head.leftovers))
+        out.append(f" · 前の driver の子が生きている pid {pids}", style=RED)
+    return out
 
 
 def pipeline(steps: list[Step]) -> Text:

@@ -34,24 +34,19 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 | 3 | 集約・ドメインサービス・つなぎ目の表（`test_seams.SEAMS`） | 済み |
 | 4 | インフラ（SQLite のイベントストア・メインループ）・アダプタ（claude・git・gh）・ガードのフック | 済み |
 | 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | 済み。レビューと直しを 3 巡し、nit は N1〜N3 を直した |
-| 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | 未着手 |
+| 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | 途中。CLI・`status --json`・HUD・SKILL.md はレビューを通してマージした。本物で確かめる作業が残っている |
 | 7 | 文書を置き換え、旧 autodev の残りを消して仕上げる | 未着手 |
 
 ## 5. 次にやること
 
 ### 段 6
 
-- **CLI**: `scripts/autodev.py` は、いまは終了コード 1 を返すだけの置き場である。ここに次のものを作る。
-  - サブコマンド: `run`・`status --json`・`events`・`answer`・`clean`・`purge`・`ask`
-  - driver の組み立て。本物の実行器は、どこからもまだつないでいない。形は `Driver(paths, executor=lambda parts: from_parts(parts, AgentRuntime(), verify=..., test_globs=..., protected_globs=..., untested_globs=...), runtime=...)`（`app/driver.py`・`app/executor.py`）
-  - リポジトリごとの設定を読む所。読むのは検証コマンド・テストのパス・変更禁止のパス・テストが要らないパスで、LEDGER の FP-09 を参照。これもまだ無い
-  - 終了コードは、0（ランを終えた）・1・3（パニック）・4（回答待ち）。2 は廃止した
-- **SKILL.md**:
-  - /autodev の入口と出口を書き直す。`questions/` を Monitor で見てユーザーに渡し、回答を置いて `autodev run` を呼び直す（ARCHITECTURE §6）
-  - `disable-model-invocation: true` と「作り直しの途中」の注記は、段 7 で外す
-- **HUD**: `dist/dot-claude/scripts/hud/ports/autodev.py` と `dist/dot-claude/scripts/autodev-watch.py` を、`autodev status --json` を読む形にする（ARCHITECTURE §12）。`hud/core`・`hud/render` にも旧い state の形を読む所がある
-- **旧 autodev を参照しているほかのファイル**: `dist/dot-claude/hooks/turnreview/core/turn.py`・`dist/dot-claude/skills/create-pr/SKILL.md`・`install.sh`・`dist/dot-vscode-server/data/Machine/settings.json`。段 6 か段 7 で見直す。`install.sh` を変えたら、もう 1 つの dotfiles の checkout にも入れる（ユーザーのメモリー）
-- **本物の claude・gh で確かめる**: ARCHITECTURE §14 の一覧を確かめる。外れたら設計と ADDENDUM を直す
+- **本物の claude・gh で確かめる**（ユーザーの了承済み）
+  1. ARCHITECTURE §14 の一覧を、小さな `claude -p` と gh で 1 件ずつ確かめる。外れたら、実装・設計・ADDENDUM を直す
+  2. テスト用の private リポジトリ `Luna-rab/autodev-sandbox`（手元は `~/ghq/github.com/Luna-rab/autodev-sandbox`、設定は `~/.config/autodev/repos/home__naru__ghq__github.com__Luna-rab__autodev-sandbox.json`）で、通しのランを 1 本走らせる。ブランチの push と draft PR の作成までで、マージはしない。走らせ始めるときと PR ができたときに、ユーザーに知らせる
+  - sandbox には旧 autodev の PR（#2・#4・#5・#7・#8）が開いたまま残っている。触らない
+- **status --json に足すか、まだ決めていないもの**（HUD で出せなくなった表示。段 6 を締めるときにユーザーに聞く）: 指摘の件数と中身・起動時の指示と受入条件・終えた実行の履歴・ステージの指示と出力・制限時間・エスカレーションの理由の文
+- **旧 autodev を参照しているほかのファイル**: `dist/dot-claude/hooks/turnreview/core/turn.py`・`dist/dot-claude/skills/create-pr/SKILL.md`・`install.sh`・`dist/dot-vscode-server/data/Machine/settings.json`。名前とパスを出すだけで、旧い state は読まない。段 7 で見直す。`install.sh` を変えたら、もう 1 つの dotfiles の checkout にも入れる（ユーザーのメモリー）
 
 ### 段 7
 
@@ -63,16 +58,11 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 パスは `dist/dot-claude/skills/autodev/scripts/autodevlib/` を省いて書く。
 
-**段 6 で直す**
-
-- **S6. 取り下げた後に届いた回答は、`rejected.jsonl` に残るだけで `/autodev` に見えない**
-  - 根拠: `domain/questions.py:83-92`・`app/files.py:63-86`
-  - 段 6 で: `autodev answer` が `questions/<id>.json` の status を確かめ、withdrawn なら reason を添えて落ちるようにする。SKILL.md にも書く
-
 **設計として残る点（すぐ直すものではない。ユーザーに伝える）**
 
 - 答えて続けられる仕事（`answer_only`）は、答えて続ける輪に上限が無い。たとえば Rebase が落ち続け、ラン統括が毎回答えると回り続ける
 - ラン統括が応じずにユーザーが答えて起こし直した（RETRY）とき、その回答は元のエスカレーションには使えない。そのためユーザーに 2 回聞くことになる
+- squash・rebase でマージしたランの `purge` は、手元のコミットが origin のどこからも辿れなくなるので、毎回 `--force` が要る。理由の文で案内するだけで、判定は変えていない
 - ラン統括の `ask-user` は、Run で開いていないエスカレーションの id でも質問を出せる（`domain/questions.py:55-76` は Run の状態を見ない）。開いたことの無い id への回答はラン統括を起こすので止まりはしないが、閉じた id で質問を出す道は残る。塞ぐなら、ask-user を Run が受けて確かめ、ポリシーが `PostQuestion` を出す形にする
 
 ### 直さないと決めたもの

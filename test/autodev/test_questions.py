@@ -88,7 +88,10 @@ def test_経路のエスカレーションが閉じたら回答を待つ質問�
     assert loop.aggregate.questions[Q].status is QuestionStatus.WITHDRAWN
     assert not loop.aggregate.awaiting_answer
     assert loop.replayed().questions == loop.aggregate.questions
-    with pytest.raises(Rejected, match="withdrawn で、回答できるのは open の質問だけ"):
+    # 拒む理由に、取り下げた理由を添える（`autodev answer` が /autodev にそのまま返す。S6）
+    with pytest.raises(
+        Rejected, match="取り下げた質問で、回答は使われない。取り下げた理由: タスクを止めた"
+    ):
         loop(answer())
     # 取り下げた後は、同じエスカレーションでまた聞ける。答えた質問は取り下げない
     loop(post(QuestionId("q-again")))

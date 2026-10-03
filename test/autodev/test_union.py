@@ -12,7 +12,7 @@ def lines(*rows: str) -> str:
 
 
 def check(base: str, ours: str, theirs: str, resolved: str) -> UnionFileVerdict:
-    # アダプタ（adapters/git.py）はファイルの中身をバイト列で返す
+    # アダプタ（adapters/github/git.py）はファイルの中身をバイト列で返す
     return UnionChecker.check("f", base.encode(), ours.encode(), theirs.encode(), resolved.encode())
 
 

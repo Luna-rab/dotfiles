@@ -2,7 +2,7 @@
 """ステージが書いてはいけない場所への書き込みと、`gh`・`git push` を止める PreToolUse フック。
 
 何を止めるかは、driver がステージごとに環境変数 `AUTODEV_GUARD` で渡す Guard が決める（規則は
-`autodevlib/domain/guard.py`、翻訳は `autodevlib/adapters/guard.py`）。入力が読めない・設定が
+`autodevlib/domain/guard.py`、翻訳は `autodevlib/adapters/claude/guard.py`）。入力が読めない・設定が
 渡っていない・読み込めないときは止める（終了コード 2）。
 """
 

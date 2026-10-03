@@ -30,12 +30,12 @@ from autodevlib.domain.value_objects.question_id import QuestionId
 from autodevlib.domain.value_objects.repository import Repository
 from autodevlib.domain.value_objects.run_name import RunName
 from autodevlib.domain.value_objects.stream_id import StreamId
-from autodevlib.infra import status as status_module
-from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.lock import DriverLock
 from autodevlib.infra.paths import RunPaths
 from autodevlib.infra.repo_config import config_path
-from autodevlib.infra.requests import RequestBox
+from autodevlib.infra.status import status as status_module
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.requests import RequestBox
 from conftest import SCRIPTS_ROOT, SKILL_ROOT
 from executor_fakes import commit, make_repo, sh
 from fake_claude_run import ASK_ID, QUESTION
@@ -348,7 +348,7 @@ def test_answerは確かめる間にdriverが回答を拾っても2つ目の回�
     それが起きても、どちらの読み取りからも回答が消えない。"""
     seed_questions(world.paths, withdrawn=False)
     assert world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "60")[0] == 0
-    from autodevlib.app import assembly  # noqa: PLC0415
+    from autodevlib.app.driving import assembly  # noqa: PLC0415
 
     def pick_up() -> None:
         """driver が回答を拾った: QuestionAnswered を足し、requests の行を消す。"""

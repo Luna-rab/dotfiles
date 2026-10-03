@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from autodevlib.adapters.forge import STACKS_API_VERSION, Forge, ForgeError
+from autodevlib.adapters.github.forge import STACKS_API_VERSION, Forge, ForgeError
 from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.pr_number import PrNumber
 

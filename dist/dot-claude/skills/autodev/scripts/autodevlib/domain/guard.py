@@ -1,7 +1,7 @@
 """ガードの規則。LLM のステージに何を書かせ、何をさせないか。
 
 ここに書くのは「してよいか・いけないか」だけである。実パスをどの場所（`WriteZone`）に振り分けるか、
-テストのパスかどうか、コマンド行から宛先と操作を取り出すことは、アダプタ（`adapters/guard.py`）が
+テストのパスかどうか、コマンド行から宛先と操作を取り出すことは、アダプタ（`adapters/claude/guard.py`）が
 翻訳して `WriteTarget`・`Operation` にして渡す。止めた理由（`Refusal`）を文面にするのもアダプタである。
 
 `value_objects/guard.py` の `Guard` の `judge_write`・`judge_operation`・`judge_ask` が、ここの関数を呼ぶ。

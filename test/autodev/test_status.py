@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 from autodev_fakes import Queue, enqueue, execution, factory, task
-from autodevlib.adapters import children
-from autodevlib.app.mainloop import MainLoop
+from autodevlib.adapters.process import children
+from autodevlib.app.driving.mainloop import MainLoop
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.design import DesignAmbiguous, DesignProposed, DesignSettled
 from autodevlib.domain.events.questions import QuestionPosted
@@ -61,13 +61,11 @@ from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_kind import TaskKind
 from autodevlib.domain.value_objects.task_spec import TaskSpec
 from autodevlib.domain.value_objects.task_status import TaskStatus
-from autodevlib.infra import status as status_module
-from autodevlib.infra import status_sections
-from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.lock import DriverLock
 from autodevlib.infra.paths import RunPaths, state_root
-from autodevlib.infra.rejections import Rejection, RejectionLog, read_rejections
-from autodevlib.infra.status import (
+from autodevlib.infra.status import status as status_module
+from autodevlib.infra.status import status_sections
+from autodevlib.infra.status.status import (
     all_statuses,
     build_status,
     prune_progress,
@@ -76,7 +74,9 @@ from autodevlib.infra.status import (
     run_status,
     write_progress,
 )
-from autodevlib.infra.status_sections import Replayed
+from autodevlib.infra.status.status_sections import Replayed
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.rejections import Rejection, RejectionLog, read_rejections
 
 
 @pytest.fixture

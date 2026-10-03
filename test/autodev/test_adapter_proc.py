@@ -1,4 +1,4 @@
-"""コマンドを 1 回流す共通の部品（adapters/_proc.py）。"""
+"""コマンドを 1 回流す共通の部品（adapters/process/_proc.py）。"""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 
 import pytest
-from autodevlib.adapters import _proc
-from autodevlib.adapters._proc import (
+from autodevlib.adapters.process import _proc
+from autodevlib.adapters.process._proc import (
     NOT_FOUND,
     TIMED_OUT,
     Stopped,

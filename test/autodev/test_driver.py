@@ -1,4 +1,4 @@
-"""組み立ての根（`app/driver.py`）から、本物の集約・ポリシー・反応・メインループ・イベントストアで流れを通す。
+"""組み立ての根（`app/driving/driver.py`）から、本物の集約・ポリシー・反応・メインループ・イベントストアで流れを通す。
 
 外から入るものだけを偽物にする: ステージの実行（偽の実行器が test_seams の台本どおりに結果を返す）と
 `claude -p` の統括（偽の AgentRuntime が決め打ちの判断の JSON を返す）。
@@ -22,13 +22,13 @@ from autodev_drive import (
     run_flow,
     supervisors,
 )
-from autodevlib.adapters.agent_runtime import AgentOutcome, Ending
-from autodevlib.app.driver import ExitCode, exit_code
-from autodevlib.app.files import APPENDIX_MARKER
-from autodevlib.app.mainloop import LoopExit
-from autodevlib.app.mainloop import Outcome as Outcome_
-from autodevlib.app.prompts import asset_name, contract_inputs
-from autodevlib.app.supervisors import MAX_ATTEMPTS, MAX_CORRECTIONS
+from autodevlib.adapters.claude.agent_runtime import AgentOutcome, Ending
+from autodevlib.app.driving.driver import ExitCode, exit_code
+from autodevlib.app.driving.mainloop import LoopExit
+from autodevlib.app.driving.mainloop import Outcome as Outcome_
+from autodevlib.app.stages.files import APPENDIX_MARKER
+from autodevlib.app.stages.prompts.assets import asset_name, contract_inputs
+from autodevlib.app.supervision.supervisors import MAX_ATTEMPTS, MAX_CORRECTIONS
 from autodevlib.domain.aggregates.questions import Questions
 from autodevlib.domain.aggregates.run import Run
 from autodevlib.domain.aggregates.stack import Stack
@@ -64,7 +64,7 @@ from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_status import TaskStatus
-from autodevlib.infra.requests import RequestBox
+from autodevlib.infra.store.requests import RequestBox
 from test_seams import (
     STUCK_PREFIX,
     Outcome,

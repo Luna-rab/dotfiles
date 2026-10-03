@@ -1,6 +1,6 @@
 """ポリシー（`domain/policies/`）が、つなぎ目の表（`test_seams.py` の `SEAMS`）どおりに動くか。
 
-`test_seams.py` の流れを、表の代わりに本物のメインループ（`app/mainloop.py`）とイベントストアで通す。
+`test_seams.py` の流れを、表の代わりに本物のメインループ（`app/driving/mainloop.py`）とイベントストアで通す。
 ポリシーはドメインの一覧（`RECEIVERS`）をそのまま受け手として登録し、外からの入力（実行器・LLM の
 統括・CLI・driver）は流れの台本のまま、偽の受け手として登録する。受け手に配ったイベントごとに、
 ポリシーが返したコマンドが、表の行が組むコマンドと（id と出した者まで）同じかを確かめる。
@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 import pytest
 import test_seams as seams
-from autodevlib.app.mainloop import Delivery, LoopExit, MainLoop, Subscriber
+from autodevlib.app.driving.mainloop import Delivery, LoopExit, MainLoop, Subscriber
 from autodevlib.domain.aggregates.base import Aggregate
 from autodevlib.domain.commands.base import Command
 from autodevlib.domain.commands.task import Escalate
@@ -31,8 +31,8 @@ from autodevlib.domain.value_objects.issuer_kind import IssuerKind
 from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
-from autodevlib.infra.eventstore import EventStore
-from autodevlib.infra.rejections import Rejection
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.rejections import Rejection
 
 SEAMS = {seam.name: seam for seam in seams.SEAMS}
 ROWS: dict[str, Policy] = {policy.name: policy for policy in (*POLICIES, *FOLLOW_UPS.values())}

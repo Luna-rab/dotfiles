@@ -1,6 +1,6 @@
 """ガードのフック（deny-writes.py・park-on-ask.py）の共通の入口。
 
-autodevlib を読み込み、標準入力と環境変数を `adapters/guard.run_hook` に渡して、返事を書き出す。
+autodevlib を読み込み、標準入力と環境変数を `adapters/claude/guard.run_hook` に渡して、返事を書き出す。
 読み込めないときは止める（終了コード 2）。フックが黙って落ちると、ガードが消えたまま走る。
 """
 
@@ -22,7 +22,7 @@ def main(handler: str) -> int:
                 raise ImportError("SKILL.md が見つからない（autodev の置き場が壊れている）")
             root = parent
         sys.path.insert(0, os.path.join(root, "scripts"))
-        from autodevlib.adapters import guard  # noqa: PLC0415
+        from autodevlib.adapters.claude import guard  # noqa: PLC0415
     except Exception as error:
         sys.stderr.write(f"ガードのフックを読み込めないので、呼び出しを止めました: {error}\n")
         return DENY_EXIT

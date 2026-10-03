@@ -1,4 +1,4 @@
-"""組み立ての根（`app/driver.py`）の検査で使う、偽の実行器と偽の AgentRuntime。
+"""組み立ての根（`app/driving/driver.py`）の検査で使う、偽の実行器と偽の AgentRuntime。
 
 偽の実行器は、test_seams の台本（`Script`）どおりにステージの結果を返す。LLM のステージでは、本物の
 プロンプトの組み立て（`Prompts.prompt`）を呼んで、組んだプロンプトを残す。偽の AgentRuntime は、統括の
@@ -17,11 +17,11 @@ from pathlib import Path
 from typing import Any
 
 from autodev_samples import stage_result
-from autodevlib.adapters.agent_runtime import AgentCall, AgentOutcome, Ending
-from autodevlib.app.driver import Driver, DriverParts, StartRequest
-from autodevlib.app.executor import StageContext, StagePrompt
-from autodevlib.app.files import write_design
-from autodevlib.app.mainloop import Ticket
+from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
+from autodevlib.app.driving.driver import Driver, DriverParts, StartRequest
+from autodevlib.app.driving.mainloop import Ticket
+from autodevlib.app.stages.executor import StageContext, StagePrompt
+from autodevlib.app.stages.files import write_design
 from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.run import Panic, StartRun
 from autodevlib.domain.commands.task import BeginStage, ReportStageResult

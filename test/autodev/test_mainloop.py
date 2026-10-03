@@ -1,4 +1,4 @@
-"""メインループ（`app/mainloop.py`）。偽の集約（`autodev_fakes`）と偽のポリシーで、配達とコマンドの処理の手順を確かめる。"""
+"""メインループ（`app/driving/mainloop.py`）。偽の集約（`autodev_fakes`）と偽のポリシーで、配達とコマンドの処理の手順を確かめる。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from autodev_fakes import (
     requested,
     task,
 )
-from autodevlib.app.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
+from autodevlib.app.driving.mainloop import Delivery, Inbox, LoopExit, MainLoop, Subscriber
 from autodevlib.domain.aggregates.base import Aggregate
 from autodevlib.domain.aggregates.task import Task
 from autodevlib.domain.commands.base import Command
@@ -49,12 +49,12 @@ from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_kind import TaskKind
 from autodevlib.domain.value_objects.task_spec import TaskSpec
-from autodevlib.infra import db
-from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.paths import RunPaths
-from autodevlib.infra.rejections import Rejection
-from autodevlib.infra.requests import RequestBox
-from autodevlib.infra.status import read_progress, write_progress
+from autodevlib.infra.status.status import read_progress, write_progress
+from autodevlib.infra.store import db
+from autodevlib.infra.store.eventstore import EventStore
+from autodevlib.infra.store.rejections import Rejection
+from autodevlib.infra.store.requests import RequestBox
 
 STACK = StreamId.stack()
 BRANCH = BranchName("stack/r--task1")

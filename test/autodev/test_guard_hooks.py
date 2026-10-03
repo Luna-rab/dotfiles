@@ -1,4 +1,4 @@
-"""ガードのフック（deny-writes.py・park-on-ask.py）と、その翻訳（adapters/guard.py・adapters/shell.py）。
+"""ガードのフック（deny-writes.py・park-on-ask.py）と、その翻訳（adapters/claude/guard.py・adapters/process/shell.py）。
 
 止めるか通すかはドメインの Guard が決める（test_domain_guard.py）。ここでは、コマンド行とパスが
 正しい宛先・場所・操作に翻訳され、その結果として通す場合と止める場合を
@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from autodevlib.adapters import guard
-from autodevlib.adapters.guard import GuardContext, guard_context
-from autodevlib.app.files import write_answer
+from autodevlib.adapters.claude import guard
+from autodevlib.adapters.claude.guard import GuardContext, guard_context
+from autodevlib.app.stages.files import write_answer
 from autodevlib.domain.guard import RefusalReason, WriteZone
 from autodevlib.domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS
 from autodevlib.domain.value_objects.guard import Guard

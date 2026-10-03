@@ -1,4 +1,4 @@
-"""LLM の統括を起こす口（`app/supervisors.py`）。偽の AgentRuntime と本物の Inbox で、ターンの扱いを見る。
+"""LLM の統括を起こす口（`app/supervision/supervisors.py`）。偽の AgentRuntime と本物の Inbox で、ターンの扱いを見る。
 
 メインループの代わりに、検査が Inbox から札を受け取り、`settled` を呼ぶ。
 """
@@ -11,11 +11,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from autodevlib.adapters.agent_runtime import AgentCall, AgentOutcome, Ending
-from autodevlib.adapters.guard import GUARD_ENV
-from autodevlib.app.mainloop import Inbox
-from autodevlib.app.stage_context import StagePrompt
-from autodevlib.app.supervisors import SupervisorRunner, SupervisorSetting
+from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
+from autodevlib.adapters.claude.guard import GUARD_ENV
+from autodevlib.app.driving.mainloop import Inbox
+from autodevlib.app.stages.stage_context import StagePrompt
+from autodevlib.app.supervision.supervisors import SupervisorRunner, SupervisorSetting
 from autodevlib.domain.commands.run import Panic, ReportSupervisorFailure
 from autodevlib.domain.commands.task import AcceptFlow
 from autodevlib.domain.supervision import Supervisor

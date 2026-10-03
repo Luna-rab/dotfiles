@@ -1,11 +1,11 @@
-"""統括の判断の JSON をコマンドに置き換える表（`app/decisions.py`）。"""
+"""統括の判断の JSON をコマンドに置き換える表（`app/supervision/decisions.py`）。"""
 
 from __future__ import annotations
 
 from typing import Any
 
 import pytest
-from autodevlib.app.decisions import (
+from autodevlib.app.supervision.decisions import (
     RUN_DECISIONS,
     TASK_DECISIONS,
     DecisionError,

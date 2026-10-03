@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from autodevlib.adapters import globs
+from autodevlib.adapters.process import globs
 from autodevlib.domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS
 
 

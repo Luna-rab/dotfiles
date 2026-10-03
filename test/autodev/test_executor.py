@@ -1,4 +1,4 @@
-"""実行器（`app/executor.py`）。偽の AgentRuntime と、tmp_path の本物の git リポジトリで確かめる。
+"""実行器（`app/stages/executor.py`）。偽の AgentRuntime と、tmp_path の本物の git リポジトリで確かめる。
 
 実行器が返したコマンドを本物の Task 集約に通し、集めた証拠から Task が決めた結果（完了・失敗・
 エスカレーション）までを見る。実行器は判断しないので、結果を変えるのは証拠だけである。
@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 from autodev_harness import POLICY, SESSION, new_id, of_type
-from autodevlib.adapters.agent_runtime import AgentCall, DeferredToolUse, Ending, Progress
-from autodevlib.adapters.guard import GUARD_ENV
-from autodevlib.app import executor as executor_module
-from autodevlib.app.stage_context import ResumeMode
+from autodevlib.adapters.claude.agent_runtime import AgentCall, DeferredToolUse, Ending, Progress
+from autodevlib.adapters.claude.guard import GUARD_ENV
+from autodevlib.app.stages import executor as executor_module
+from autodevlib.app.stages.stage_context import ResumeMode
 from autodevlib.domain.commands.run import Panic
 from autodevlib.domain.commands.task import (
     AcceptFlow,
@@ -592,7 +592,7 @@ def test_事実を写し取れなければ札を返す(env: Env, monkeypatch: py
     def broken(*args, **kwargs):
         raise RuntimeError("壊れた集約")
 
-    monkeypatch.setattr("autodevlib.app.executor.snapshot", broken)
+    monkeypatch.setattr("autodevlib.app.stages.executor.snapshot", broken)
     ticket = env.world.inbox.expect(ex(S.IMPL))
     env.executor.begin(ex(S.IMPL), ticket)
     assert ticket.used and env.world.submitted() == []

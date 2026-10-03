@@ -280,13 +280,41 @@ def test_利用枠の上限に当たった事実を返す(
     assert got.api_error_status == 429
 
 
-def test_assistantにrate_limitの印があれば利用枠の上限に当たった事実を返す(
-    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+LIMIT_TEXT = "You've hit your limit · resets 5pm"
+OVERLOAD_TEXT = "API Error: Opus is experiencing high load, please use /model to switch to Sonnet"
+
+
+@pytest.mark.parametrize(
+    ("shape", "limited"),
+    [
+        # 上限の文言と重なれば上限（result が無くても）
+        ({"text": LIMIT_TEXT}, True),
+        ({"text": LIMIT_TEXT, "result": True}, True),
+        # 529 の過負荷にも同じ印が付く。上限ではないので、パニックにせず普通の失敗にする
+        ({"text": OVERLOAD_TEXT}, False),
+        ({"text": OVERLOAD_TEXT, "result": True}, False),
+        # 「usage limit」の語を含むが、上限ではないと言っている文言
+        ({"text": "Server is temporarily limiting requests (not your usage limit)"}, False),
+        # 上限の文言に当たらない印だけでは、上限にしない
+        ({"text": "API Error: model is blocked"}, False),
+        # サブエージェントの印は、ステージの終わり方ではない
+        ({"text": LIMIT_TEXT, "parent": "toolu_9"}, False),
+        # 印の後にふつうの応答が続いてから落ちたのは、上限で終わったのではない
+        ({"text": LIMIT_TEXT, "recovered": True}, False),
+    ],
+)
+def test_assistantのrate_limitの印は上限の文言と重なり最後の応答のときだけ上限にする(
+    claude: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shape: dict[str, Any],
+    limited: bool,
 ):
-    scenario(monkeypatch, tmp_path, "assistant-rate-limit")
+    scenario(monkeypatch, tmp_path, "assistant-error")
+    monkeypatch.setenv("FAKE_CLAUDE_ASSISTANT", json.dumps(shape))
     got = runtime(claude).run(make_call(tmp_path))
     assert got.api_error_status is None
-    assert got.rate_limited
+    assert got.rate_limited is limited
 
 
 def test_overageStatusがrejectedでも利用枠の上限に当たっていない(

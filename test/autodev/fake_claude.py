@@ -243,21 +243,36 @@ def rate_limited() -> None:
     sys.exit(1)
 
 
-def assistant_rate_limit() -> None:
-    """429 で終わったターン。assistant のイベントに `error: "rate_limit"` が付く（claude 2.1.288 の
-    実行ファイルの型の定義から読んだ形。実測ではない）。本文は上限の文言に当たらないことがある。"""
+def assistant_error() -> None:
+    """API のエラーで終わったターン。assistant のイベントの一番上に `error` が付く（claude 2.1.288 の
+    実行ファイルの型の定義から読んだ形。実測ではない）。`error: "rate_limit"` は 429 のほかに、529 の
+    過負荷や `model_blocked` にも付く。
+
+    形は `FAKE_CLAUDE_ASSISTANT`（JSON）で決める: `text`（本文）、`parent`（`parent_tool_use_id`）、
+    `recovered`（その後にふつうの応答が続いたか）、`result`（result を返すか）。
+    """
+    shape = json.loads(os.environ["FAKE_CLAUDE_ASSISTANT"])
     read_line()
     init()
     emit(
         {
             "type": "assistant",
-            "message": {"id": "m1", "content": [{"type": "text", "text": "high load"}]},
-            "parent_tool_use_id": None,
+            "message": {"id": "m1", "content": [{"type": "text", "text": shape["text"]}]},
+            "parent_tool_use_id": shape.get("parent"),
             "error": "rate_limit",
         }
     )
-    result(is_error=True, result="API Error: Opus is experiencing high load")
-    drain()
+    if shape.get("recovered"):
+        emit(
+            {
+                "type": "assistant",
+                "message": {"id": "m2", "content": [{"type": "text", "text": "続ける"}]},
+                "parent_tool_use_id": None,
+            }
+        )
+    if shape.get("result"):
+        result(is_error=True, result=shape["text"])
+        drain()
     sys.exit(1)
 
 
@@ -330,7 +345,7 @@ SCENARIOS = {
     "result-and-errors": result_and_errors,
     "rate-limited": rate_limited,
     "rate-event-then-success": rate_event_then_success,
-    "assistant-rate-limit": assistant_rate_limit,
+    "assistant-error": assistant_error,
     "overage-rejected-then-error": overage_rejected_then_error,
     "interruptible": interruptible,
     "stubborn": stubborn,

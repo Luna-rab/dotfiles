@@ -72,6 +72,9 @@ CANCEL_QUEUED = "interrupt_cancel_queued_v1"
 _HOOK_DENIAL = re.compile(r"PreToolUse:\S+ hook error")
 #: 利用枠の上限の文言。上限に当てた形は実物で確かめていない（モジュールの末尾の注を参照）
 _RATE_LIMIT_TEXT = re.compile(r"usage limit|hit your limit|rate limit|rate_limit", re.IGNORECASE)
+#: 上限ではない一時的な失敗の文言。claude 2.1.288 の実行ファイルの中にある、529 の過負荷と、
+#: 「usage limit」の語を含むが上限ではないと言う 429 の文言。待てば通るので、パニックにしない
+_NOT_RATE_LIMIT_TEXT = re.compile(r"is experiencing high load|not your usage limit", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -520,8 +523,11 @@ class _Collector:
         self.turns = 0
         self.last_tool: str | None = None
         self.hook_denials = 0
-        #: `rejected` の rate_limit_event か、`error: "rate_limit"` の assistant を受けた
-        self.rate_limit_seen = False
+        self.rate_limit_rejected = False
+        #: ステージ自身（`parent_tool_use_id` が None）の最後の assistant の `error` と本文。上限かは
+        #: 終わり方と合わせて決める（印の後にふつうの応答が続いたなら、上限で終わったのではない）
+        self.last_error: str | None = None
+        self.last_error_text = ""
         self._messages: set[str] = set()
 
     def take(self, event: Mapping[str, Any]) -> None:
@@ -534,9 +540,10 @@ class _Collector:
             self.capabilities = tuple(str(c) for c in event.get("capabilities") or ())
             self.initialized = True
         elif kind == "assistant":
-            # 429 で終わったターンの印。本文が上限の文言に当たらないことがあるので、文言より先に見る
-            if event.get("error") == "rate_limit":
-                self.rate_limit_seen = True
+            if event.get("parent_tool_use_id") is None:
+                error = event.get("error")
+                self.last_error = error if isinstance(error, str) else None
+                self.last_error_text = _message_text(event) if self.last_error else ""
             self._assistant(event)
         elif kind == "user":
             self.hook_denials += _hook_denials(event)
@@ -545,7 +552,14 @@ class _Collector:
             # `rejected` になる（段 6 の実測）
             info = event.get("rate_limit_info")
             if isinstance(info, Mapping) and info.get("status") == "rejected":
-                self.rate_limit_seen = True
+                self.rate_limit_rejected = True
+
+    def _ended_on_limit(self, status: int | None) -> bool:
+        """最後の応答が `error: "rate_limit"` で、上限の文言か 429 と重なる。この印は 529 の過負荷や
+        `model_blocked` にも付くので、印だけでは上限にしない。"""
+        return self.last_error == "rate_limit" and (
+            status == 429 or _limit_text(self.last_error_text)
+        )
 
     def _assistant(self, event: Mapping[str, Any]) -> None:
         message = event.get("message")
@@ -580,7 +594,9 @@ class _Collector:
                 exit_code=exit_code,
                 session=call.session,
                 hook_denials=self.hook_denials,
-                rate_limited=self.rate_limit_seen or bool(_RATE_LIMIT_TEXT.search(stderr)),
+                rate_limited=self.rate_limit_rejected
+                or self._ended_on_limit(None)
+                or _limit_text(stderr),
                 interrupted=interrupted,
                 stderr=stderr,
                 capabilities=self.capabilities,
@@ -618,7 +634,12 @@ class _Collector:
             # 上限に当たったと見るのは、エラーで終わったときだけ。成功した result の後に届いた
             # rate_limit_event や、本文に出た「rate limit」の語では上限にしない
             rate_limited=is_error
-            and (self.rate_limit_seen or status == 429 or bool(_RATE_LIMIT_TEXT.search(text))),
+            and (
+                self.rate_limit_rejected
+                or status == 429
+                or _limit_text(text)
+                or self._ended_on_limit(status)
+            ),
             interrupted=interrupted,
             stderr=stderr,
             capabilities=self.capabilities,
@@ -653,6 +674,16 @@ def _text(content: Any) -> str:
     if isinstance(content, Sequence):
         return "".join(str(b.get("text") or "") for b in content if isinstance(b, Mapping))
     return ""
+
+
+def _limit_text(text: str) -> bool:
+    return bool(_RATE_LIMIT_TEXT.search(text)) and not _NOT_RATE_LIMIT_TEXT.search(text)
+
+
+def _message_text(event: Mapping[str, Any]) -> str:
+    message = event.get("message")
+    content = message.get("content") if isinstance(message, Mapping) else None
+    return _text(content)
 
 
 def _errors(value: Any) -> str:
@@ -722,7 +753,10 @@ def _tail(path: Path, offset: int, limit: int = 4000) -> str:
 
 # 利用枠の上限の見分け。`rate_limit_event` の欄の名前と置き場は claude 2.1.288 で実測した（ふつうの
 # 呼び出しにも毎回出て、`status` は `allowed`）。上限に当てた形は実測していない。assistant の
-# `error: "rate_limit"` は、実行ファイルの中の型の定義から読んだ。次のどれかで「当たった」とする:
-# - result が `is_error` で、`rate_limit_info.status` が `rejected` の rate_limit_event か
-#   `error: "rate_limit"` の assistant を受けたか、`api_error_status` が 429 か、本文に上限の文言がある
-# - result が無く、上の 2 つの印のどちらかを受けたか、標準エラーに上限の文言がある
+# `error: "rate_limit"` は、実行ファイルの中の型の定義から読んだ。この印は 429 のほかに 529 の過負荷と
+# `model_blocked` にも付くので、それだけでは上限にしない。上限の文言は、過負荷などの文言
+# （`_NOT_RATE_LIMIT_TEXT`）に当たれば数えない。次のどれかで「当たった」とする:
+# - result が `is_error` で、`rate_limit_info.status` が `rejected` の rate_limit_event を受けたか、
+#   `api_error_status` が 429 か、本文に上限の文言がある
+# - result が無く、`rejected` の rate_limit_event を受けたか、標準エラーに上限の文言がある
+# - ステージ自身の最後の assistant が `error: "rate_limit"` で、その本文に上限の文言があるか 429 である

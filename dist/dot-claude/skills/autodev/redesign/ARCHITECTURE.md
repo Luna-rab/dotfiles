@@ -363,5 +363,5 @@ flowchart LR
 
 次のものは、実装が前提にしているが本物の claude・gh で確かめきれていない。確かめて外れたら、設計と ADDENDUM を直す。
 
-- 利用枠の上限に当たったことを、何で見分けるか（パニックの判定がこれに頼っている）。`rate_limit_event` の欄（`rate_limit_info.status`）は claude 2.1.288 で実測した。上限に当てた形（result に `api_error_status: 429` が載るか、`rejected` の `rate_limit_event` が result の前に届くか、assistant に `error: "rate_limit"` が付くか）は実測していない
+- 利用枠の上限に当たったことを、何で見分けるか（パニックの判定がこれに頼っている）。`rate_limit_event` の欄（`rate_limit_info.status`）は claude 2.1.288 で実測した。上限に当てた形（result に `api_error_status: 429` が載るか、`rejected` の `rate_limit_event` が result の前に届くか、assistant に `error: "rate_limit"` が付くか）は実測していない。assistant の `error: "rate_limit"` は、実行ファイルの中の定義では 529 の過負荷（`… is experiencing high load`）と `model_blocked` にも付く。上限だけに付くものではないので、上限の文言か 429 と重なるときだけ上限とみなしている
 - LLM のステージから GitHub の認証を外したとき、ssh の `git push` は、フックのほかに止める所が無いか（偽の `GH_TOKEN` で `gh` が通らないことは確かめた）

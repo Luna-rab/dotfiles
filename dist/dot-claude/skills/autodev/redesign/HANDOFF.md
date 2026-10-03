@@ -7,7 +7,7 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 1. このファイル
 2. [IMPLEMENTING.md](IMPLEMENTING.md): 置き場・書き方・検査・コミットの作法。§1 は絶対に守る
 3. [ARCHITECTURE.md](ARCHITECTURE.md) → [DOMAIN_MODEL.md](DOMAIN_MODEL.md) → [ADDENDUM.md](ADDENDUM.md)。食い違ったら ADDENDUM が勝つ。§12 は実装で設計書から変えたこと
-4. [LEDGER.md](LEDGER.md): 旧 autodev から持ち込む知見と持ち込まない知見。旧実装は `git show 56b72fa:<パス>` で読む
+4. [LEDGER.md](LEDGER.md): 旧 autodev から持ち込む知見と持ち込まない知見。旧実装は `git show 4465542:<パス>` で読む
 
 ## 2. ユーザーと決めた、守ること
 
@@ -19,7 +19,7 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 ## 3. 進め方
 
-- 統合のブランチは `feature/autodev-rewrite`。作業ごとに `feature/autodev-rewrite-<名前>` を `.claude/worktrees/<名前>` に切り、`git merge --no-ff` で統合のブランチへ戻す
+- 統合のブランチは `feature/autodev-redesign`。作業ごとに `feature/autodev-redesign-<名前>` を `.claude/worktrees/<名前>` に切り、`git merge --no-ff` で統合のブランチへ戻す
 - 実装はサブエージェント `medium-worker` に任せる。成果物は必ず `medium-reviewer` に /code-review でレビューさせ、must-fix と should-fix を直させてからマージする（どちらも `.claude/agents/` にあり、effort は medium）。作業者への指示には、作業場所・読む文書・IMPLEMENTING §1・検査・コミットの決まり・返してほしい項目を書く
 - 作業者を並列に走らせるときは、触るファイルを分ける。片方をマージしたら、走っている側に重なる所を伝え、仕上げる前に統合のブランチを取り込ませる
 - 検査は `uv run` で流す（`ruff check`・`ruff format --check`・`ty check`・`pytest -q`）。`python3 .claude/scripts/check-skills.py` も流す。システムの python3（3.12）だと、検査名の「・」のせいで `test/autodev/test_driver.py` などが読み込めない
@@ -63,14 +63,14 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 ### 段 5 を締める（段 6 より先にやる）
 
-段 5 の 2 回目の直しをまとめたレビュー（`git diff 57a7d0f 2657abf`）は返ってきた。must-fix は無く、should-fix が 6 件、nit が 5 件あった。まだ直していない。次の手順で段 5 を締める。
+段 5 の 2 回目の直しをまとめたレビューは返ってきた。must-fix は無く、should-fix が 6 件、nit が 5 件あった。まだ直していない。次の手順で段 5 を締める。
 
 1. 下の S1〜S5 を `medium-worker` に直させ、`medium-reviewer` でレビューしてからマージし、検査を通す。S6 は段 6 の CLI を作るときの約束なので、段 6 に回す
 2. nit（N1〜N5）は直すかどうかをユーザーに聞く
-3. `feature/autodev-rewrite` を origin に push する。ユーザーが頼んだのは段 5 を締めた後の push である。作業用の `feature/autodev-rewrite-*` は push しない。PR は作らない
+3. `feature/autodev-redesign` を origin に push する。ユーザーが頼んだのは段 5 を締めた後の push である。作業用の `feature/autodev-redesign-*` は push しない。PR は作らない
 4. 段 6 に入る前に止まって、ユーザーに報告する
 
-パスは `scripts/autodevlib/` を省いて書く。レビューで確かめた結論は次の 3 つ。
+パスは `dist/dot-claude/skills/autodev/scripts/autodevlib/` を省いて書く。レビューで確かめた結論は次の 3 つ。
 
 - 段を飛ばさない規則は守られている
 - 根元の値は、S3 の場面を除いて正しい
@@ -121,9 +121,4 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 ## 7. 触らないもの
 
-- 未追跡の `.claude/settings.json`。ユーザーが作ったもの
-- `.claude/worktrees/` の `feature/autodev-rewrite-*` は、どれも統合のブランチにマージ済みである。消すかどうかはユーザーに聞く
-- 次の 3 つは、この作業と関係が無い
-  - `.claude/worktrees/claude+opus-1m-context`
-  - `.claude/worktrees/supervisor-skill-checks`
-  - `~/.local/state/autodev/pr-body-markers/tree`
+- `~/.local/state/autodev/pr-body-markers/tree`。この作業と関係が無い

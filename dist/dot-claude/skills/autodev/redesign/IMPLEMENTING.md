@@ -56,7 +56,7 @@ test/autodev/               検査（pytest）。dist の中には置かない
 - 値オブジェクト・コマンド・イベントは `@dataclass(frozen=True)`
 - 時刻・id・HEAD のような外の値は、ドメインの中で取らず、コマンドの中身として受け取る
 - docstring とコメントは日本語。周りに合わせ、「なぜそうしたか」と「知らないと間違えること」だけを書く。処理の言い直しは書かない
-- 旧実装は消えるので、外部の仕組みの扱いを確かめたいときは 旧実装が残っている固定のコミット `56b72fa` から `git show 56b72fa:<path>` で引く（例: `git show 56b72fa:dist/dot-claude/skills/autodev/scripts/autodevlib/ports/runner.py`。main はマージの後に旧実装を指さなくなるので使わない）。**旧実装のビジネスロジックは持ち込まない**（LEDGER の「持ち込まない」）
+- 旧実装は消えるので、外部の仕組みの扱いを確かめたいときは 旧実装が残っている固定のコミット `4465542` から `git show 4465542:<path>` で引く（例: `git show 4465542:dist/dot-claude/skills/autodev/scripts/autodevlib/ports/runner.py`。main はマージの後に旧実装を指さなくなるので使わない）。**旧実装のビジネスロジックは持ち込まない**（LEDGER の「持ち込まない」）
 
 ## 4. 検査
 
@@ -75,7 +75,7 @@ uv run pytest -q
 
 ## 5. コミット
 
-- ブランチは `feature/autodev-rewrite`。main では作業しない。push しない
+- ブランチは `feature/autodev-redesign`。main では作業しない。push しない
 - 意味のまとまりごとにコミットする。メッセージは日本語で、1 行目に何をしたか、本文に理由。末尾に次の 1 行を付ける
 
   ```

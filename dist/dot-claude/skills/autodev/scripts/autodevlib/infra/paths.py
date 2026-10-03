@@ -169,6 +169,11 @@ class RunPaths:
         return self.root / "driver.lock"
 
     @property
+    def children(self) -> Path:
+        """driver が起こした子プロセスの控え（`adapters/children.py`）。"""
+        return self.root / "children"
+
+    @property
     def trees(self) -> Path:
         """worktree を並べる所（`clean`・`purge` が外す）。"""
         return self.root / "trees"

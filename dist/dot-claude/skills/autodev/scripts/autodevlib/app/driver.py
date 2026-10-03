@@ -22,15 +22,21 @@ flowchart TD
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import shlex
-from collections.abc import Callable, Mapping, Sequence
+import signal
+import threading
+import uuid
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
+from ..adapters._proc import KILL_AFTER_SECONDS
+from ..adapters.agent_runtime import INTERRUPT_GRACE
 from ..adapters.guard import write_hook_settings
 from ..domain.aggregate import Aggregate
-from ..domain.commands import ResumeRun, StartRun
+from ..domain.commands import Panic, ResumeRun, StartRun
 from ..domain.design import Design
 from ..domain.events import RunStarted
 from ..domain.policies import RECEIVERS
@@ -56,6 +62,9 @@ log = logging.getLogger(__name__)
 PANIC = "driver-panic"
 #: 呼び直されたときの ResumeRun の CommandId に入れる名前
 RESUME = "driver-resume"
+#: パニックで止めた実行の子が終わるまで待つ秒数。claude は interrupt から INTERRUPT_GRACE 秒で、
+#: 決定的なステージの子は SIGTERM から KILL_AFTER_SECONDS 秒で kill されるので、その後まで待つ
+STOP_JOIN_SECONDS = INTERRUPT_GRACE + KILL_AFTER_SECONDS + 20
 
 
 class ExitCode(IntEnum):
@@ -267,15 +276,51 @@ class Driver:
                     self._restore_prompt, reported=_run(loop.aggregates).reported_failure
                 )
                 self._begin_left_requested()
-            outcome = loop.run()
+            with self._stopping_on_signals():
+                outcome = loop.run()
             if outcome.exit is LoopExit.STOPPED and _run(loop.aggregates).panicked:
                 # 走っている実行を interrupted にし、反応（実行器の interrupt）に止めさせる
                 loop.interrupt_running(InterruptCause.PANIC, PANIC)
                 loop.drain()
+                # 子は新しいセッションで起こしているので、driver が先に終わると止まらずに残る
+                self.executor.join(STOP_JOIN_SECONDS)
             return exit_code(outcome, loop.aggregates)
         finally:
             self.supervisors.shutdown()
             store.close()
+
+    @contextlib.contextmanager
+    def _stopping_on_signals(self) -> Iterator[None]:
+        """SIGTERM・SIGINT を受けたら、パニックと同じ道で止める（終了コード 3。呼び直せば、止めた
+        ステージを `--resume` で続ける）。
+
+        ハンドラはメインループのスレッドで、メインループの途中に割り込んで走る。Inbox の錠を
+        メインループが握っている所に割り込むと待ち合って止まるので、Panic を渡すのは別のスレッドに
+        任せる。シグナルを受けられるのはメインスレッドだけなので、ほかのスレッドで回すときは置かない。
+        """
+        if threading.current_thread() is not threading.main_thread():
+            yield
+            return
+
+        def submit(name: str) -> None:
+            self.inbox.expect().submit(
+                Panic(
+                    command_id=CommandId(f"signal/{uuid.uuid4().hex}"),
+                    issuer=Issuer.driver(),
+                    cause=f"{name} を受けた",
+                )
+            )
+
+        def handle(signum: int, _frame: object) -> None:
+            name = signal.Signals(signum).name
+            threading.Thread(target=submit, args=(name,), daemon=True).start()
+
+        previous = {sig: signal.signal(sig, handle) for sig in (signal.SIGTERM, signal.SIGINT)}
+        try:
+            yield
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
 
 
 def default_status_command(paths: RunPaths) -> str:

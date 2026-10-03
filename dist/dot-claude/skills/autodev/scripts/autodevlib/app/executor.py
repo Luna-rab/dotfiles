@@ -136,6 +136,10 @@ class StageExecutor(Protocol):
         §11.4）。続く begin より先に済む。"""
         ...
 
+    def join(self, timeout: float = 30.0) -> None:
+        """driver が終わる前に、止めた実行の子プロセスが終わるまで待つ（メインループのスレッドで呼ぶ）。"""
+        ...
+
 
 class StagePrompts(Protocol):
     """プロンプトの組み立て（段 5b1）。実行器が run の中で、メインループのスレッドで呼ぶ。"""

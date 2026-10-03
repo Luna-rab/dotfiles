@@ -34,17 +34,19 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 | 3 | 集約・ドメインサービス・つなぎ目の表（`test_seams.SEAMS`） | 済み |
 | 4 | インフラ（SQLite のイベントストア・メインループ）・アダプタ（claude・git・gh）・ガードのフック | 済み |
 | 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | 済み。レビューと直しを 3 巡し、nit は N1〜N3 を直した |
-| 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | 途中。CLI・`status --json`・HUD・SKILL.md はレビューを通してマージした。本物で確かめる作業が残っている |
+| 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | ほぼ済み。CLI・`status --json`・HUD・SKILL.md をマージし、本物の claude・gh で前提を確かめて直した。sandbox の通しのラン（`unique-words`）は質問もエスカレーションも無く終了コード 0 で終えた。下のユーザーに聞く件が残っている |
 | 7 | 文書を置き換え、旧 autodev の残りを消して仕上げる | 未着手 |
 
 ## 5. 次にやること
 
 ### 段 6
 
-- **本物の claude・gh で確かめる**（ユーザーの了承済み）
-  1. ARCHITECTURE §14 の一覧を、小さな `claude -p` と gh で 1 件ずつ確かめる。外れたら、実装・設計・ADDENDUM を直す
-  2. テスト用の private リポジトリ `Luna-rab/autodev-sandbox`（手元は `~/ghq/github.com/Luna-rab/autodev-sandbox`、設定は `~/.config/autodev/repos/home__naru__ghq__github.com__Luna-rab__autodev-sandbox.json`）で、通しのランを 1 本走らせる。ブランチの push と draft PR の作成までで、マージはしない。走らせ始めるときと PR ができたときに、ユーザーに知らせる
+- **本物で確かめた結果**
+  - 前提の確かめは ARCHITECTURE §14 に残した 3 件（statusline の速さ・上限に当てた形・ssh の `git push`）を除いて済んだ。外れた「見つからないセッションの `--resume`」は直した
+  - テスト用の private リポジトリ `Luna-rab/autodev-sandbox`（手元は `~/ghq/github.com/Luna-rab/autodev-sandbox`、設定は `~/.config/autodev/repos/home__naru__ghq__github.com__Luna-rab__autodev-sandbox.json`）で通しのラン `unique-words` を走らせた。概要 PR #14 とタスク PR #15 ができ、ランを終えて概要 PR は draft から外れた。マージはしていない。ランディレクトリと worktree は `~/.local/state/autodev/unique-words` に残っている
   - sandbox には旧 autodev の PR（#2・#4・#5・#7・#8）が開いたまま残っている。触らない
+  - 気づいたこと: 概要 PR のタイトルが指示の文を頭から切っただけになる（`[autodev] textkit.words に unique_words(text: str) -> list[str] を足し、…大文`）
+- **ユーザーに聞く件**: 概要 PR のタイトル・sandbox のランの片付け・push
 - **status --json に足すか、まだ決めていないもの**（HUD で出せなくなった表示。段 6 を締めるときにユーザーに聞く）: 指摘の件数と中身・起動時の指示と受入条件・終えた実行の履歴・ステージの指示と出力・制限時間・エスカレーションの理由の文
 - **旧 autodev を参照しているほかのファイル**: `dist/dot-claude/hooks/turnreview/core/turn.py`・`dist/dot-claude/skills/create-pr/SKILL.md`・`install.sh`・`dist/dot-vscode-server/data/Machine/settings.json`。名前とパスを出すだけで、旧い state は読まない。段 7 で見直す。`install.sh` を変えたら、もう 1 つの dotfiles の checkout にも入れる（ユーザーのメモリー）
 

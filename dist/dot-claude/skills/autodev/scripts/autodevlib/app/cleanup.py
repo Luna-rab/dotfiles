@@ -7,12 +7,11 @@ worktree を外すと、無視されたファイルも一緒に消える（LEDGE
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 
 from ..adapters import children
-from ..adapters import git as git_adapter
+from ..adapters._proc import CommandFailed
 from ..adapters.git import Git
 from ..domain.services.housekeeping import Leftovers, LiveProcess, WorktreeState
 from ..domain.values import BranchName, Repository
@@ -32,38 +31,57 @@ def live_children(paths: RunPaths) -> tuple[LiveProcess, ...]:
     return tuple(LiveProcess(c.pid, c.command) for c in children.survivors(paths.children))
 
 
-def _worktree(paths: RunPaths, repo: Git, tree: Path) -> WorktreeState | None:
-    """git の worktree でないディレクトリ（作りかけで止まった など）は、失う変更も無いので数えない。"""
-    top = git_adapter.toplevel(tree)
-    if top is None or os.path.realpath(top) != os.path.realpath(tree):
+def _worktree(paths: RunPaths, repo: Git, tree: Path) -> WorktreeState | str | None:
+    """worktree の中の証拠。確かめられなければ、その理由の文。
+
+    git に登録していないディレクトリ（作りかけで止まった など）は、git の変更も無いので数えない。
+    登録してあるのに中を読めない（壊れた `.git`）なら、失うものがあるか分からないと返す。
+    """
+    if not repo.is_worktree(tree):
         return None
-    return WorktreeState(
-        paths.relative(tree),
-        dirty=tuple(repo.dirty_files(tree)),
-        detached_commits=repo.commits_off_refs(tree),
-    )
+    where = paths.relative(tree)
+    try:
+        return WorktreeState(
+            where,
+            dirty=tuple(repo.dirty_files(tree)),
+            detached_commits=repo.commits_off_refs(tree),
+        )
+    except CommandFailed as error:
+        return f"{where} を確かめられなかった（{error}）"
 
 
 def leftovers(paths: RunPaths, repository: Repository | None, *, count_unpushed: bool) -> Leftovers:
     """外す・消す前の証拠。`count_unpushed` なら、origin を fetch してから push していないコミットを
-    数える（fetch しないと、ほかの口から push 済みのコミットも push していないと数える）。"""
+    数える（fetch しないと、ほかの口から push 済みのコミットも push していないと数える）。fetch できな
+    ければ数えず、確かめられなかったとして渡す。"""
     live = live_children(paths)
     running = tuple(running_executions(paths))
     if repository is None:
         return Leftovers(running=running, live=live)
     repo = Git(repository.value)
     unpushed: tuple[tuple[BranchName, int], ...] = ()
+    unverified: list[str] = []
     if count_unpushed:
-        repo.fetch()
-        unpushed = tuple(
-            (branch, repo.unpushed_count(branch)) for branch in run_branches(paths, repository)
-        )
-    states = (_worktree(paths, repo, tree) for tree in trees(paths))
+        try:
+            repo.fetch()
+            unpushed = tuple(
+                (branch, repo.unpushed_count(branch)) for branch in run_branches(paths, repository)
+            )
+        except CommandFailed as error:
+            unverified.append(f"origin を確かめられなかった（{error}）")
+    states: list[WorktreeState] = []
+    for tree in trees(paths):
+        found = _worktree(paths, repo, tree)
+        if isinstance(found, str):
+            unverified.append(found)
+        elif found is not None:
+            states.append(found)
     return Leftovers(
         running=running,
         unpushed=unpushed,
-        worktrees=tuple(state for state in states if state is not None),
+        worktrees=tuple(states),
         live=live,
+        unverified=tuple(unverified),
     )
 
 
@@ -75,7 +93,14 @@ def remove_worktrees(paths: RunPaths, repository: Repository | None) -> list[Pat
     repo = Git(repository.value)
     removed: list[Path] = []
     for tree in trees(paths):
-        repo.remove_worktree(tree)
+        try:
+            repo.remove_worktree(tree)
+        except CommandFailed:
+            # `.git` が壊れた worktree は git が外せない。ここへ来るのは、確かめられないことを承知で
+            # --force を付けたときだけ。ランディレクトリの中なので消し、登録は prune で外す
+            if not repo.is_worktree(tree):
+                raise
+            shutil.rmtree(tree)
         if not tree.exists():
             removed.append(tree)
     repo.prune_worktrees()

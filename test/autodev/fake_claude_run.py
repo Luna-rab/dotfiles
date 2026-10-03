@@ -10,6 +10,7 @@
 
 `FAKE_CLAUDE_SCHEMAS` に `schemas/` の置き場、`FAKE_CLAUDE_LOG` に呼ばれ方を書き足すファイルを渡す。
 `FAKE_CLAUDE_HANG` に役の名前を渡すと、その役は result を返さずに待ち続ける（`hang`）。
+`FAKE_CLAUDE_STUBBORN=1` なら、interrupt を受けても打ち切らない。
 """
 
 from __future__ import annotations
@@ -134,8 +135,9 @@ OUTPUTS = {
 def hang() -> int:
     """result を返さずに待つ。interrupt を受けたら打ち切って終わる。driver が落ちて標準入力が
     閉じても、ステージの途中の本物の claude のように走り続ける（検査が pid で止める）。"""
+    stubborn = os.environ.get("FAKE_CLAUDE_STUBBORN") == "1"
     while line := sys.stdin.readline():
-        if json.loads(line).get("type") == "control_request":
+        if json.loads(line).get("type") == "control_request" and not stubborn:
             result(subtype="error_during_execution", is_error=True)
             while sys.stdin.readline():
                 pass

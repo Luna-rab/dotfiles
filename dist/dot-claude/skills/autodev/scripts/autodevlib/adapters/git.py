@@ -193,6 +193,10 @@ class Git:
         if not got.ok and "is not a working tree" not in got.err:
             raise CommandFailed(got)
 
+    def is_worktree(self, path: str | os.PathLike[str]) -> bool:
+        """`path` が、このリポジトリに登録した worktree か（中の `.git` が壊れていても、登録で見る）。"""
+        return self._worktree(path)[0]
+
     def _worktree(self, path: str | os.PathLike[str]) -> tuple[bool, str | None]:
         """（git に登録されているか, チェックアウトしているもの）。ブランチなら `refs/heads/…`、
         切り離した状態なら `detached`。"""

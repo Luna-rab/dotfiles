@@ -98,11 +98,14 @@ def answer_refusal(paths: RunPaths, command: AnswerQuestion) -> str | None:
     driver がまだ拾っていない回答（`requests` に残る AnswerQuestion）も、拾われる順に先に当てる。
     当てずに確かめると、同じ質問への 2 つ目の回答が通ったように見え、driver が拾った所で黙って拒む。
     """
+    # requests を先に、events を後に読む。driver は回答をイベントにしてから requests の行を消すので、
+    # 2 回の読み取りの間に拾われても、回答はどちらかに必ず残る（逆の順だと、両方から消えうる）。
+    # 両方に出た回答は、イベントを当てた後なので当てたときに拒まれ、飛ばされる
+    with RequestBox.open(paths.events_db) as box:
+        pending = box.pending()
     with EventReader.open(paths.events_db) as reader:
         history = [(s.decode(), s.command_id) for s in reader.read_stream(StreamId.questions())]
     questions = Questions.replay(StreamId.questions(), history)
-    with RequestBox.open(paths.events_db) as box:
-        pending = box.pending()
     for request in pending:
         try:
             earlier = request.to_command()

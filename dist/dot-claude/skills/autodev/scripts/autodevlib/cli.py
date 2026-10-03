@@ -25,7 +25,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
-from .adapters import children
 from .adapters import git as git_adapter
 from .adapters._proc import CommandFailed
 from .adapters.git import Git
@@ -196,13 +195,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         with DriverLock(paths.driver_lock):
             # 錠が取れたので前の driver はもういない。その driver が起こした子が残っていないかを見る
             _refuse(
-                blocking(start_blockers(Leftovers(live=cleanup.live_children(paths))), force=False)
+                blocking(start_blockers(Leftovers(live=cleanup.live_children(paths))), force=False),
+                forcible_here=False,
             )
-            children.track_in(paths.children)
-            try:
-                return int(assembly.build_driver(paths, config).drive(start))
-            finally:
-                children.track_in(None)
+            return int(assembly.build_driver(paths, config).drive(start))
     except DriverBusy as error:
         raise Failed(str(error)) from error
 
@@ -291,15 +287,20 @@ def cmd_ask(args: argparse.Namespace) -> int:
 # --- clean・purge ---
 
 
-def _refuse(blockers: Sequence[Blocker]) -> None:
-    """ドメインが挙げた、越えられない理由があれば止める。"""
+def _refuse(blockers: Sequence[Blocker], *, forcible_here: bool = True) -> None:
+    """ドメインが挙げた、越えられない理由があれば止める。理由の文に、進め方が書いてある。
+
+    `forcible_here` は、そのサブコマンドに `--force` があるか（run には無いので、出さない）。
+    """
     if not blockers:
         return
     for blocker in blockers:
         _say(blocker.reason)
-    if all(blocker.forcible for blocker in blockers):
+    if forcible_here and all(blocker.forcible for blocker in blockers):
         raise Failed("何もしていない。失うものを承知で進めるなら --force を付ける")
-    raise Failed("何もしていない（--force でも進めない）")
+    if forcible_here:
+        raise Failed("何もしていない（--force でも進めない）")
+    raise Failed("何もしていない")
 
 
 def cmd_clean(args: argparse.Namespace) -> int:

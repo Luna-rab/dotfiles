@@ -190,3 +190,14 @@
 - **エスカレーションが回答以外で閉じたら（`EscalationClosed`）、それを経路に持つ回答待ちの質問を取り下げる**（ポリシー `withdraw-questions` → `WithdrawQuestions` → `QuestionWithdrawn`）。ラン統括が `ask-user` の後に `stop-tasks`・`replan` で閉じると、質問が回答を待ったまま残り、`awaiting_answer` が真のまま終了コード 4 で止まるためである。`/autodev` には `questions/<QuestionId>.json` の `status: withdrawn` と `reason`（閉じた理由）で見せる
 - **質問が answered になった後、回答が Run に届く前にエスカレーションが閉じたら、回答は記録するが、ラン統括を起こさない**（`AnswerRecorded.escalation_closed`）。答える先が無いので、起こすと `answer` が拒まれ続け、`supervisor-failed` から同じ知らせで起こし直す輪になる。印を付けるのは Run で開いたことのあるエスカレーション（`Run.opened_escalations`）への回答だけで、開いたことの無い id（`ask-user` の `escalation` の取り違え）への回答は今までどおり起こす。`<回答の記録>` には `escalationClosed: true` で見せる
 - `retry` の知らせは、起こし直しが重なっても最初の知らせを 1 段だけ載せる（途中の回答は載せない）
+
+### driver の止め方と、ランの跡の片付け（6）
+
+- **SIGTERM・SIGINT は、パニックと同じ道で止める（終了コード 3）。** 1 回目は `Panic` を出し、走っている実行を `MarkInterrupted(panic)` にして止め、ステージと統括の子が終わるまで待ってから終える。呼び直せば、止めたステージを `--resume` で続ける。2 回目と、`Panic` が拒まれたとき（ランを終えた後など）は、子をグループごと SIGKILL で止め、待ち終えてから 3 で終える。ハンドラは `drive` の頭から子を待ち終えるまで付けておく（`app/stopping.py`）
+- **子プロセスの控え。** 子はどれも新しいセッションで起こすので、driver が SIGKILL で落ちると残る。driver は起こした子（claude・git・検証コマンド）ごとに `<ランディレクトリ>/children/<pid>.json` に pid・開始時刻（`/proc/<pid>/stat` の starttime）・boot_id を書き、待ち終えたら消す。pid は使い回されるので、3 つが同じで、状態がゾンビでないときだけ生きているとみなす。控えを書けない子は走らせない（止めてから落ちる）。**Linux の `/proc` が前提**で、無い所では子を起こせない
+- 前の driver の子が生きていれば、`run` は 1 で止まり、`clean`・`purge` は `--force` でも消さない（同じ実行が 2 本走る・走っている claude の下から worktree を消す）
+- **`clean`・`purge` が拒む理由は、証拠からドメインのサービスが決める**（`domain/services/housekeeping.py`）。アプリケーション層は証拠（`Leftovers`）を集めて渡すだけ
+  - `clean`: ランを終えていない（`Run.complete` が偽）・worktree にコミットしていない変更がある・HEAD を切り離した worktree にしか無いコミットがある
+  - `purge`: 記録の上で走っている実行がある・origin（fetch した後）に無いコミットがある・worktree にコミットしていない変更がある・切り離した HEAD にしか無いコミットがある
+  - どちらも、確かめられなかったこと（fetch できない・壊れた worktree）を理由にする
+  - 前の driver の生きている子のほかは、`--force` で越えられる。squash・rebase でマージした PR のコミットも origin に無いと数えるので、そのときは `--force` で消す

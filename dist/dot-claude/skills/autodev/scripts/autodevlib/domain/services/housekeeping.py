@@ -45,6 +45,9 @@ class Leftovers:
     unpushed: tuple[tuple[BranchName, int], ...] = ()
     worktrees: tuple[WorktreeState, ...] = ()
     live: tuple[LiveProcess, ...] = ()
+    #: 確かめられなかったこと（origin を fetch できない・壊れた worktree の中を読めない）。失うものが
+    #: あるかは分からないが、壊れた所を片付けるのも clean・purge の役目なので、--force で越えられる
+    unverified: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -56,7 +59,8 @@ class Blocker:
 def _live(leftovers: Leftovers) -> list[Blocker]:
     return [
         Blocker(
-            f"前の driver が起こしたプロセスがまだ走っている: pid {p.pid}（{p.command}）",
+            f"前の driver が起こしたプロセスがまだ走っている: pid {p.pid}（{p.command}）。"
+            f"終わるのを待つか、kill {p.pid} で止めてから呼び直す",
             forcible=False,
         )
         for p in leftovers.live
@@ -64,7 +68,7 @@ def _live(leftovers: Leftovers) -> list[Blocker]:
 
 
 def _worktrees(leftovers: Leftovers) -> list[Blocker]:
-    found: list[Blocker] = []
+    found = [Blocker(reason) for reason in leftovers.unverified]
     for tree in leftovers.worktrees:
         if tree.dirty:
             found.append(
@@ -106,8 +110,13 @@ def purge_blockers(leftovers: Leftovers) -> list[Blocker]:
     blockers += [
         Blocker(f"記録の上で走っている実行がある: {execution}") for execution in leftovers.running
     ]
+    # squash・rebase でマージした PR のコミットは origin のどこにも無いままなので、マージ済みのランでも
+    # ここに当たる。数え方は変えず（マージ済みかは GitHub を見ないと分からない）、越え方を添える
     blockers += [
-        Blocker(f"{branch} に origin に無いコミットがある（{count} 件）")
+        Blocker(
+            f"{branch} に origin に無いコミットがある（{count} 件。PR を squash か rebase で"
+            "マージ済みなら、--force で消してよい）"
+        )
         for branch, count in leftovers.unpushed
         if count
     ]

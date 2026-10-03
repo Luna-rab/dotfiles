@@ -49,7 +49,8 @@ def test_purgeは走っている実行とpushしていないコミットと未�
     )
     assert reasons(purge_blockers(leftovers)) == [
         f"記録の上で走っている実行がある: {PLAN}",
-        f"{BRANCH} に origin に無いコミットがある（2 件）",
+        f"{BRANCH} に origin に無いコミットがある（2 件。PR を squash か rebase でマージ済み"
+        "なら、--force で消してよい）",
         "trees/overview にコミットしていない変更がある: wip.txt",
         "trees/stack-top の切り離した HEAD にしか無いコミットがある（1 件）",
     ]
@@ -74,6 +75,14 @@ def test_生きている子プロセスはどれもforceでも越えられない
         start_blockers(leftovers),
     ):
         assert reasons(blockers) == [
-            "前の driver が起こしたプロセスがまだ走っている: pid 4242（claude -p）"
+            "前の driver が起こしたプロセスがまだ走っている: pid 4242（claude -p）。"
+            "終わるのを待つか、kill 4242 で止めてから呼び直す"
         ]
         assert blocking(blockers, force=True) == blockers
+
+
+def test_確かめられなかったことはforceで越えられる理由にする():
+    leftovers = Leftovers(unverified=("origin を確かめられなかった（fetch が落ちた）",))
+    for blockers in (clean_blockers(leftovers, finished=True), purge_blockers(leftovers)):
+        assert reasons(blockers) == ["origin を確かめられなかった（fetch が落ちた）"]
+        assert blocking(blockers, force=True) == []

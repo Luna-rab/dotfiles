@@ -19,7 +19,12 @@ from typing import Any
 import pytest
 from autodevlib import cli
 from autodevlib.domain.commands import AnswerQuestion
-from autodevlib.domain.events import QuestionPosted, QuestionWithdrawn, RunStarted
+from autodevlib.domain.events import (
+    QuestionAnswered,
+    QuestionPosted,
+    QuestionWithdrawn,
+    RunStarted,
+)
 from autodevlib.domain.values import (
     BranchName,
     CommandId,
@@ -339,6 +344,56 @@ def test_answerはまだ拾われていない回答を当てた後で確かめ�
         assert len(box.pending()) == 1
 
 
+def test_answerは確かめる間にdriverが回答を拾っても2つ目の回答を置かない(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    """driver は、requests の行を拾ってイベントにしてから行を消す。確かめる 2 回の読み取りの間に
+    それが起きても、どちらの読み取りからも回答が消えない。"""
+    seed_questions(world.paths, withdrawn=False)
+    assert world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "60")[0] == 0
+    from autodevlib.app import assembly  # noqa: PLC0415
+
+    def pick_up() -> None:
+        """driver が回答を拾った: QuestionAnswered を足し、requests の行を消す。"""
+        with RequestBox.open(world.paths.events_db) as box:
+            (request,) = box.pending()
+            store = EventStore.open(world.paths.events_db)
+            try:
+                store.append(
+                    CommandId(request.id),
+                    StreamId.questions(),
+                    1,
+                    [QuestionAnswered(QuestionId(QUESTION), "60", EventId("run#2"))],
+                )
+            finally:
+                store.close()
+            box.delete(request.id)
+
+    reads: list[str] = []
+
+    def after_first_read(name: str, result: Any) -> Any:
+        reads.append(name)
+        if len(reads) == 1:
+            pick_up()
+        return result
+
+    pending = assembly.RequestBox.pending
+    read_stream = assembly.EventReader.read_stream
+    monkeypatch.setattr(
+        assembly.RequestBox,
+        "pending",
+        lambda self: after_first_read("pending", pending(self)),
+    )
+    monkeypatch.setattr(
+        assembly.EventReader,
+        "read_stream",
+        lambda self, stream: after_first_read("events", read_stream(self, stream)),
+    )
+    code, _, err = world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "300")
+    assert code == 1, err
+    assert "回答できるのは open の質問だけ" in err
+
+
 def test_answerは無いランに要求を置かない(world: World):
     code, _, err = world.cli("answer", "--name", NAME, "--question", QUESTION, "--answer", "A")
     assert (code, "そのランが無い" in err) == (1, True)
@@ -450,7 +505,7 @@ def test_purgeはoriginに無いコミットがあれば何も消さずforceな�
     commit(world.paths.overview_tree, "b.txt", "x\n", "push していない")
     code, _, err = world.cli("purge", "--name", NAME)
     assert code == 1
-    assert f"{branch} に origin に無いコミットがある（1 件）" in err
+    assert f"{branch} に origin に無いコミットがある（1 件。" in err
     assert world.paths.overview_tree.is_dir()
 
     code, out, err = world.cli("purge", "--name", NAME, "--force")
@@ -463,9 +518,42 @@ def test_purgeはoriginに無いコミットがあれば何も消さずforceな�
     assert not any(call["args"][:2] == ["pr", "close"] for call in world.gh.calls())
 
 
+def test_purgeはoriginを確かめられなければ止めforceなら消す(world: World):
+    assert start(world)[0] == 4
+    sh(world.repo, "remote", "set-url", "origin", str(world.tmp / "no-such-origin.git"))
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 1
+    assert "origin を確かめられなかった" in err
+    code, _, err = world.cli("purge", "--name", NAME, "--force")
+    assert code == 0, err
+
+
+def test_壊れたworktreeは確かめられなかった理由にしてforceなら消す(world: World):
+    assert start(world)[0] == 4
+    # worktree の .git（gitdir を指すファイル）を壊す
+    (world.paths.overview_tree / ".git").write_text("gitdir: /nowhere\n", "utf-8")
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 1
+    assert "trees/overview を確かめられなかった" in err
+    code, _, err = world.cli("purge", "--name", NAME, "--force")
+    assert code == 0, err
+
+
+def test_purgeの理由はpushしていないコミットがマージ済みならforceでよいと添える(world: World):
+    assert start(world)[0] == 4
+    commit(world.paths.overview_tree, "b.txt", "x\n", "squash でマージした")
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 1
+    assert "PR を squash か rebase でマージ済みなら、--force で消してよい" in err
+
+
 def spawn_until_plan(world: World, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, int]:
-    """入口（scripts/autodev.py）を別のプロセスで起こし、Plan の claude が走り出すまで待つ。"""
-    monkeypatch.setenv("FAKE_CLAUDE_HANG", "plan")
+    return spawn_until(world, monkeypatch, "plan")
+
+
+def spawn_until(world: World, monkeypatch: pytest.MonkeyPatch, role: str) -> tuple[Any, int]:
+    """入口（scripts/autodev.py）を別のプロセスで起こし、`role` の claude が走り出して止まるまで待つ。"""
+    monkeypatch.setenv("FAKE_CLAUDE_HANG", role)
     driver = subprocess.Popen(
         [
             sys.executable,
@@ -477,13 +565,68 @@ def spawn_until_plan(world: World, monkeypatch: pytest.MonkeyPatch) -> tuple[Any
         start_new_session=True,
     )
     deadline = time.monotonic() + 30
-    while not world.claude_calls() and time.monotonic() < deadline:
+
+    def found() -> list[dict[str, Any]]:
+        return [call for call in world.claude_calls() if call["role"] == role]
+
+    while not found() and time.monotonic() < deadline:
         time.sleep(0.05)
-    calls = world.claude_calls()
-    if not calls:
+    if not found():
         os.killpg(driver.pid, signal.SIGKILL)
-        pytest.fail("Plan の claude が走り出さなかった")
-    return driver, calls[0]["pid"]
+        pytest.fail(f"{role} の claude が走り出さなかった")
+    return driver, found()[0]["pid"]
+
+
+def records(world: World) -> list[Path]:
+    """子プロセスの控え（children/）に残っているもの。"""
+    folder = world.paths.root / "children"
+    return sorted(folder.glob("*.json")) if folder.is_dir() else []
+
+
+def test_interruptに応じないステージは2回目のSIGINTで子を止めて3で終える(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("FAKE_CLAUDE_STUBBORN", "1")
+    driver, plan = spawn_until_plan(world, monkeypatch)
+    try:
+        driver.send_signal(signal.SIGINT)
+        # 1 回目では止まらない claude を、driver は待っている（interrupt から kill まで 60 秒）
+        time.sleep(1)
+        assert driver.poll() is None
+        assert alive(plan)
+        driver.send_signal(signal.SIGINT)
+        assert driver.wait(timeout=30) == 3
+    finally:
+        if driver.poll() is None:
+            os.killpg(driver.pid, signal.SIGKILL)
+        if alive(plan):
+            os.kill(plan, signal.SIGKILL)
+    assert not alive(plan)
+    assert records(world) == []
+
+
+def test_統括がターンの途中でもシグナルで止めると統括の子を待ってから終える(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("FAKE_CLAUDE_STUBBORN", "1")
+    driver, supervisor = spawn_until(world, monkeypatch, "supervisor-run")
+    try:
+        driver.send_signal(signal.SIGTERM)
+        time.sleep(1)
+        # 統括の claude が終わるまで、driver は終わらない
+        assert driver.poll() is None
+        driver.send_signal(signal.SIGTERM)
+        assert driver.wait(timeout=30) == 3
+    finally:
+        if driver.poll() is None:
+            os.killpg(driver.pid, signal.SIGKILL)
+        if alive(supervisor):
+            os.kill(supervisor, signal.SIGKILL)
+    assert not alive(supervisor)
+    # 控えが残らないので、次の purge は前の driver の子で止まらない
+    assert records(world) == []
+    code, _, err = world.cli("purge", "--name", NAME)
+    assert code == 0, err
 
 
 def alive(pid: int) -> bool:
@@ -520,6 +663,9 @@ def test_driverがSIGKILLで落ちて子のclaudeが生きている間はrunもc
         code, _, err = world.cli("run", "--name", NAME)
         assert code == 1
         assert f"前の driver が起こしたプロセスがまだ走っている: pid {plan}" in err
+        # run に --force は無いので、進め方を書く
+        assert f"kill {plan}" in err
+        assert "--force" not in err
         for command in ("clean", "purge"):
             code, _, err = world.cli(command, "--name", NAME, "--force")
             assert (command, code) == (command, 1)

@@ -46,8 +46,10 @@ autodev を一から作り直す作業を、新しい会話で続けるための
   - テスト用の private リポジトリ `Luna-rab/autodev-sandbox`（手元は `~/ghq/github.com/Luna-rab/autodev-sandbox`、設定は `~/.config/autodev/repos/home__naru__ghq__github.com__Luna-rab__autodev-sandbox.json`）で通しのラン `unique-words` を走らせた。概要 PR #14 とタスク PR #15 ができ、ランを終えて概要 PR は draft から外れた。マージはしていない。ランディレクトリと worktree は `~/.local/state/autodev/unique-words` に残っている
   - sandbox には旧 autodev の PR（#2・#4・#5・#7・#8）が開いたまま残っている。触らない
   - 気づいたこと: 概要 PR のタイトルが指示の文を頭から切っただけになる（`[autodev] textkit.words に unique_words(text: str) -> list[str] を足し、…大文`）
-- **ユーザーに聞く件**: 概要 PR のタイトル・sandbox のランの片付け・push
-- **status --json に足すか、まだ決めていないもの**（HUD で出せなくなった表示。段 6 を締めるときにユーザーに聞く）: 指摘の件数と中身・起動時の指示と受入条件・終えた実行の履歴・ステージの指示と出力・制限時間・エスカレーションの理由の文
+- **ユーザーと決めたこと**
+  - 概要 PR のタイトルは WriteOverview に書かせる（作業場所は `feature/autodev-redesign-overview-title`）
+  - sandbox の PR #14・#15 は close し、ラン `unique-words` は purge し、リモートのブランチも消した
+- **HUD は後でユーザーが整理する。今は触らない。** 旧い HUD で出していて今は出せない表示（指摘の件数と中身・起動時の指示と受入条件・終えた実行の履歴・ステージの指示と出力・制限時間・エスカレーションの理由の文）は、`status --json` に足さずに残す
 - **旧 autodev を参照しているほかのファイル**: `dist/dot-claude/hooks/turnreview/core/turn.py`・`dist/dot-claude/skills/create-pr/SKILL.md`・`install.sh`・`dist/dot-vscode-server/data/Machine/settings.json`。名前とパスを出すだけで、旧い state は読まない。段 7 で見直す。`install.sh` を変えたら、もう 1 つの dotfiles の checkout にも入れる（ユーザーのメモリー）
 
 ### 段 7
@@ -79,5 +81,4 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 ## 7. 触らないもの
 
-- `.claude/worktrees/` の `feature/autodev-redesign-*` は、どれも統合のブランチにマージ済みである。消すかどうかはユーザーに聞く
 - `~/.local/state/autodev/pr-body-markers/tree`。この作業と関係が無い

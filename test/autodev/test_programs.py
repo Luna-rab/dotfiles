@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from autodev_harness import POLICY, new_id, of_type
+from autodevlib.adapters._proc import CommandFailed
 from autodevlib.app import programs
 from autodevlib.app.programs import Tools
 from autodevlib.app.stage_context import (
@@ -344,6 +345,22 @@ def test_rebaseが衝突で止まったままのworktreeで始めたRebaseはタ
     ctx = context(env, S.REBASE, job=job, start_commit=begun.head)
     assert programs.run_program(ctx, tools(env)).conflicts == ("a.txt",)
     assert sh(tree, "rev-parse", str(B1)).strip() == tip
+
+
+def test_初めて流すRebaseは汚れたworktreeを消さない(env: Env):
+    """戻すのは流し直しの分だけ。汚れた worktree は、git rebase が断って落ちる（黙って消さない）。"""
+    overview(env)
+    tree = task_tree(env)
+    commit(tree, "mine.py", "task\n")
+    (tree / "mine.py").write_text("書きかけ\n", encoding="utf-8")
+    (tree / "scratch.txt").write_text("追跡していない\n", encoding="utf-8")
+    start = CommitSha(sh(tree, "rev-parse", "HEAD").strip())
+    job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
+    ctx = context(env, S.REBASE, job=job, start_commit=start)
+    with pytest.raises(CommandFailed):
+        programs.run_program(ctx, tools(env))
+    assert (tree / "mine.py").read_text(encoding="utf-8") == "書きかけ\n"
+    assert (tree / "scratch.txt").is_file()
 
 
 def test_rebase途中のworktreeにCutBranchを当てても落ちない(env: Env):

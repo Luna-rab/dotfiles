@@ -488,13 +488,18 @@ def relink(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 def run_program(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """ステージの中身を流す。宣言があれば、途中の rebase を先に取りやめ（`StageSpec.abandons_rebase`）、
     始めた時点へ戻す（`StageSpec.restores_start`）。取りやめてから戻すのは、rebase の途中で reset すると
-    rebase の状態が残るためである。"""
+    rebase の状態が残るためである。
+
+    戻すのは `reset --keep` で、`--hard` と clean は使わない。初めて流すときは HEAD が始めた時点なので
+    何も変わらず、汚れた worktree はステージの中身（git rebase）が断って落ちる。黙って消すと気づけない。
+    流し直しは中身を終えた後なので、追跡していないファイルは残っていない。
+    """
     spec, tree = ctx.spec, ctx.tree
     if (tree / ".git").exists():
         if spec.abandons_rebase:
             tools.git.rebase_abort(tree)
         if spec.restores_start and ctx.start_commit is not None:
-            tools.git.reset_hard(tree, str(ctx.start_commit))
+            tools.git.reset_keep(tree, str(ctx.start_commit))
     return PROGRAMS[ctx.execution.stage](ctx, tools)
 
 

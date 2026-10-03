@@ -33,7 +33,7 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 | 2 | ドメインの土台（値・コマンド・イベント・ステージの定義・フローの検査） | 済み |
 | 3 | 集約・ドメインサービス・つなぎ目の表（`test_seams.SEAMS`） | 済み |
 | 4 | インフラ（SQLite のイベントストア・メインループ）・アダプタ（claude・git・gh）・ガードのフック | 済み |
-| 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | ほぼ済み。3 巡目の should-fix（S1〜S5）は直した。nit の N1〜N3 を直す作業と push が残っている（§6） |
+| 5 | ポリシー・反応・統括・実行器・決定的なステージ・指示書（`contracts/`）・`schemas/` | 済み。レビューと直しを 3 巡し、nit は N1〜N3 を直した |
 | 6 | CLI・SKILL.md・HUD をつなぎ、本物の claude・gh で確かめる | 未着手 |
 | 7 | 文書を置き換え、旧 autodev の残りを消して仕上げる | 未着手 |
 
@@ -61,23 +61,9 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 ## 6. 残っている件
 
-### 段 5 を締める（段 6 より先にやる）
-
-3 巡目のレビューで出た should-fix の S1〜S5 は直し、レビューを通してマージした。次の手順で段 5 を締める。
-
-1. nit の N1〜N3 を `medium-worker` に直させ、`medium-reviewer` でレビューしてからマージし、検査を通す（作業場所は `feature/autodev-redesign-domain-judgments`）
-2. `feature/autodev-redesign` を origin に push する。ユーザーが頼んだのは段 5 を締めた後の push である。作業用の `feature/autodev-redesign-*` は push しない。PR は作らない
-3. 段 6 に入る前に止まって、ユーザーに報告する
-
 パスは `dist/dot-claude/skills/autodev/scripts/autodevlib/` を省いて書く。
 
-**直す nit（ユーザーが選んだ）**
-
-- **N1**: 載せ直すコミットが 0 件なら失敗にする判断が、`app/programs.py:272-276` にある。ドメインの規則にして、programs は事実を渡すだけにする
-- **N2**: `session_lost` を決める式（`resumed and NO_RESULT and not initialized`）が、`app/executor.py:801` にある。事実を Evidence に載せ、Task が判定する
-- **N3**: 根元が無いときに、コミット数を 0 として証拠に出している（`app/executor.py:648` あたり）。「数えられない」と「0 件」を見分ける
-
-**段 6 へ回す**
+**段 6 で直す**
 
 - **S6. 取り下げた後に届いた回答は、`rejected.jsonl` に残るだけで `/autodev` に見えない**
   - 根拠: `domain/questions.py:83-92`・`app/files.py:63-86`
@@ -85,7 +71,7 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 
 **設計として残る点（すぐ直すものではない。ユーザーに伝える）**
 
-- 答えて続けられる仕事（`answer_only`）は、答えて続ける輪に上限が無い
+- 答えて続けられる仕事（`answer_only`）は、答えて続ける輪に上限が無い。たとえば Rebase が落ち続け、ラン統括が毎回答えると回り続ける
 - ラン統括が応じずにユーザーが答えて起こし直した（RETRY）とき、その回答は元のエスカレーションには使えない。そのためユーザーに 2 回聞くことになる
 - ラン統括の `ask-user` は、Run で開いていないエスカレーションの id でも質問を出せる（`domain/questions.py:55-76` は Run の状態を見ない）。開いたことの無い id への回答はラン統括を起こすので止まりはしないが、閉じた id で質問を出す道は残る。塞ぐなら、ask-user を Run が受けて確かめ、ポリシーが `PostQuestion` を出す形にする
 
@@ -96,7 +82,10 @@ autodev を一から作り直す作業を、新しい会話で続けるための
 - N4（検査用の `join()` が、待ち直しで後ろへ回した begin を待たない）。メインループには響かない
 - N5（SIGKILL のタイマーは、子が SIGTERM で終わっても 10 秒後に必ず `killpg` を送る）。10 秒のうちに pid が一周しないと起きない
 - S4 の直しで残る隙間。lock を確かめてから消すまでの数 ms に、同じ worktree の別の実行が git を始めうる。起きても git が落ちてステージの失敗になり、黙って壊れはしない
+- 書き直す前のフローに届いた Rebase の結果は、コミットを数えられなかった（None）ときも、失敗の理由に「0 件」と書く（`domain/task.py:780-790`）。根元が無いと Rebase はエラーの証拠になるので、本番ではまず起きない
+- Rebase のコミット数が、中身から実行器を通って証拠に載る道を確かめる検査が無い（`app/executor.py:665-671`）。テストの土台が `commits: 1` を入れるので、実行器が数を落としても気づけない。段 6 で本物の git を通すときに足すとよい
 
 ## 7. 触らないもの
 
+- `.claude/worktrees/` の `feature/autodev-redesign-*` は、どれも統合のブランチにマージ済みである。消すかどうかはユーザーに聞く
 - `~/.local/state/autodev/pr-body-markers/tree`。この作業と関係が無い

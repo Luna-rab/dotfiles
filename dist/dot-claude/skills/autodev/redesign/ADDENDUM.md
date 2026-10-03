@@ -200,7 +200,7 @@ HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形�
 - 欄を足すだけなら `format` は上げない。読む側は知らない欄を無視する
 - 時刻はすべて UTC の ISO 8601（`2026-10-03T01:02:03.456789Z`）。イベントを確定した時刻で、ステージが走り始めた正確な時刻ではない
 - **driver が生きているかは `run.driver_running` で見る。** `driver.lock` の flock をほかのプロセスが握っているかで決める。確かめる側は共有の錠を待たずに取ってすぐ放し（flock には握り手を問い合わせる方法が無い）、その一瞬に起動した driver は排他の錠を短い間取り直す。`updated_at`（イベントを確定した時刻）と `progress.updated`（進み具合を最後に書いた時刻）は生存の目安にしない。決定的なステージは進み具合を始めに 1 回しか書かず、LLM のステージも長い Bash の間は書かないので、走っていても古くなる
-- `run.live_children` は、driver が走っていないときだけ子の控え（下の「driver の止め方と、ランの跡の片付け」）を見る。driver が走っていれば、生きている子はその driver の子なので空にする
+- `run.live_children` は、driver が走っていないときだけ子の控え（下の「driver の止め方と、ランの跡の片付け」）を見る。driver が走っていれば、生きている子はその driver の子なので空にする。控えを見ている間に錠が握られたら、走っているほうに倒す。status は錠を取らないので控えを消さない（消すのは錠を取った `run`・`clean`・`purge`）
 
 ```json
 {
@@ -250,7 +250,7 @@ HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形�
 | `run.resumes` | 呼び直された回数 | |
 | `run.panic_cause` | パニックの原因（`RunPanicked` の `cause`）。`phase` が `panicked` のときだけ入り、呼び直すと `null` に戻る | 例: `利用枠の上限に当たった（<実行>）: <claude の出力の頭 300 字>`・`SIGTERM を受けた` |
 | `run.directory` | ランディレクトリの絶対パス。`/autodev` はここの `questions/` を見る | |
-| `run.driver_running` | 同じランの driver が今走っている。`phase` が `running`・`planning` なのに偽なら、`run --name <ラン名>` で呼び直すまで進まない | `true`・`false` |
+| `run.driver_running` | `driver.lock` を握るプロセスがいる。`clean`・`purge` も錠を握るので、その間も真になる。`phase` が `running`・`planning`・`finishing` で `awaiting_answer` が偽なのに偽なら、`run --name <ラン名>` で呼び直すまで進まない（回答待ちで 4 で終えたなら偽で当たり前） | `true`・`false` |
 | `run.live_children` | driver が走っていないのに生きている、前の driver の子の pid。空でなければ `run` は 1 で止まり、`clean`・`purge` は `--force` でも消さない | |
 | `tasks[]` | 計画タスク・git 管理タスク（始めていれば）、実装タスク（番号の順） | |
 | `tasks[].kind` | タスクの種類 | `planning`・`implementation`・`git` |

@@ -182,6 +182,30 @@ def init_then_crash() -> None:
     sys.exit(1)
 
 
+def session_not_found() -> None:
+    """`--resume` に見つからないセッションを渡した。claude 2.1.288 で確かめた形（プロンプトの有無で
+    変わらない）。init を出さず、`result` の欄の無い result を返して終了コード 1 で終わる。"""
+    session = sys.argv[sys.argv.index("--resume") + 1]
+    message = f"No conversation found with session ID: {session}"
+    emit(
+        {
+            "type": "result",
+            "subtype": "error_during_execution",
+            "duration_ms": 0,
+            "is_error": True,
+            "num_turns": 0,
+            "stop_reason": None,
+            "session_id": session,
+            "total_cost_usd": 0,
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+            "permission_denials": [],
+            "errors": [message],
+        }
+    )
+    sys.stderr.write(message + "\n")
+    sys.exit(1)
+
+
 def max_turns() -> None:
     read_line()
     result(subtype="error_max_turns", is_error=True, terminal_reason="max_turns")
@@ -240,6 +264,7 @@ SCENARIOS = {
     "deferred": deferred,
     "no-result": no_result,
     "init-then-crash": init_then_crash,
+    "session-not-found": session_not_found,
     "max-turns": max_turns,
     "rate-limited": rate_limited,
     "rate-event-then-success": rate_event_then_success,

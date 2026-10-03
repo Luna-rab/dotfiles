@@ -379,7 +379,7 @@ def test_再開に失敗したら作り直しを頼みworktreeを始めた時点
     def lost(call: AgentCall, process: FakeProcess):
         commit(tree, "half.py", "途中\n")
         (tree / "junk.txt").write_text("x", encoding="utf-8")
-        return outcome(call, None, ending=Ending.NO_RESULT, exit_code=1, stderr="No conversation")
+        return lost_session(call, process)
 
     env.runtime.behaviors.append(lost)
     events = env.run(ex(S.IMPL))
@@ -396,7 +396,51 @@ def test_再開に失敗したら作り直しを頼みworktreeを始めた時点
 
 
 def lost_session(call: AgentCall, process: FakeProcess):
-    return outcome(call, None, ending=Ending.NO_RESULT, exit_code=1, stderr="No conversation")
+    """見つからないセッションの `--resume`。claude 2.1.288 は init を出さず、この result を返して
+    終了コード 1 で終わる（段 6 の実測）。"""
+    message = f"No conversation found with session ID: {call.session}"
+    return outcome(
+        call,
+        None,
+        subtype="error_during_execution",
+        is_error=True,
+        num_turns=0,
+        text=message,
+        exit_code=1,
+        stderr=message,
+        initialized=False,
+    )
+
+
+def test_続けたセッションでinitの前にkillしたら続けられなかったとは数えず失敗にする(env: Env):
+    """init の前に kill したのでは、セッションが在ったかは分からない。作り直すと前の仕事を捨てる。"""
+    impl_task(env)
+    env.begin(ex(S.IMPL))
+    env.world(
+        InterruptStage(
+            command_id=new_id(),
+            issuer=POLICY,
+            task=T1,
+            execution=ex(S.IMPL),
+            cause=InterruptCause.PANIC,
+        )
+    )
+    env.world(
+        ResumeStage(command_id=new_id(), issuer=Issuer.driver(), task=T1, execution=ex(S.IMPL))
+    )
+    env.runtime.behaviors.append(
+        lambda call, p: outcome(
+            call,
+            None,
+            ending=Ending.KILLED,
+            exit_code=-9,
+            interrupted="制限時間を超えた",
+            initialized=False,
+        )
+    )
+    events = env.run(ex(S.IMPL))
+    assert env.runtime.calls[-1].resume is True
+    assert of_type(events, StageFailed) and not of_type(events, ExecutionRestarted)
 
 
 def test_続けたセッションで始めた後に落ちたら続けられなかったとは数えず失敗にする(env: Env):

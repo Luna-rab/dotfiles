@@ -764,8 +764,8 @@ class Executor:
     ) -> tuple[Evidence, dict[str, Any] | None]:
         """証拠と、結果の JSON（無ければ None）。形が違っても結果は返し、results/ に残す。
 
-        `resumed` は `--resume` で起こしたか。続けられなかったか（作り直すか）は、これと init・result の
-        有無から Task が決める。
+        `resumed` は `--resume` で起こしたか。続けられなかったか（作り直すか）は、これと init を受けたか・
+        こちらが kill したかから Task が決める。
         """
         schema = load_schema(
             self._skill / "schemas" / f"{asset_name(context.execution.stage)}.json"
@@ -807,7 +807,7 @@ class Executor:
             hook_denials=outcome.hook_denials,
             resumed=resumed,
             initialized=outcome.initialized,
-            ended_without_result=outcome.ending is Ending.NO_RESULT,
+            killed=outcome.ending is Ending.KILLED,
         )
         return evidence, result
 

@@ -177,7 +177,8 @@ class AgentOutcome:
     capabilities: tuple[str, ...] = ()
     log_path: str = ""
     #: `system/init` を 1 回でも受けた（claude がセッションを開いてターンを始めた）。`--resume` で
-    #: 続けるセッションが見つからないと、init を出さずに終わる（段 6 で本物の claude で確かめる）
+    #: 続けるセッションが見つからないと、claude 2.1.288 は init を出さず、`error_during_execution`・
+    #: `num_turns: 0` の result を返して終了コード 1 で終わる（プロンプトの有無で変わらない。段 6 の実測）
     initialized: bool = False
 
 

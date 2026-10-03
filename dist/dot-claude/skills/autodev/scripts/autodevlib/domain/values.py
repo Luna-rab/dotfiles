@@ -1182,8 +1182,8 @@ class Evidence:
     resumed: bool = False
     #: claude が `system/init` を出した（セッションを開いてターンを始めた）
     initialized: bool = False
-    #: claude が result を返さずに自分で終わった（こちらが kill したのは含めない）
-    ended_without_result: bool = False
+    #: result が来ないので、こちらが claude を kill した
+    killed: bool = False
 
 
 # --- 計画 ---

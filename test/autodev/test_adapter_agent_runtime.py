@@ -236,6 +236,20 @@ def test_initを受けてから落ちたらセッションを開いた事実を�
     assert got.initialized
 
 
+@pytest.mark.parametrize("prompt", [None, "止めたところから続けて"])
+def test_見つからないセッションを続けるとinitを受けずにresultで終わった事実を返す(
+    claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prompt: str | None
+):
+    """claude 2.1.288 は init を出さず、`error_during_execution` の result を返す（段 6 の実測）。"""
+    scenario(monkeypatch, tmp_path, "session-not-found")
+    got = runtime(claude).run(make_call(tmp_path, prompt=prompt, resume=True))
+    assert got.ending is Ending.RESULT
+    assert got.exit_code == 1
+    assert got.subtype == "error_during_execution" and got.is_error
+    assert got.num_turns == 0
+    assert not got.initialized
+
+
 def test_ターンの上限で終わった事実を返す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

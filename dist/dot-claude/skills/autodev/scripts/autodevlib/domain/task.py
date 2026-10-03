@@ -1614,14 +1614,16 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
 def _session_lost(evidence: Evidence) -> bool:
     """`--resume` で起こした claude が、続けるセッションを開けなかったか（ADDENDUM §12 の実行器）。
 
-    印は、init を出さずに result も返さずに自分で終わったことだけ。init を出した後に落ちたのは続けた
-    後で落ちたので、作り直すとその実行の仕事を捨てる。標準エラーの文言は版で変わりうるので見ない。
-    フックに止められ続けて打ち切ったのなら、続けられなかったのではない。
+    印は、init を出さずに自分で終わったことだけ。claude 2.1.288 は `error_during_execution` の result
+    を返して終わるので、result の有無は問わない。init を出した後に落ちたのは続けた後で落ちたので、
+    作り直すとその実行の仕事を捨てる。init の前にこちらが kill したのでは、セッションが在ったかが
+    分からない。標準エラーと `errors` の文言は版で変わりうるので見ない。フックに止められ続けて
+    打ち切ったのなら、続けられなかったのではない。
     """
     return (
         evidence.resumed
-        and evidence.ended_without_result
         and not evidence.initialized
+        and not evidence.killed
         and not cut_off_by_denials(evidence.hook_denials)
     )
 

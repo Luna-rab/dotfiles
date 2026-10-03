@@ -113,8 +113,9 @@ IMPL_FLOW = (
     FlowStep(S.WRITE_PR_BODY),
 )
 PASSED = GateReport(tuple(GateItemResult(item, True) for item in GateItem))
-#: `--resume` で起こした claude が、init も result も出さずに自分で終わった証拠
-LOST_SESSION: dict[str, Any] = {"resumed": True, "ended_without_result": True, "initialized": False}
+#: `--resume` で起こした claude が、init を出さずに自分で終わった証拠。claude 2.1.288 は
+#: `error_during_execution` の result を返して終わる（result の有無は印にしない）
+LOST_SESSION: dict[str, Any] = {"resumed": True, "initialized": False}
 
 
 def gate(*failed: GateItem) -> GateReport:
@@ -1005,8 +1006,8 @@ def test_再開に失敗したら始めた時点のコミットから新しい�
         {**LOST_SESSION, "initialized": True},
         # --resume で起こしていない
         {**LOST_SESSION, "resumed": False},
-        # こちらが kill した（result を返さずに自分で終わったのではない）
-        {**LOST_SESSION, "ended_without_result": False},
+        # init の前にこちらが kill した（セッションが在るかは分からない。作り直すと前の仕事を捨てる）
+        {**LOST_SESSION, "killed": True},
     ],
 )
 def test_続けられなかった印が揃わなければ作り直さず失敗に数える(task: TaskLoop, facts: dict):

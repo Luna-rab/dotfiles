@@ -144,6 +144,8 @@ class ResultField(Enum):
     UNCHANGED = "unchanged"
     #: PR の本文
     BODY = "body"
+    #: 概要 PR のタイトル（印の `[autodev] ` を付ける前の 1 行）。概要 PR の本文を書くステージだけが返す
+    TITLE = "title"
     #: 作った・つないだ PR の番号（決定的なステージ。RecordOverview・AppendEntry）
     PR = "pr"
     #: CutBranch が切った worktree（決定的なステージ。WorktreeReady）。使うタスク・在りか・ブランチ
@@ -310,6 +312,8 @@ class StageSpec:
             raise ValueError(f"{name}: body の欄を読むステージは、書き出す先（body）を宣言する")
         if (self.body is BodyTarget.TASK_PR) != (ArtifactKind.PR_BODY in self.produces):
             raise ValueError(f"{name}: タスク PR の本文を書き出すステージだけが pr-body を作る")
+        if (self.body is BodyTarget.OVERVIEW_PR) != (ResultField.TITLE in self.result):
+            raise ValueError(f"{name}: 概要 PR の本文を書き出すステージだけが title を返す")
 
     @property
     def raises(self) -> frozenset[EscalationKind]:
@@ -379,6 +383,8 @@ def _llm(
         result |= {_F.UNCHANGED}
     if body is not None:
         result |= {_F.BODY}
+    if body is BodyTarget.OVERVIEW_PR:
+        result |= {_F.TITLE}
     return StageSpec(
         kind,
         StageMode.LLM,

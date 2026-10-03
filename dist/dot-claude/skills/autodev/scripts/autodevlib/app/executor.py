@@ -70,12 +70,14 @@ from ..domain.values import (
     DeferredCall,
     Evidence,
     ExecutionId,
+    InvalidValue,
     Issuer,
     Pointers,
     SessionId,
     StageExit,
     StreamId,
     TaskId,
+    overview_pr_title,
 )
 from ..infra.files import utc_now
 from ..infra.status import remove_progress, write_progress
@@ -775,7 +777,7 @@ class Executor:
         if outcome.structured is not None:
             normalized = normalize_nulls(dict(outcome.structured), schema)
             result = normalized if isinstance(normalized, dict) else None
-            problems = violations(result, schema)
+            problems = violations(result, schema) or _unusable(context.spec, result)
         finished = (
             outcome.ending is Ending.RESULT and not outcome.is_error and outcome.interrupted is None
         )
@@ -831,6 +833,8 @@ class Executor:
                 found.append(ArtifactRef(_A.PR_BODY, paths.relative(paths.pr_body(task))))
             elif spec.body is BodyTarget.OVERVIEW_PR:
                 outputs.write_overview_body(paths, body)
+        if (title := _text(spec, result, _F.TITLE)) is not None:
+            outputs.write_overview_title(paths, title)
         awaiting = result.get(_F.AWAITING_EXPECTATIONS.value)
         if (
             _F.AWAITING_EXPECTATIONS in spec.result
@@ -847,6 +851,18 @@ class Executor:
             if head != context.start_commit:
                 found += [ArtifactRef(kind, str(head)) for kind in committed]
         return tuple(found)
+
+
+def _unusable(spec: StageSpec, result: Mapping[str, Any] | None) -> list[str]:
+    """スキーマには合うが、後のステージで使えない欄。ここで形の誤りにすれば、書いたステージへ差し戻せる
+    （後の CreateOverviewPR・RefreshOverview で落とすと、直すステージが走らない）。"""
+    if result is None or _F.TITLE not in spec.result:
+        return []
+    try:
+        overview_pr_title(str(result.get(_F.TITLE.value, "")))
+    except InvalidValue as error:
+        return [f"$.{_F.TITLE.value}: {error}"]
+    return []
 
 
 def _error(error: Exception) -> Evidence:

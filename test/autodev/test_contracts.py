@@ -423,12 +423,20 @@ def test_提案の欄はProposalとTaskSpecの欄に合う():
         assert_task_ids(prop(item, "toTask"))
 
 
-def test_本文とコードマップと期待値待ちの欄は中身を持つ():
+def test_本文とタイトルとコードマップと期待値待ちの欄は中身を持つ():
     for field in (ResultField.BODY, ResultField.CODEMAP):
         for spec in _specs_reading(field):
             node = prop(schema(asset_name(spec.kind)), field.value)
             assert node["type"] == "string"
             assert node["minLength"] == 1
+    for spec in _specs_reading(ResultField.TITLE):
+        node = prop(schema(asset_name(spec.kind)), "title")
+        assert node["type"] == "string"
+        assert node["minLength"] == 1
+        assert "maxLength" in node
+        # PR のタイトルは 1 行
+        assert accepts(node, "キャッシュを足す")
+        assert not accepts(node, "キャッシュを\n足す")
     for spec in _specs_reading(ResultField.AWAITING_EXPECTATIONS):
         node = prop(schema(asset_name(spec.kind)), "awaitingExpectations")
         assert node["type"] == "array"

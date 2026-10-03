@@ -5,11 +5,12 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 from autodev_harness import DRIVER, POLICY, new_id, of_type
-from autodevlib.adapters.schema import normalize_nulls, violations
+from autodevlib.adapters.schema import ecma_pattern, normalize_nulls, violations
 from autodevlib.app.executor import from_parts
 from autodevlib.app.mainloop import Delivery
 from autodevlib.app.markers import fill
@@ -44,6 +45,7 @@ from autodevlib.domain.values import (
     TaskSpec,
 )
 from autodevlib.infra.paths import RunPaths
+from conftest import SKILL_ROOT
 from test_task import HEAD, IMPL_FLOW, LOST_SESSION, T1, TaskLoop, ex, gate
 
 S = StageKind
@@ -255,7 +257,7 @@ SCHEMA = {
     "required": ["report", "items"],
     "properties": {
         "report": {"enum": ["design-gap", None]},
-        "reason": {"type": ["string", "null"], "minLength": 1},
+        "reason": {"type": ["string", "null"], "minLength": 1, "maxLength": 3},
         "items": {
             "type": "array",
             "uniqueItems": True,
@@ -274,6 +276,38 @@ def test_スキーマの形に合わない所を挙げる():
         "$.n: 型が integer でない"
     ]
     assert violations(None, SCHEMA) == ["$: 型が object でない"]
+    assert violations({"report": None, "items": [], "reason": "abcd"}, SCHEMA) == [
+        "$.reason: 文字列が長い"
+    ]
+    # ECMA の `$` と同じく、末尾の改行の手前では合わない
+    assert violations({"report": None, "items": ["R1\n"]}, SCHEMA) == [
+        "$.items[0]: 'R1\\n' が形 ^R[0-9]+$ に合わない"
+    ]
+    one_line = {"type": "string", "pattern": "^[^\\r\\n]+$"}
+    assert violations("a", one_line) == []
+    assert violations("a\n", one_line) != []
+    assert violations("a$", {"type": "string", "pattern": "^[a$]+\\$$"}) == []
+
+
+def _patterns(node: object) -> list[str]:
+    if isinstance(node, dict):
+        own = [node["pattern"]] if isinstance(node.get("pattern"), str) else []
+        return own + [p for value in node.values() for p in _patterns(value)]
+    if isinstance(node, list):
+        return [p for value in node for p in _patterns(value)]
+    return []
+
+
+def test_schemasのpatternは終わりの印だけが文字列の終わりに変わる():
+    found = [
+        p
+        for path in sorted((SKILL_ROOT / "schemas").glob("*.json"))
+        for p in _patterns(json.loads(path.read_text(encoding="utf-8")))
+    ]
+    assert found
+    for source in found:
+        assert source.endswith("$") and source.count("$") == 1, source
+        assert ecma_pattern(source).pattern == source[:-1] + r"\Z"
 
 
 def test_nullを許す欄の文字列のnullとnoneをnullに直す():

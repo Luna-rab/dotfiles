@@ -38,6 +38,7 @@ from ..domain.values import (
     UnionVerdict,
     VerifyCommand,
     VerifyResult,
+    overview_pr_title,
 )
 from ..infra.files import write_atomic
 from . import markers
@@ -409,8 +410,10 @@ def _overview_body(ctx: StageContext, tools: Tools) -> str:
 
 
 def _overview_title(tools: Tools) -> str:
-    first = next(line.strip() for line in tools.setting.instruction.splitlines() if line.strip())
-    return f"[autodev] {first}"[:120]
+    path = tools.setting.paths.overview_title
+    if not path.is_file():
+        raise RuntimeError("概要 PR のタイトル（WriteOverview の結果）が無い")
+    return overview_pr_title(path.read_text(encoding="utf-8"))
 
 
 def create_overview_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
@@ -439,7 +442,10 @@ def create_overview_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
 def refresh_overview(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     tools.forge.edit_pr(
-        tools.setting.paths.overview_tree, _overview_pr(ctx), body=_overview_body(ctx, tools)
+        tools.setting.paths.overview_tree,
+        _overview_pr(ctx),
+        title=_overview_title(tools),
+        body=_overview_body(ctx, tools),
     )
     return ProgramOutcome()
 

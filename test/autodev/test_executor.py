@@ -36,13 +36,15 @@ from autodevlib.domain.events import (
     StageRequested,
     StageStarted,
 )
-from autodevlib.domain.flow import FlowStep, Reviewers, planning_flow
+from autodevlib.domain.flow import FlowStep, Reviewers, git_job_flow, planning_flow
 from autodevlib.domain.values import (
     ArtifactKind,
     ArtifactRef,
     BranchName,
     EscalationKind,
     ExecutionId,
+    GitJob,
+    GitJobKind,
     InterruptCause,
     Issuer,
     StageExit,
@@ -251,6 +253,49 @@ def test_フックに止められ続けたら打ち切ってエラーの証拠�
     assert report.evidence.exit is StageExit.ERROR
     assert report.evidence.hook_denials == 11
     assert "フックに 11 回止められた" in (report.evidence.error or "")
+
+
+def rewrite_overview(env: Env) -> ExecutionId:
+    """概要 PR を書き直す仕事を git 管理タスクに渡し、WriteOverview を始める。"""
+    env.git.create_branch(OVERVIEW, "origin/main")
+    env.git.add_worktree(env.paths.overview_tree, OVERVIEW)
+    git = TaskId.git()
+    job = GitJob(1, GitJobKind.REWRITE_OVERVIEW, branch=OVERVIEW, base=BranchName("main"))
+    env.world(OpenTask(command_id=new_id(), issuer=POLICY, task=git, kind=TaskKind.GIT))
+    env.world(
+        AcceptFlow(
+            command_id=new_id(),
+            issuer=Issuer.task_supervisor(git),
+            task=git,
+            steps=git_job_flow(job),
+            job=job,
+        )
+    )
+    execution = ex(S.WRITE_OVERVIEW, task=git)
+    env.begin(execution)
+    return execution
+
+
+def test_WriteOverviewのタイトルと本文を書き出す(env: Env):
+    execution = rewrite_overview(env)
+    env.runtime.behaviors.append(
+        lambda call, p: outcome(call, {"title": "キャッシュを足す", "body": "本文"})
+    )
+    assert of_type(env.run(execution), StageCompleted)
+    assert env.paths.overview_title.read_text(encoding="utf-8") == "キャッシュを足す"
+    assert env.paths.overview_body.read_text(encoding="utf-8") == "本文"
+
+
+@pytest.mark.parametrize("title", ["[autodev]", "   "])
+def test_印を除くと空になるタイトルは形の誤りにして書き出さない(env: Env, title: str):
+    execution = rewrite_overview(env)
+    env.runtime.behaviors.append(lambda call, p: outcome(call, {"title": title, "body": "本文"}))
+    env.executor.run(execution, env.world.inbox.expect(execution))
+    env.executor.join()
+    (report,) = reports(env)
+    assert report.evidence.result_valid is False
+    assert "$.title: 概要 PR のタイトル が空" in (report.evidence.error or "")
+    assert not env.paths.overview_title.exists()
 
 
 def test_根元が無いタスクのコミットの数は0件ではなく数えられないとして渡す(env: Env):

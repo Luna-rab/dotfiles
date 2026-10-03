@@ -3,7 +3,7 @@
 `--json-schema` は生成時の制約ではなく事後の検証で、外れても `subtype: success` のまま空や崩れた形で
 返ることがある（LEDGER AR-15・AR-16）。driver の側でもう一度確かめる。標準ライブラリだけで動かす
 ため、`schemas/` が使うキーワード（`type`・`enum`・`required`・`properties`・`additionalProperties`・
-`items`・`minLength`・`minItems`・`uniqueItems`・`pattern`・`minimum`）だけを扱う。知らない
+`items`・`minLength`・`maxLength`・`minItems`・`uniqueItems`・`pattern`・`minimum`）だけを扱う。知らない
 キーワードは、検査（`test_contracts.py`）が `schemas/` に置かせない。
 
 モデルが報告の欄の「無い」を `null` ではなく文字列の `"null"`・`"none"` で返すことがある（LEDGER
@@ -36,6 +36,31 @@ def load_schema(path: Path) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ValueError(f"スキーマが JSON の object でない: {path}")
     return loaded
+
+
+@cache
+def ecma_pattern(source: str) -> re.Pattern[str]:
+    """JSON Schema の `pattern`（ECMA の正規表現）を Python で照らす形にする。
+
+    Python の `$` は末尾の改行 1 つの手前でも合うが、ECMA の `$` は文字列の終わりにしか合わない。
+    文字の組（`[...]`）の外の、エスケープしていない `$` を `\\Z` に置き換えて、末尾の改行を通さない。
+    """
+    out: list[str] = []
+    escaped = in_class = False
+    for char in source:
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+        elif char == "$":
+            out.append(r"\Z")
+            continue
+        out.append(char)
+    return re.compile("".join(out))
 
 
 def _types(node: Mapping[str, Any]) -> tuple[str, ...]:
@@ -88,7 +113,9 @@ def violations(value: Any, node: Mapping[str, Any], where: str = "$") -> list[st
     if isinstance(value, str):
         if len(value) < node.get("minLength", 0):
             found.append(f"{where}: 文字列が短い")
-        if "pattern" in node and re.search(node["pattern"], value) is None:
+        if "maxLength" in node and len(value) > node["maxLength"]:
+            found.append(f"{where}: 文字列が長い")
+        if "pattern" in node and ecma_pattern(node["pattern"]).search(value) is None:
             found.append(f"{where}: {value!r} が形 {node['pattern']} に合わない")
     number = isinstance(value, (int, float)) and not isinstance(value, bool)
     if number and "minimum" in node and value < node["minimum"]:

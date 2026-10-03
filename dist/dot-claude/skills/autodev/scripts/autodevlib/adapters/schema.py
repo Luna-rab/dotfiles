@@ -38,6 +38,31 @@ def load_schema(path: Path) -> dict[str, Any]:
     return loaded
 
 
+@cache
+def ecma_pattern(source: str) -> re.Pattern[str]:
+    """JSON Schema の `pattern`（ECMA の正規表現）を Python で照らす形にする。
+
+    Python の `$` は末尾の改行 1 つの手前でも合うが、ECMA の `$` は文字列の終わりにしか合わない。
+    文字の組（`[...]`）の外の、エスケープしていない `$` を `\\Z` に置き換えて、末尾の改行を通さない。
+    """
+    out: list[str] = []
+    escaped = in_class = False
+    for char in source:
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+        elif char == "$":
+            out.append(r"\Z")
+            continue
+        out.append(char)
+    return re.compile("".join(out))
+
+
 def _types(node: Mapping[str, Any]) -> tuple[str, ...]:
     kind = node.get("type")
     if kind is None:
@@ -90,7 +115,7 @@ def violations(value: Any, node: Mapping[str, Any], where: str = "$") -> list[st
             found.append(f"{where}: 文字列が短い")
         if "maxLength" in node and len(value) > node["maxLength"]:
             found.append(f"{where}: 文字列が長い")
-        if "pattern" in node and re.search(node["pattern"], value) is None:
+        if "pattern" in node and ecma_pattern(node["pattern"]).search(value) is None:
             found.append(f"{where}: {value!r} が形 {node['pattern']} に合わない")
     number = isinstance(value, (int, float)) and not isinstance(value, bool)
     if number and "minimum" in node and value < node["minimum"]:

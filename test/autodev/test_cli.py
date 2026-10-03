@@ -146,6 +146,9 @@ def test_runは計画のaskで回答待ちの4で止まり回答を置いて呼�
     calls = [call["args"][:2] for call in world.gh.calls()]
     assert ["pr", "create"] in calls
     assert ["pr", "ready"] not in calls
+    (created,) = [call["args"] for call in world.gh.calls() if call["args"][:2] == ["pr", "create"]]
+    # タイトルは偽の claude の WriteOverview が返したもの（fake_claude_run.py の OUTPUTS）
+    assert created[created.index("--title") + 1] == "[autodev] 何も変えない"
     assert sh(world.repo, "ls-remote", "origin", f"stack/{NAME}--task-0").strip()
 
     # 終えたランの events を JSON で書き出せる

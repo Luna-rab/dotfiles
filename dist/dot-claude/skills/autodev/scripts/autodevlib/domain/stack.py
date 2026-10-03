@@ -151,6 +151,10 @@ class Stack(Aggregate):
             return self.entries[-1].branch
         return self.overview.branch if self.overview is not None else None
 
+    def entry_of(self, task: TaskId) -> StackEntry | None:
+        """そのタスクを今スタックに積んである 1 本。積んでいない・閉じた所より上にあったなら None。"""
+        return next((entry for entry in self.entries if entry.task == task), None)
+
     def _eligible(self, job: GitJob) -> bool:
         """今取り出してよい仕事か（名前の付いた規則）。"""
         if job.kind.needs_overview and self.overview is None:

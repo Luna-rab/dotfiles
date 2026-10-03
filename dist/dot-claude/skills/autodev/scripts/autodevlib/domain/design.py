@@ -46,6 +46,8 @@ stateDiagram-v2
 
 from __future__ import annotations
 
+from enum import Enum
+
 from .aggregate import Aggregate, Rejected, applies, handles
 from .commands import (
     DiscardProposal,
@@ -98,6 +100,15 @@ DESIGN_WAITS: frozenset[EscalationKind] = frozenset(
 )
 
 
+class ProposalState(Enum):
+    """確定していない提案の進み方（モジュールの docstring の図の状態）。"""
+
+    JUDGING = "judging"
+    REVISING = "revising"
+    #: 回答を待っている（原因は `Design.awaiting`）
+    AWAITING = "awaiting"
+
+
 class Design(Aggregate):
     NAME = "Design"
 
@@ -124,6 +135,17 @@ class Design(Aggregate):
         self.deferrals: tuple[str, ...] = ()
 
     # --- 読む ---
+
+    @property
+    def proposal_state(self) -> ProposalState | None:
+        """確定していない提案が無ければ None。"""
+        if self.proposal is None:
+            return None
+        if self.awaiting is not None:
+            return ProposalState.AWAITING
+        if self.revising:
+            return ProposalState.REVISING
+        return ProposalState.JUDGING
 
     def _not_judging(self) -> str | None:
         """判定を受けられないなら、その理由（提案が無い・Revise の途中・回答待ち）。"""

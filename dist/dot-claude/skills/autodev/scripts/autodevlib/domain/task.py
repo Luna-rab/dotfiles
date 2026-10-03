@@ -235,6 +235,16 @@ class Execution:
         return (self.step, self.id.stage, self.id.round)
 
 
+class StepState(Enum):
+    """フローの段 1 つが、いまどこまで進んだか（`Task.step_states`）。"""
+
+    DONE = "done"
+    #: cursor が越えたが、その段で完了した実行が無い（衝突しなかった Rebase の後の段など）
+    SKIPPED = "skipped"
+    CURRENT = "current"
+    PENDING = "pending"
+
+
 @dataclass(frozen=True)
 class OpenEscalation:
     id: EventId
@@ -371,6 +381,37 @@ class Task(Aggregate):
     @property
     def current_step(self) -> FlowStep | None:
         return self.flow.at(self.cursor) if self.flow is not None else None
+
+    def step_states(self) -> tuple[StepState, ...]:
+        """今のフローの段ごとの進み具合（Flow.steps の順）。フローが無ければ空。"""
+        flow = self.flow
+        if flow is None:
+            return ()
+        ran = {
+            e.step
+            for e in self.executions.values()
+            if e.flow_version == flow.version and e.status in (_X.COMPLETED, _X.REPORTED)
+        }
+        states: list[StepState] = []
+        for index in range(len(flow.steps)):
+            if index < self.cursor.step:
+                states.append(StepState.DONE if index in ran else StepState.SKIPPED)
+            elif index == self.cursor.step:
+                states.append(StepState.CURRENT)
+            else:
+                states.append(StepState.PENDING)
+        return tuple(states)
+
+    def current_executions(self) -> list[Execution]:
+        """今のフローの実行と、書き直す前のフローでまだ走っている実行（始めた順）。
+
+        書き直す前のフローの実行も、走っている間は claude と worktree を使っているので外さない。
+        """
+        return [
+            e
+            for e in self.executions.values()
+            if not self._is_obsolete(e) or e.status is _X.RUNNING
+        ]
 
     def running_executions(self) -> list[ExecutionId]:
         """running のまま残っている実行（メインループが起動時とパニックのときに聞く。ADDENDUM §9）。"""

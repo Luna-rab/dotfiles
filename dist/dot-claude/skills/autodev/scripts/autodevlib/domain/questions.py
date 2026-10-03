@@ -50,7 +50,12 @@ class Questions(Aggregate):
         進められるものが無くなった driver が、終了コード 4（回答待ち）で終えてよいかの問い。これが
         偽なのに進められないなら、回答を待っているのではない（ARCHITECTURE §9）。
         """
-        return any(q.status is QuestionStatus.OPEN for q in self.questions.values())
+        return bool(self.open_questions)
+
+    @property
+    def open_questions(self) -> tuple[Question, ...]:
+        """回答を待っている質問（出した順）。"""
+        return tuple(q for q in self.questions.values() if q.status is QuestionStatus.OPEN)
 
     @handles(PostQuestion)
     def _post(self, command: PostQuestion) -> list[Event]:

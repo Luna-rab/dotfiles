@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from enum import Enum
 
 from .aggregate import Aggregate, Rejected, applies, handles
 from .commands import (
@@ -73,6 +74,7 @@ from .values import (
     ArtifactKind,
     ArtifactRef,
     BranchName,
+    DesignVersion,
     EscalationKind,
     EventId,
     ParallelLimit,
@@ -129,6 +131,22 @@ _STOPPABLE = frozenset({_S.PENDING, _S.RUNNING, _S.ESCALATED, _S.GATED, _S.STACK
 _SCOPE_CHANGEABLE = frozenset({_S.RUNNING, _S.ESCALATED})
 #: 範囲が変わったら、積む列から外して始め直す状態
 _WITHDRAWABLE = frozenset({_S.GATED})
+
+
+class RunPhase(Enum):
+    """ランがいまどこにいるか（`Run.phase`。外向けの `status --json` の `run.phase`）。"""
+
+    #: RunStarted がまだ無い
+    NOT_STARTED = "not-started"
+    #: 初めての計画を反映する前（実装タスクはまだ無い）
+    PLANNING = "planning"
+    RUNNING = "running"
+    #: パニックした。呼び直されるまでタスクを始めない
+    PANICKED = "panicked"
+    #: RunFinished の後、git 管理タスクが仕上げの並びを走らせている
+    FINISHING = "finishing"
+    #: 仕上げも終えた（driver が終了コード 0 で終える）
+    FINISHED = "finished"
 
 
 @dataclass(frozen=True)
@@ -293,6 +311,29 @@ class Run(Aggregate):
         走らせ、その途中で上げることもあるので、RunFinished だけでは終えない（ADDENDUM §1）。
         """
         return self.finished and not self.live_tasks
+
+    @property
+    def phase(self) -> RunPhase:
+        """パニックは、ランを終えた後（仕上げの途中）にも起きるので、終わりより先に見る。"""
+        if self.name is None:
+            return RunPhase.NOT_STARTED
+        if self.panicked:
+            return RunPhase.PANICKED
+        if self.complete:
+            return RunPhase.FINISHED
+        if self.finished:
+            return RunPhase.FINISHING
+        if not self.planned_once:
+            return RunPhase.PLANNING
+        return RunPhase.RUNNING
+
+    @property
+    def applied_design(self) -> DesignVersion | None:
+        """最後に反映した計画の設計の版。まだ反映していなければ None。"""
+        for artifact in self.artifacts:
+            if artifact.kind is ArtifactKind.DESIGN:
+                return DesignVersion(int(artifact.at))
+        return None
 
     @property
     def implementation_tasks(self) -> tuple[TaskEntry, ...]:

@@ -1,4 +1,4 @@
-"""ステージの結果の JSON を、ドメインの値（`values.StageResult`）に読み替える。
+"""ステージの結果の JSON を、ドメインの値（`value_objects/stage_result.py` の `StageResult`）に読み替える。
 
 読むのは `StageSpec.result` が宣言した欄だけで、欄の名前（JSON のキー）は `ResultField` の値。LLM の
 ステージの形は `schemas/<ステージ>.json` が決め、検査（`test_contracts.py`）が宣言と照らす。決定的な

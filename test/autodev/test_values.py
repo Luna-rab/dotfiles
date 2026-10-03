@@ -1,4 +1,4 @@
-"""値オブジェクトの、作るときの検査（`autodevlib/domain/values.py`）。"""
+"""値オブジェクトの、作るときの検査（`autodevlib/domain/value_objects/`）。"""
 
 from __future__ import annotations
 

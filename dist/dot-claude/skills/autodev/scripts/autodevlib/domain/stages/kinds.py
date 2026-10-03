@@ -82,7 +82,7 @@ class ResultField(Enum):
     LLM のステージの形（型・必須・列挙）の出所は `schemas/<ステージ>.json` で、ここは欄の名前だけを
     宣言する。検査（`test/autodev/test_contracts.py`）が、スキーマの欄とここを照らす。決定的な
     ステージの結果の JSON は実行器が組む（PR 番号・切った worktree）。読み替える規則は
-    `domain/results.py` にあり、読み替えた値（`values.StageResult`）が StageCompleted に載る。
+    `domain/stages/results.py` にあり、読み替えた値（`StageResult`）が StageCompleted に載る。
     """
 
     #: 返した報告（Task が成果物より先に読む）。`reports` を持つステージだけが返す

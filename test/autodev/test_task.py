@@ -1,4 +1,4 @@
-"""Task 集約（`domain/task.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
+"""Task 集約（`domain/aggregates/task.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
 
 from __future__ import annotations
 

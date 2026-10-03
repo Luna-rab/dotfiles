@@ -1,4 +1,4 @@
-"""Questions 集約（`domain/questions.py`）。"""
+"""Questions 集約（`domain/aggregates/questions.py`）。"""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """反応: イベントに書かれた副作用を、ポートを呼んで起こす受け手。
 
 反応は判断しない。起こすかどうか・何を起こすかは、イベントが出た時点でドメインが決めている
-（統括を起こすのは `domain.supervision.wake_for`、ask の続きは `domain.policies.FOLLOW_UPS`）。
+（統括を起こすのは `domain.supervision.wake_for`、ask の続きは `domain.policies.registry.FOLLOW_UPS`）。
 反応は 2 回呼ばれても同じ結果になるように作る（落ちた後に、チェックポイントの後ろから配り直される）。
 
 | 受け手 | 受けるイベント | すること |

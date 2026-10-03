@@ -1,4 +1,4 @@
-"""Stack（`domain/stack.py`）。スタックの形と git 管理タスクの仕事の列を、コマンドとイベントの列だけで確かめる。"""
+"""Stack（`domain/aggregates/stack.py`）。スタックの形と git 管理タスクの仕事の列を、コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 

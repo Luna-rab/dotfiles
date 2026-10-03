@@ -1,4 +1,4 @@
-"""ポリシー（`domain/policies.py`）が、つなぎ目の表（`test_seams.py` の `SEAMS`）どおりに動くか。
+"""ポリシー（`domain/policies/`）が、つなぎ目の表（`test_seams.py` の `SEAMS`）どおりに動くか。
 
 `test_seams.py` の流れを、表の代わりに本物のメインループ（`app/mainloop.py`）とイベントストアで通す。
 ポリシーはドメインの一覧（`RECEIVERS`）をそのまま受け手として登録し、外からの入力（実行器・LLM の

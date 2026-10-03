@@ -1,4 +1,4 @@
-"""ReviewLedger（`domain/review.py`）。コマンドとイベントの列だけで確かめる。"""
+"""ReviewLedger（`domain/aggregates/review_ledger.py`）。コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 

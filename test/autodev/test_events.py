@@ -1,4 +1,4 @@
-"""イベントとコマンドの名前の表と、JSON との往復（`domain/events.py`・`domain/commands.py`・`domain/codec.py`）。"""
+"""イベントとコマンドの名前の表と、JSON との往復（`domain/events/`・`domain/commands/`・`domain/codec.py`）。"""
 
 from __future__ import annotations
 

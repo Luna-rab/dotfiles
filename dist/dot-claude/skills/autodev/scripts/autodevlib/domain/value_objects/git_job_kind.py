@@ -4,7 +4,7 @@ from enum import Enum
 
 
 class GitJobKind(Enum):
-    """git 管理タスクの仕事の種類。種類ごとの並びは `stages.GIT_JOB_STAGES`。"""
+    """git 管理タスクの仕事の種類。種類ごとの並びは `stages/catalog.py` の `GIT_JOB_STAGES`。"""
 
     #: ランの開始: 概要ブランチと trees/overview を切る
     CUT_OVERVIEW = "cut-overview"

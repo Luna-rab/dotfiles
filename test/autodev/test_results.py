@@ -1,4 +1,4 @@
-"""ステージの結果の読み替え（`domain/results.py`）。組で書く欄の片方だけの値を、形の誤りとして拒む。"""
+"""ステージの結果の読み替え（`domain/stages/results.py`）。組で書く欄の片方だけの値を、形の誤りとして拒む。"""
 
 from __future__ import annotations
 

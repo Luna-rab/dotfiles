@@ -1,4 +1,4 @@
-"""Design（`domain/design.py`）。コマンドとイベントの列だけで確かめる。"""
+"""Design（`domain/aggregates/design.py`）。コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 

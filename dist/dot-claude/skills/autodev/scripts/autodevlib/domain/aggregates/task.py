@@ -19,7 +19,7 @@
   られなかった（ConfirmHandoff の refused）なら result-refused で上げ、解けたら同じステージを
   もう一度走らせる
 - 実行器は証拠を集めるだけで、完了・失敗・エスカレーションのどれにするかは ReportStageResult を
-  受けた Task が決める。結果の JSON は `domain/results.py` で値に読み替えて、
+  受けた Task が決める。結果の JSON は `domain/stages/results.py` で値に読み替えて、
   StageCompleted に載せる
 - 回答以外でエスカレーションを閉じたら（EscalationClosed）、そのフローは続けず（FlowAbandoned）、
   置き換えを待つ

@@ -4,7 +4,7 @@
 振り分けでできている。振り分けは、メソッドに `@handles` と `@applies` を付けて書く::
 
     class Design(Aggregate):
-        NAME = "Design"            # events.EVENTS_BY_AGGREGATE・commands.COMMANDS_BY_AGGREGATE のキー
+        NAME = "Design"            # events/registry.py の EVENTS_BY_AGGREGATE・commands/registry.py の COMMANDS_BY_AGGREGATE のキー
 
         def __init__(self, stream: StreamId) -> None:
             super().__init__(stream)
@@ -31,7 +31,7 @@
 - `handle` は状態を変えない。状態を変えるのは `apply` だけ（再生のときに判断を走らせ直さない）
 - `handle` は外の世界に触らない。時刻・HEAD・セッション id は、コマンドの中身として受け取る
 - 状態を変えるコマンドは、必ずイベントを出す（イベントにしない変化は、再生すると消える）
-- `apply` に書くのは、その集約が出すイベント（`events.EVENTS_BY_AGGREGATE[NAME]`）だけ。状態を
+- `apply` に書くのは、その集約が出すイベント（`events/registry.py` の `EVENTS_BY_AGGREGATE[NAME]`）だけ。状態を
   変えないイベントも、何もしない `@applies` を書く。書いていないイベントは `UnknownEvent` になる。
   受けるコマンドと当てるイベントが表と一致することは、`test/autodev/test_aggregate.py` が
   具象の集約ごとに確かめる

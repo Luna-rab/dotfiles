@@ -16,7 +16,7 @@ from .worktree_cut import WorktreeCut
 
 @dataclass(frozen=True)
 class StageResult:
-    """ステージの結果の JSON を、ドメインの値に読み替えたもの（`domain/results.py` が組む）。
+    """ステージの結果の JSON を、ドメインの値に読み替えたもの（`domain/stages/results.py` が組む）。
 
     読むのは StageSpec.result が宣言した欄だけで、宣言していない欄は空のまま残る。ポリシーは、
     これと StageCompleted のほかの欄だけで、受け取る側へのコマンド（RecordFindings・

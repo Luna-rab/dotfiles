@@ -1,4 +1,4 @@
-"""集約の土台（`domain/aggregate.py`）。小さな集約を 1 つ組んで、振り分け・再生・拒否を確かめる。"""
+"""集約の土台（`domain/aggregates/base.py`）。小さな集約を 1 つ組んで、振り分け・再生・拒否を確かめる。"""
 
 from __future__ import annotations
 

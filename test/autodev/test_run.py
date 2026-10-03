@@ -1,4 +1,4 @@
-"""Run 集約（`domain/run.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
+"""Run 集約（`domain/aggregates/run.py`）。コマンドとイベントの列だけで、不変条件ごとに通る場合と拒む場合を見る。"""
 
 from __future__ import annotations
 

@@ -4,7 +4,7 @@
 テストのパスかどうか、コマンド行から宛先と操作を取り出すことは、アダプタ（`adapters/guard.py`）が
 翻訳して `WriteTarget`・`Operation` にして渡す。止めた理由（`Refusal`）を文面にするのもアダプタである。
 
-`values.Guard` の `judge_write`・`judge_operation`・`judge_ask` が、ここの関数を呼ぶ。
+`value_objects/guard.py` の `Guard` の `judge_write`・`judge_operation`・`judge_ask` が、ここの関数を呼ぶ。
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""フローの検査と、フロー・cursor の値（`domain/flow.py`・`domain/stages.py`）。"""
+"""フローの検査と、フロー・cursor の値（`domain/flow/`・`domain/stages/`）。"""
 
 from __future__ import annotations
 

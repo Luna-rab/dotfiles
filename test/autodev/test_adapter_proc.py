@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 
 import pytest
-from autodevlib.adapters import _proc
-from autodevlib.adapters._proc import (
+from autodevlib.adapters.process import _proc
+from autodevlib.adapters.process._proc import (
     NOT_FOUND,
     TIMED_OUT,
     Stopped,

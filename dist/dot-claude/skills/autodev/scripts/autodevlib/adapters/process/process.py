@@ -8,8 +8,8 @@ import signal
 import subprocess
 from dataclasses import dataclass
 
-from ..domain.value_objects.verify_command import VerifyCommand
-from ..domain.value_objects.verify_result import VerifyResult
+from ...domain.value_objects.verify_command import VerifyCommand
+from ...domain.value_objects.verify_result import VerifyResult
 from ._proc import NOT_FOUND, TIMED_OUT, check_stopped, merged_env, tracked
 
 #: 出力の末尾として残す文字数。テストの失敗の要約は末尾に出る

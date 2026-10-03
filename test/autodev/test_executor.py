@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 from autodev_harness import POLICY, SESSION, new_id, of_type
-from autodevlib.adapters.agent_runtime import AgentCall, DeferredToolUse, Ending, Progress
-from autodevlib.adapters.guard import GUARD_ENV
+from autodevlib.adapters.claude.agent_runtime import AgentCall, DeferredToolUse, Ending, Progress
+from autodevlib.adapters.claude.guard import GUARD_ENV
 from autodevlib.app import executor as executor_module
 from autodevlib.app.stage_context import ResumeMode
 from autodevlib.domain.commands.run import Panic

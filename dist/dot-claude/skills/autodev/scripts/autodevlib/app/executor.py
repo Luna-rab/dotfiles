@@ -50,13 +50,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ..adapters._proc import StopScope, stoppable
-from ..adapters.agent_runtime import AgentCall, AgentOutcome, Ending, Progress
-from ..adapters.forge import Forge
-from ..adapters.git import Git
-from ..adapters.guard import ask_question, guard_context, stage_env, write_hook_settings
-from ..adapters.process import ProcessRunner
-from ..adapters.schema import load_schema, normalize_nulls, violations
+from ..adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending, Progress
+from ..adapters.claude.guard import ask_question, guard_context, stage_env, write_hook_settings
+from ..adapters.claude.schema import load_schema, normalize_nulls, violations
+from ..adapters.github.forge import Forge
+from ..adapters.github.git import Git
+from ..adapters.process._proc import StopScope, stoppable
+from ..adapters.process.process import ProcessRunner
 from ..domain.aggregates.base import Aggregate
 from ..domain.aggregates.task import ExecutionStatus
 from ..domain.commands.base import Command

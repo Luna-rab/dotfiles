@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from autodevlib.adapters import guard
-from autodevlib.adapters.guard import GuardContext, guard_context
+from autodevlib.adapters.claude import guard
+from autodevlib.adapters.claude.guard import GuardContext, guard_context
 from autodevlib.app.files import write_answer
 from autodevlib.domain.guard import RefusalReason, WriteZone
 from autodevlib.domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS

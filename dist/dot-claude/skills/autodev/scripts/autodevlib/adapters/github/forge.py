@@ -26,9 +26,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..domain.value_objects.branch_name import BranchName
-from ..domain.value_objects.pr_number import PrNumber
-from ._proc import CommandFailed, Completed, run
+from ...domain.value_objects.branch_name import BranchName
+from ...domain.value_objects.pr_number import PrNumber
+from ..process._proc import CommandFailed, Completed, run
 
 #: `gh pr create` の出力の最後の行の URL
 _PR_URL = re.compile(r"/pull/(\d+)\s*$")

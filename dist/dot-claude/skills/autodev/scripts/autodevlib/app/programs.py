@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..adapters import globs
-from ..adapters.forge import Forge
-from ..adapters.git import Git
+from ..adapters.github.forge import Forge
+from ..adapters.github.git import Git
+from ..adapters.process import globs
 from ..domain.services.gate import ChangedFile, GateEvaluator, GateEvidence
 from ..domain.services.union import UnionChecker
 from ..domain.services.verify import VerifySelector

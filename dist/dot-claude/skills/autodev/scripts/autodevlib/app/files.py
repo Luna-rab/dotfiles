@@ -17,7 +17,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from ..adapters.guard import answer_path
+from ..adapters.claude.guard import answer_path
 from ..domain.value_objects.design_version import DesignVersion
 from ..domain.value_objects.event_id import EventId
 from ..domain.value_objects.finding_summary import FindingSummary

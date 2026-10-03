@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..adapters import git
-from ..adapters.agent_runtime import AgentRuntime
-from ..adapters.forge import Forge
+from ..adapters.claude.agent_runtime import AgentRuntime
+from ..adapters.github import git
+from ..adapters.github.forge import Forge
 from ..domain.aggregates.base import Rejected
 from ..domain.aggregates.questions import Questions
 from ..domain.aggregates.run import Run

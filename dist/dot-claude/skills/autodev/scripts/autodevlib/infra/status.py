@@ -14,7 +14,7 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from ..adapters import children
+from ..adapters.process import children
 from ..domain.streams import aggregate_for
 from ..domain.value_objects.execution_id import ExecutionId
 from ..domain.value_objects.run_name import RunName

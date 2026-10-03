@@ -22,7 +22,7 @@ def main(handler: str) -> int:
                 raise ImportError("SKILL.md が見つからない（autodev の置き場が壊れている）")
             root = parent
         sys.path.insert(0, os.path.join(root, "scripts"))
-        from autodevlib.adapters import guard  # noqa: PLC0415
+        from autodevlib.adapters.claude import guard  # noqa: PLC0415
     except Exception as error:
         sys.stderr.write(f"ガードのフックを読み込めないので、呼び出しを止めました: {error}\n")
         return DENY_EXIT

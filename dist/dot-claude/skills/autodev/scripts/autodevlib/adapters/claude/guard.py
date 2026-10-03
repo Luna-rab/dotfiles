@@ -36,12 +36,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..domain.guard import AskVerdict, Operation, Refusal, RefusalReason, WriteTarget, WriteZone
-from ..domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
-from ..domain.value_objects.guard import Guard
-from ..domain.value_objects.write_scope import WriteScope
-from . import globs
-from .shell import Where, bash_facts, expand, is_literal, name_of, simple_commands, strip_heredocs
+from ...domain.guard import AskVerdict, Operation, Refusal, RefusalReason, WriteTarget, WriteZone
+from ...domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
+from ...domain.value_objects.guard import Guard
+from ...domain.value_objects.write_scope import WriteScope
+from ..process import globs
+from ..process.shell import (
+    Where,
+    bash_facts,
+    expand,
+    is_literal,
+    name_of,
+    simple_commands,
+    strip_heredocs,
+)
 
 #: フックへ Guard と GuardContext を渡す環境変数
 GUARD_ENV = "AUTODEV_GUARD"

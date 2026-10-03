@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from autodev_samples import stage_result
-from autodevlib.adapters.agent_runtime import AgentCall, AgentOutcome, Ending
+from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
 from autodevlib.app.driver import Driver, DriverParts, StartRequest
 from autodevlib.app.executor import StageContext, StagePrompt
 from autodevlib.app.files import write_design

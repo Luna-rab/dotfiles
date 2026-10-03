@@ -29,10 +29,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
-from ..adapters import children
-from ..adapters._proc import KILL_AFTER_SECONDS
-from ..adapters.agent_runtime import INTERRUPT_GRACE
-from ..adapters.guard import write_hook_settings
+from ..adapters.claude.agent_runtime import INTERRUPT_GRACE
+from ..adapters.claude.guard import write_hook_settings
+from ..adapters.process import children
+from ..adapters.process._proc import KILL_AFTER_SECONDS
 from ..domain.aggregates.base import Aggregate
 from ..domain.aggregates.questions import Questions
 from ..domain.aggregates.run import Run

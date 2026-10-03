@@ -11,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from autodevlib.adapters.agent_runtime import AgentCall, AgentOutcome, Ending
-from autodevlib.adapters.guard import GUARD_ENV
+from autodevlib.adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
+from autodevlib.adapters.claude.guard import GUARD_ENV
 from autodevlib.app.mainloop import Inbox
 from autodevlib.app.stage_context import StagePrompt
 from autodevlib.app.supervisors import SupervisorRunner, SupervisorSetting

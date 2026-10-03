@@ -39,8 +39,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ..adapters.agent_runtime import AgentCall, AgentOutcome, Ending
-from ..adapters.guard import guard_context, stage_env
+from ..adapters.claude.agent_runtime import AgentCall, AgentOutcome, Ending
+from ..adapters.claude.guard import guard_context, stage_env
 from ..domain.commands.base import Command
 from ..domain.commands.run import Panic, ReportSupervisorFailure
 from ..domain.supervision import SUPERVISOR_GUARD, Supervisor

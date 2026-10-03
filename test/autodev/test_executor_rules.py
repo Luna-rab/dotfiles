@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from autodev_harness import DRIVER, POLICY, new_id, of_type
-from autodevlib.adapters.schema import ecma_pattern, normalize_nulls, violations
+from autodevlib.adapters.claude.schema import ecma_pattern, normalize_nulls, violations
 from autodevlib.app.executor import from_parts
 from autodevlib.app.mainloop import Delivery
 from autodevlib.app.markers import fill

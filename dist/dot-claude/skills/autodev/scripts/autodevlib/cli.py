@@ -25,10 +25,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
-from .adapters import git as git_adapter
-from .adapters._proc import CommandFailed
-from .adapters.git import Git
-from .adapters.guard import ANSWER_FILE_OPTION
+from .adapters.claude.guard import ANSWER_FILE_OPTION
+from .adapters.github import git as git_adapter
+from .adapters.github.git import Git
+from .adapters.process._proc import CommandFailed
 from .app import assembly, cleanup
 from .app.driver import ExitCode, StartRequest
 from .domain.commands.questions import AnswerQuestion

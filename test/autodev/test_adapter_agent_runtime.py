@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from autodevlib.adapters.agent_runtime import (
+from autodevlib.adapters.claude.agent_runtime import (
     WITHHELD_TOKEN,
     AgentCall,
     AgentRuntime,

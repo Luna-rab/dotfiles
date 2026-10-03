@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import pytest
-from autodevlib.adapters import _proc, children
+from autodevlib.adapters.process import _proc, children
 
 
 @pytest.fixture

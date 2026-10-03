@@ -22,7 +22,7 @@ from autodev_drive import (
     run_flow,
     supervisors,
 )
-from autodevlib.adapters.agent_runtime import AgentOutcome, Ending
+from autodevlib.adapters.claude.agent_runtime import AgentOutcome, Ending
 from autodevlib.app.driver import ExitCode, exit_code
 from autodevlib.app.files import APPENDIX_MARKER
 from autodevlib.app.mainloop import LoopExit

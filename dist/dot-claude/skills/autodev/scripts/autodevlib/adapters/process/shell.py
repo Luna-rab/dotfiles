@@ -16,7 +16,7 @@ import shlex
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from ..domain.guard import Operation
+from ...domain.guard import Operation
 
 _PUNCTUATION = "();<>|&\n"
 _OPERATOR = re.compile(r">>|>\||&>>|&>|>&|<<<|<<-|<<|<&|<>|\|\||&&|\|&|;;|[;|&()<>\n]")

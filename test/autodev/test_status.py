@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from autodev_fakes import Queue, enqueue, execution, factory, task
-from autodevlib.adapters import children
+from autodevlib.adapters.process import children
 from autodevlib.app.mainloop import MainLoop
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.design import DesignAmbiguous, DesignProposed, DesignSettled

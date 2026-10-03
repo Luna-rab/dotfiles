@@ -64,6 +64,7 @@ from autodevlib.domain.values import (
     TaskSpec,
     TaskStatus,
 )
+from autodevlib.infra import status as status_module
 from autodevlib.infra import status_sections
 from autodevlib.infra.eventstore import EventStore
 from autodevlib.infra.lock import DriverLock
@@ -620,3 +621,36 @@ def test_driverが走っていれば生きている子を前の子に数えな�
     Seed(paths)(RUN, started())
     run = run_status(paths)["run"]
     assert (run["driver_running"], run["live_children"]) == (True, [])
+
+
+def test_控えを見ている間にdriverが起動したら子を前の子に数えない(
+    paths: RunPaths, sleeper: int, monkeypatch: pytest.MonkeyPatch
+):
+    Seed(paths)(RUN, started())
+    answers = iter([False, True])
+    monkeypatch.setattr(status_module, "held_elsewhere", lambda _path: next(answers))
+    run = run_status(paths)["run"]
+    assert (run["driver_running"], run["live_children"]) == (True, [])
+
+
+def test_statusは死んだ子の控えも読めない控えも消さない(paths: RunPaths):
+    Seed(paths)(RUN, started())
+    paths.children.mkdir(parents=True, exist_ok=True)
+    # pid 1 は生きているが、開始時刻と boot_id が違うので別のプロセスである
+    dead = paths.children / "1.json"
+    dead.write_text(json.dumps({"pid": 1, "boot": "x", "start": "0"}), encoding="utf-8")
+    broken = paths.children / "2.json"
+    broken.write_text("{", encoding="utf-8")
+    assert run_status(paths)["run"]["live_children"] == []
+    assert dead.exists() and broken.exists()
+
+
+def test_控えの置き場を読めなくてもstatusは落ちない(paths: RunPaths):
+    Seed(paths)(RUN, started())
+    paths.children.mkdir(parents=True)
+    (paths.children / "1.json").write_text("{}", encoding="utf-8")
+    paths.children.chmod(0)
+    try:
+        assert run_status(paths)["run"]["live_children"] == []
+    finally:
+        paths.children.chmod(0o755)

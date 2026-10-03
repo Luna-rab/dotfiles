@@ -63,9 +63,14 @@ def build_status(
 def driver_facts(paths: RunPaths) -> DriverFacts:
     """driver が走っていれば、生きている子はその driver の子なので、前の driver の子として数えない
     （`autodev run` も錠を取ってから子の控えを見る）。"""
-    running = held_elsewhere(paths.driver_lock)
-    live = () if running else tuple(child.pid for child in children.survivors(paths.children))
-    return DriverFacts(str(paths.root.absolute()), running, live)
+    directory = str(paths.root.absolute())
+    if held_elsewhere(paths.driver_lock):
+        return DriverFacts(directory, running=True)
+    live = tuple(child.pid for child in children.alive(paths.children))
+    # 控えを見ている間に driver が起動していたら、見つけた子はその driver の子かもしれない
+    if live and held_elsewhere(paths.driver_lock):
+        return DriverFacts(directory, running=True)
+    return DriverFacts(directory, running=False, live_children=live)
 
 
 def run_status(paths: RunPaths) -> dict[str, Any]:

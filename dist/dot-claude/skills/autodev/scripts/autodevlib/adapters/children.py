@@ -113,7 +113,25 @@ def forget(pid: int) -> None:
 
 
 def survivors(directory: Path) -> list[Child]:
-    """控えのうち、まだ同じプロセスが生きているもの。もう生きていない控えは消す。"""
+    """控えのうち、まだ同じプロセスが生きているもの。もう生きていない控えは消す。
+
+    消すのは、錠を取って前の driver がいないと分かった側（`run`・`clean`・`purge`）だけが呼ぶ。
+    """
+    return _scan(directory, prune=True)
+
+
+def alive(directory: Path) -> list[Child]:
+    """`survivors` と同じものを、控えを消さずに数える。錠を取らずに読む側（`status`）が使う。
+
+    置き場を読めない（PermissionError など）ときは、分かる分だけ返して落ちない。
+    """
+    try:
+        return _scan(directory, prune=False)
+    except OSError:
+        return []
+
+
+def _scan(directory: Path, *, prune: bool) -> list[Child]:
     found: list[Child] = []
     if not directory.is_dir():
         return found
@@ -123,11 +141,12 @@ def survivors(directory: Path) -> list[Child]:
             pid, boot, start = int(body["pid"]), str(body["boot"]), str(body["start"])
         except (OSError, ValueError, KeyError, TypeError):
             # 一時ファイルから置き換えるので書きかけは無い。読めない控えは確かめようが無いので消す
-            with contextlib.suppress(OSError):
-                path.unlink()
+            if prune:
+                with contextlib.suppress(OSError):
+                    path.unlink()
             continue
         if _identity(pid) == (boot, start):
             found.append(Child(pid, str(body.get("command") or "")))
-        else:
+        elif prune:
             path.unlink(missing_ok=True)
     return found

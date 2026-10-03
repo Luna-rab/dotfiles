@@ -18,7 +18,6 @@ from ..domain.events import Event, RunStarted, StageStarted
 from ..domain.questions import Questions
 from ..domain.run import Run, TaskEntry
 from ..domain.stack import Stack
-from ..domain.streams import aggregate_for
 from ..domain.task import Execution, ExecutionStatus, Task
 from ..domain.values import GitJob, StackEntry, StreamId, TaskId
 from .eventstore import AggregateFactory, StoredEvent
@@ -47,8 +46,8 @@ class Replayed:
     #: `ExecutionId` の文字列 → 進み具合のファイルの中身
     progress: Mapping[str, Any]
     #: 再生に使ったもの。イベントがまだ無いストリームの集約も、これで作る
-    factory: AggregateFactory = aggregate_for
-    driver: DriverFacts = DriverFacts(directory="", running=False)
+    factory: AggregateFactory
+    driver: DriverFacts
 
     def get(self, stream: StreamId, kind: type[A]) -> A:
         """型が違えば TypeError。空の集約で置き換えると、欄が黙って空になる。"""

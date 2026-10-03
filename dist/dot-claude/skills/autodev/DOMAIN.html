@@ -12,6 +12,7 @@
   --line: #d8dee4;
   --panel: #f1efe9;
   --accent: #0a5cad;
+  --accent-soft: #dce8f5;
   --code-bg: #ebe8e1;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,6 +23,7 @@
     --line: #333a42;
     --panel: #1d2127;
     --accent: #6cb6ff;
+    --accent-soft: #1c3049;
     --code-bg: #262b32;
   }
 }
@@ -32,6 +34,7 @@
   --line: #333a42;
   --panel: #1d2127;
   --accent: #6cb6ff;
+  --accent-soft: #1c3049;
   --code-bg: #262b32;
 }
 * { box-sizing: border-box; }
@@ -99,6 +102,8 @@ th, td {
   vertical-align: top;
 }
 th { background: var(--panel); font-weight: 700; }
+/* 長いパスやコマンド名が、狭い画面で表の列を押し広げないようにする */
+td code, dd code { overflow-wrap: anywhere; }
 .table-wrap { overflow-x: auto; }
 figure {
   margin: 1.25rem 0 1.75rem;
@@ -108,20 +113,7 @@ figure {
   border-radius: 8px;
   overflow-x: auto;
 }
-figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
-pre.mermaid { margin: 0; text-align: center; background: transparent; }
-/* Mermaid はノードの大きさを body の下の仮の要素で測ってから pre へ移す。pre の書式（折り返さない・
-   等幅）や本文の行間・両端揃えを文字が受け継ぐと、測った枠と描いた文字の大きさが食い違って見切れる。
-   測るときも描くときも同じ書式になるよう、pre ではなく SVG の中に掛ける（foreignObject を使うのは Mermaid だけ） */
-svg foreignObject,
-svg foreignObject * {
-  white-space: normal;
-  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
-  text-align: center;
-  line-break: auto;
-}
+figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.75rem; }
 .aggregate {
   border-left: 3px solid var(--accent);
   padding-left: 1rem;
@@ -131,6 +123,238 @@ svg foreignObject * {
 dl.io { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; }
 dl.io dt { font-weight: 700; color: var(--muted); }
 dl.io dd { margin: 0; }
+
+/* ---- 図 ----
+   箱は .n、点線の枠で囲む入れ物は .box。矢印は .e で、中の i が線、i の ::before と ::after が矢じり。
+   向きは d（下）・u（上）・du（上下）・r（右）・l（左）。並べ方は図ごとに grid の位置で決める。
+   figure は横に流せるので、狭い画面で図が収まらなくてもページは横にはみ出さない */
+.g {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  width: max-content;
+  margin: 0 auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.v {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  margin: 0 auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.v > .e { align-self: stretch; }
+.n {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  text-align: center;
+}
+.n small { display: block; color: var(--muted); font-size: 0.76rem; }
+.n.key { border: 2px solid var(--accent); }
+.n.wide { justify-self: stretch; }
+.box {
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem 0.7rem;
+  justify-self: stretch;
+}
+.box.key { border: 2px solid var(--accent); }
+.box-t { font-size: 0.78rem; font-weight: 700; color: var(--muted); margin-bottom: 0.4rem; }
+.box .row { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+.e { color: var(--muted); font-size: 0.76rem; line-height: 1.4; text-align: center; }
+/* 矢印の説明は語の途中で折らない。改行は <br> で、区切りの「・」か語と語の間に入れる */
+.e > span { white-space: nowrap; }
+.e > i { display: block; position: relative; border: 0 solid currentColor; }
+.e.dash > i { border-style: dashed; }
+.e.d, .e.u, .e.du {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 0.5rem;
+  justify-self: stretch;
+  padding: 0.1rem 0;
+}
+.e.d > i, .e.u > i, .e.du > i { grid-column: 2; grid-row: 1; width: 0; height: 2rem; border-left-width: 2px; }
+.e.d > span, .e.u > span, .e.du > span { grid-column: 3; grid-row: 1; justify-self: start; text-align: left; }
+/* 縦の矢印の説明が長いときは、線を真ん中に置かず説明の左に寄せる */
+.e.side { display: flex; justify-content: center; gap: 0.5rem; }
+.e.long { align-self: stretch; }
+.e.long > i { height: auto; align-self: stretch; }
+.e.d > i::after, .e.du > i::after {
+  content: ""; position: absolute; left: -6px; bottom: -1px;
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid currentColor;
+}
+.e.u > i::before, .e.du > i::before {
+  content: ""; position: absolute; left: -6px; top: -1px;
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid currentColor;
+}
+.e.r, .e.l {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  justify-self: stretch;
+  min-width: 3rem;
+  padding: 0 0.35rem;
+}
+.e.r > i, .e.l > i { height: 0; border-top-width: 2px; margin: 0.35rem 0; }
+.e.r > i::after {
+  content: ""; position: absolute; right: -1px; top: -6px;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid currentColor;
+}
+.e.l > i::before {
+  content: ""; position: absolute; left: -1px; top: -6px;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-right: 8px solid currentColor;
+}
+/* 横に並べる流れ。幅 640px 以下では縦に並べ直し、右向きの矢印を下向きにする */
+.hf { display: flex; align-items: center; justify-content: center; font-size: 0.85rem; line-height: 1.5; }
+.hf > .e { flex: 1 1 5rem; max-width: 11rem; }
+@media (max-width: 640px) {
+  .hf { flex-direction: column; }
+  .hf > .e.r {
+    flex: none; max-width: none; align-self: stretch;
+    display: grid; grid-template-columns: 1fr auto 1fr; column-gap: 0.5rem; padding: 0.1rem 0;
+  }
+  .hf > .e.r > i { grid-column: 2; grid-row: 1; width: 0; height: 2rem; margin: 0; border-top-width: 0; border-left-width: 2px; }
+  .hf > .e.r > span { grid-column: 3; grid-row: 1; justify-self: start; text-align: left; }
+  .hf > .e.r > i::after {
+    right: auto; top: auto; left: -6px; bottom: -1px;
+    border-top: 8px solid currentColor; border-bottom: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+  }
+}
+
+/* 状態の札と、遷移の表 */
+.states { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.chip {
+  display: inline-block;
+  padding: 0.05rem 0.6rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.chip small { color: var(--muted); font-size: 0.76rem; margin-left: 0.25em; }
+/* 終端は塗りを反転させ、外側にもう 1 本の輪を付ける */
+.chip.end {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--fg);
+}
+.chip.end small { color: var(--bg); opacity: 0.8; }
+.chip.start { background: transparent; border: 1px dashed var(--muted); color: var(--muted); }
+.legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.2rem;
+  margin-top: 0.7rem; font-size: 0.78rem; color: var(--muted);
+}
+.legend .chip { margin-right: 0.35rem; }
+table.tr { margin: 0.9rem 0 0; font-size: 0.85rem; }
+table.tr th { background: transparent; color: var(--muted); font-size: 0.8rem; }
+table.tr td { padding: 0.4rem 0.45rem; }
+table.tr td:nth-child(-n+3) { width: 1%; }
+table.tr td:nth-child(2) { color: var(--muted); text-align: center; }
+table.tr .chip { margin: 0.12rem 0.1rem; }
+table.tr td:nth-child(4) { overflow-wrap: anywhere; }
+/* 狭い画面では 1 行を「元 → 先」と、その下の「きっかけ」の 2 段に組み替え、きっかけに全幅を渡す */
+@media (max-width: 640px) {
+  table.tr, table.tr tbody { display: block; }
+  table.tr thead { display: none; }
+  table.tr tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    column-gap: 0.4rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  table.tr td { width: auto; padding: 0; border: 0; }
+  table.tr td:nth-child(4) { grid-column: 1 / -1; padding-top: 0.25rem; }
+}
+
+/* 1 回のランのシーケンス図。参加者 1 人が 2 列を持ち、矢印は送り手の列の中心から受け手の列の中心まで引く */
+.seq {
+  display: grid;
+  grid-template-columns: 1.8rem repeat(16, minmax(3.2rem, 1fr));
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.seq .p {
+  z-index: 1;
+  margin: 0 0.1rem 0.2rem;
+  padding: 0.35rem 0.1rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  background: var(--bg);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 700;
+}
+.seq .life { background: linear-gradient(var(--line), var(--line)) center / 2px 100% no-repeat; }
+.seq .sn { grid-column: 1; align-self: end; padding: 0 0.35rem 0.1rem 0; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.seq .m { z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; padding-top: 0.5rem; text-align: center; min-width: 0; }
+/* 説明は矢印の幅に縛らず 1 行で書き、矢印の中央から左右へはみ出させる。長いものだけ <br> で 2 行にする */
+.seq .m > span { align-self: center; padding: 0 0.3rem; background: var(--panel); white-space: nowrap; }
+.seq .m > i { display: block; position: relative; height: 0; margin-top: 0.2rem; border-top: 2px dashed var(--muted); }
+.seq .m.solid > i { border-top-style: solid; }
+.seq .m > i::after {
+  content: ""; position: absolute; right: -1px; top: -6px;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid var(--muted);
+}
+.seq .m.to-l > i::after { right: auto; left: -1px; border-left: 0; border-right: 8px solid var(--muted); }
+.seq .note {
+  z-index: 1;
+  grid-column: 2 / -1;
+  margin: 0.55rem 0 0.1rem;
+  padding: 0.3rem 0.7rem;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+.seq .note b { margin-right: 0.5em; }
+
+/* ドメインサービスを呼ぶ側と、呼ばれるサービス */
+.calls {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) 3rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.calls > .h { grid-column: 1 / -1; margin-top: 0.3rem; font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+.calls > .n { justify-self: stretch; max-width: 14rem; }
+.calls .to { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+@media (max-width: 640px) {
+  .calls { grid-template-columns: minmax(0, 8rem) 2.5rem minmax(0, 1fr); }
+}
+
+/* 値オブジェクトの分類 */
+.vo { padding: 0.5rem 0.7rem 0.7rem; background: var(--bg); border: 1px solid var(--muted); border-radius: 8px; }
+.vo-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.6rem; }
+.vo-c { padding: 0.45rem 0.6rem 0.6rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font-size: 0.85rem; }
+.vo-c .box-t { color: var(--fg); }
+.vo-c code { display: inline-block; margin: 0.15rem 0.1rem; }
+
+/* インラインの SVG。文字が読める大きさを保つため、狭い画面では縮めずに figure の中で横に流す */
+.sv { display: block; width: 100%; min-width: 44rem; max-width: 52rem; height: auto; margin: 0 auto; color: var(--fg); }
+.sv .nd { fill: var(--bg); stroke: var(--muted); stroke-width: 1; }
+.sv .nd.key { stroke: var(--accent); stroke-width: 2; }
+.sv .ln { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.sv .ah { fill: var(--muted); }
+.sv text { fill: currentColor; font-size: 13px; }
+.sv .sub, .sv .lb { fill: var(--muted); font-size: 12px; }
+
 @media (max-width: 860px) {
   .layout { display: block; }
   nav {
@@ -177,21 +401,27 @@ dl.io dd { margin: 0; }
 </ul>
 
 <figure>
-<pre class="mermaid">
-flowchart LR
-  subgraph D["driver（Python のプロセス）"]
-    direction TB
-    RS["ラン統括&lt;br/&gt;LLM"]
-    TS["タスク統括&lt;br/&gt;実装タスクは LLM"]
-    DOM["ドメイン&lt;br/&gt;規則・状態・合否"]
-    RS -->|"判断"| DOM
-    TS -->|"判断"| DOM
-  end
-  U["ユーザー"] &lt;-->|"指示・質問・回答"| S["/autodev&lt;br/&gt;（スキル）"]
-  S &lt;-->|"run・answer・status"| D
-  DOM -->|"このステージを走らせる"| ST["ステージ&lt;br/&gt;claude -p 1 回か、決まった処理 1 回"]
-  ST -->|"結果と証拠"| DOM
-</pre>
+<div class="v">
+  <div class="n">ユーザー</div>
+  <div class="e du"><i></i><span>指示・質問・回答</span></div>
+  <div class="n">/autodev<small>スキル</small></div>
+  <div class="e du"><i></i><span>run・answer・status</span></div>
+  <div class="box">
+    <div class="box-t">driver（Python のプロセス）</div>
+    <div class="g" style="grid-template-columns: 1fr 1fr; column-gap: 1rem; width: auto;">
+      <div class="n wide">ラン統括<small>LLM</small></div>
+      <div class="n wide">タスク統括<small>実装タスクは LLM</small></div>
+      <div class="e d"><i></i><span>判断</span></div>
+      <div class="e d"><i></i><span>判断</span></div>
+      <div class="n key wide" style="grid-column: 1 / 3;">ドメイン<small>規則・状態・合否</small></div>
+    </div>
+  </div>
+  <div class="g" style="grid-template-columns: 1fr 1fr; column-gap: 1rem; width: 100%;">
+    <div class="e d"><i></i><span>このステージを走らせる</span></div>
+    <div class="e u"><i></i><span>結果と証拠</span></div>
+  </div>
+  <div class="n">ステージ<small>claude -p 1 回か、決まった処理 1 回</small></div>
+</div>
 <figcaption>判断の流れ。統括の判断も、ドメインの規則に合わなければ集約が拒む。</figcaption>
 </figure>
 
@@ -215,18 +445,25 @@ flowchart LR
 <p>コードとログは次の言葉を使う。括弧の中はコードの名前。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart TB
-  RUN["ラン"] --> PT["計画タスク"]
-  RUN --> IT["実装タスク ×N"]
-  RUN --> GT["git 管理タスク"]
-  PT -->|"提案 → 確定"| DES["設計"]
-  DES -->|"計画を反映"| IT
-  IT -->|"フロー = ステージの並び"| STG["ステージ"]
-  STG -->|"指摘"| LED["指摘の台帳"]
-  IT -->|"完了チェックを通ったら積む列へ"| GT
-  GT -->|"積む"| STK["スタック&lt;br/&gt;一番下が概要 PR"]
-</pre>
+<div class="g" style="grid-template-columns: auto 3rem auto 10rem auto;">
+  <div class="n" style="grid-area: 1 / 1 / 10 / 2; align-self: stretch; display: flex; align-items: center;">ラン</div>
+  <div class="e r" style="grid-area: 1 / 2;"><i></i></div>
+  <div class="n wide" style="grid-area: 1 / 3;">計画タスク</div>
+  <div class="e d side" style="grid-area: 2 / 3;"><i></i><span>提案 → 確定</span></div>
+  <div class="n wide" style="grid-area: 3 / 3;">設計</div>
+  <div class="e d side" style="grid-area: 4 / 3;"><i></i><span>計画を反映</span></div>
+  <div class="e r" style="grid-area: 5 / 2;"><i></i></div>
+  <div class="n wide" style="grid-area: 5 / 3;">実装タスク ×N</div>
+  <div class="e r" style="grid-area: 5 / 4;"><span>フロー = ステージの並び</span><i></i></div>
+  <div class="n wide" style="grid-area: 5 / 5;">ステージ</div>
+  <div class="e d side" style="grid-area: 6 / 5;"><i></i><span>指摘</span></div>
+  <div class="n wide" style="grid-area: 7 / 5;">指摘の台帳</div>
+  <div class="e d side" style="grid-area: 6 / 3;"><i></i><span>完了チェックを通ったら積む列へ</span></div>
+  <div class="e r" style="grid-area: 7 / 2;"><i></i></div>
+  <div class="n wide" style="grid-area: 7 / 3;">git 管理タスク</div>
+  <div class="e d side" style="grid-area: 8 / 3;"><i></i><span>積む</span></div>
+  <div class="n wide" style="grid-area: 9 / 3;">スタック<small>一番下が概要 PR</small></div>
+</div>
 <figcaption>主な用語の関係。</figcaption>
 </figure>
 
@@ -271,29 +508,36 @@ flowchart TB
 <p>コードは 4 つの層に分かれ、依存は外から domain へ向く。domain は I/O をせず、domain の外を import しない。この domain の決まりは <code>test/autodev/test_layers.py</code> が確かめる。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart TB
-  subgraph APP["app"]
-    A1["driving&lt;br/&gt;メインループ・反応"]
-    A2["stages&lt;br/&gt;ステージの実行器"]
-    A3["supervision&lt;br/&gt;LLM 統括の起動"]
-  end
-  subgraph INFRA["infra"]
-    I1["イベントストア events.db&lt;br/&gt;requests・status --json"]
-  end
-  subgraph ADP["adapters"]
-    P1["claude -p・git・gh&lt;br/&gt;サブプロセス・ガードのフック"]
-  end
-  subgraph DOMAIN["domain"]
-    D1["集約・コマンド・イベント&lt;br/&gt;ポリシー・ドメインサービス&lt;br/&gt;値オブジェクト"]
-  end
-  APP --> INFRA
-  APP --> ADP
-  APP --> DOMAIN
-  INFRA --> DOMAIN
-  ADP --> DOMAIN
-  INFRA -.->|"注"| ADP
-</pre>
+<div class="g" style="grid-template-columns: minmax(8rem, auto) 4rem minmax(8rem, auto) 2.5rem;">
+  <div class="box" style="grid-area: 1 / 1 / 2 / 5;">
+    <div class="box-t">app</div>
+    <div class="row">
+      <div class="n">driving<small>メインループ・反応</small></div>
+      <div class="n">stages<small>ステージの実行器</small></div>
+      <div class="n">supervision<small>LLM 統括の起動</small></div>
+    </div>
+  </div>
+  <div class="e d" style="grid-area: 2 / 1;"><i></i></div>
+  <div class="e d" style="grid-area: 2 / 3;"><i></i></div>
+  <div class="e d long" style="grid-area: 2 / 4 / 5 / 5;"><i></i></div>
+  <div class="box" style="grid-area: 3 / 1;">
+    <div class="box-t">infra</div>
+    <div class="n">イベントストア events.db<small>requests・status --json</small></div>
+  </div>
+  <div class="e r dash" style="grid-area: 3 / 2;"><span>注</span><i></i></div>
+  <div class="box" style="grid-area: 3 / 3;">
+    <div class="box-t">adapters</div>
+    <div class="n">claude -p・git・gh<small>サブプロセス・ガードのフック</small></div>
+  </div>
+  <div class="e d" style="grid-area: 4 / 1;"><i></i></div>
+  <div class="e d" style="grid-area: 4 / 3;"><i></i></div>
+  <div class="box key" style="grid-area: 5 / 1 / 6 / 5;">
+    <div class="box-t">domain</div>
+    <div class="row">
+      <div class="n">集約・コマンド・イベント<small>ポリシー・ドメインサービス・値オブジェクト</small></div>
+    </div>
+  </div>
+</div>
 <figcaption>依存の向き。矢印は「import する」。点線の「注」: status --json が、前の driver の子プロセスが生きているかを見るため、infra から adapters を 1 か所だけ使う。</figcaption>
 </figure>
 
@@ -316,27 +560,51 @@ flowchart TB
 <p>集約は 6 つあり、それぞれが自分のストリーム（イベントの列）を持つ。集約どうしは互いの状態を読まず、イベントとポリシーでつながる（<a href="#events">5 章</a>）。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart LR
-  R["Run&lt;br/&gt;stream: run"]
-  T["Task&lt;br/&gt;stream: task/#lt;TaskId#gt;"]
-  L["ReviewLedger&lt;br/&gt;stream: review/#lt;TaskId#gt;&lt;br/&gt;review/design"]
-  D["Design&lt;br/&gt;stream: design"]
-  S["Stack&lt;br/&gt;stream: stack"]
-  Q["Questions&lt;br/&gt;stream: questions"]
-  R -->|"タスクを始める・止める"| T
-  T -->|"指摘・判定"| L
-  L -->|"ラウンドを締める"| T
-  T -->|"提案"| D
-  D -->|"確定した計画"| R
-  L -->|"確定・直す"| D
-  T -->|"積んでほしい"| S
-  R -->|"git の仕事を頼む"| S
-  S -->|"取り出した仕事のフロー"| T
-  S -->|"積んだ"| R
-  R -->|"質問"| Q
-  Q -->|"回答"| R
-</pre>
+<svg class="sv" viewBox="0 0 820 530" role="img" aria-label="6 つの集約とストリーム、ポリシーが運ぶ主な知らせ。Run から Task へタスクを始める・止める。Task から ReviewLedger へ指摘・判定、ReviewLedger から Task へラウンドを締める。Task から Design へ提案。Design から Run へ確定した計画。ReviewLedger から Design へ確定・直す。Task から Stack へ積んでほしい、Stack から Task へ取り出した仕事のフロー。Run から Stack へ git の仕事を頼む、Stack から Run へ積んだ。Run から Questions へ質問、Questions から Run へ回答。">
+  <defs>
+    <marker id="ah-agg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect class="nd" x="330" y="20" width="160" height="52" rx="6"/>
+    <text x="410" y="42">Questions</text><text class="sub" x="410" y="61">stream: questions</text>
+    <rect class="nd" x="330" y="150" width="160" height="52" rx="6"/>
+    <text x="410" y="172">Run</text><text class="sub" x="410" y="191">stream: run</text>
+    <rect class="nd" x="320" y="290" width="180" height="52" rx="6"/>
+    <text x="410" y="312">Task</text><text class="sub" x="410" y="331">stream: task/&lt;TaskId&gt;</text>
+    <rect class="nd" x="320" y="442" width="180" height="70" rx="6"/>
+    <text x="410" y="463">ReviewLedger</text><text class="sub" x="410" y="482">stream: review/&lt;TaskId&gt;</text><text class="sub" x="410" y="500">review/design</text>
+    <rect class="nd" x="20" y="290" width="160" height="52" rx="6"/>
+    <text x="100" y="312">Design</text><text class="sub" x="100" y="331">stream: design</text>
+    <rect class="nd" x="640" y="290" width="160" height="52" rx="6"/>
+    <text x="720" y="312">Stack</text><text class="sub" x="720" y="331">stream: stack</text>
+  </g>
+  <g marker-end="url(#ah-agg)">
+    <line class="ln" x1="395" y1="150" x2="395" y2="74"/>
+    <line class="ln" x1="425" y1="72" x2="425" y2="148"/>
+    <line class="ln" x1="410" y1="202" x2="410" y2="288"/>
+    <line class="ln" x1="395" y1="342" x2="395" y2="440"/>
+    <line class="ln" x1="425" y1="442" x2="425" y2="344"/>
+    <line class="ln" x1="320" y1="316" x2="182" y2="316"/>
+    <line class="ln" x1="500" y1="304" x2="638" y2="304"/>
+    <line class="ln" x1="640" y1="328" x2="502" y2="328"/>
+    <line class="ln" x1="493" y1="172" x2="690" y2="286"/>
+    <line class="ln" x1="710" y1="280" x2="493" y2="157"/>
+    <line class="ln" x1="130" y1="288" x2="328" y2="190"/>
+    <line class="ln" x1="318" y1="478" x2="110" y2="344"/>
+  </g>
+  <text class="lb" x="387" y="116" text-anchor="end">質問</text>
+  <text class="lb" x="433" y="116" text-anchor="start">回答</text>
+  <text class="lb" x="402" y="250" text-anchor="end">タスクを始める・止める</text>
+  <text class="lb" x="387" y="396" text-anchor="end">指摘・判定</text>
+  <text class="lb" x="433" y="396" text-anchor="start">ラウンドを締める</text>
+  <text class="lb" x="251" y="308" text-anchor="middle">提案</text>
+  <text class="lb" x="570" y="296" text-anchor="middle">積んでほしい</text>
+  <text class="lb" x="570" y="348" text-anchor="middle">取り出した仕事のフロー</text>
+  <text class="lb" x="583" y="243" text-anchor="end">git の仕事を頼む</text>
+  <text class="lb" x="608" y="206" text-anchor="start">積んだ</text>
+  <text class="lb" x="223" y="226" text-anchor="end">確定した計画</text>
+  <text class="lb" x="206" y="423" text-anchor="end">確定・直す</text>
+</svg>
 <figcaption>集約とストリーム。矢印はポリシーが運ぶ主な知らせ。</figcaption>
 </figure>
 
@@ -355,35 +623,38 @@ flowchart LR
   <dt>主に出す</dt><dd><code>RunStarted</code>・<code>TaskStarted</code>・<code>TasksPlanned</code>・<code>ReplanRequested</code>・<code>TaskInserted</code>・<code>TasksStopped</code>・<code>TasksDiscarded</code>・<code>TaskStatusChanged</code>・<code>TaskMarkedStacked</code>・<code>AllTasksSettled</code>・<code>RunFinished</code></dd>
 </dl>
 <figure>
-<pre class="mermaid">
-stateDiagram-v2
-  state "pending（未着手）" as pending
-  state "running（走っている）" as running
-  state "escalated（回答待ち）" as escalated
-  state "gated（積む列で待つ）" as gated
-  state "stacking（積んでいる途中）" as stacking
-  state "stacked（積んだ）" as stacked
-  state "dropped（止めた）" as dropped
-  state "superseded（引き継がれた）" as superseded
-  state "discarded（破棄した）" as discarded
-  [*] --> pending: 計画に載る（TasksPlanned）・差し込まれる（TaskInserted）
-  pending --> running: 始める（TaskStarted）
-  running --> escalated: エスカレーションが上がった
-  escalated --> running: 回答・閉じた・範囲が変わった・応えるフローを受けた
-  running --> gated: フローを終えた
-  gated --> stacking: 積む仕事が取り出された
-  stacking --> gated: 積むフローを捨てた
-  stacking --> stacked: 積み終えた（TaskMarkedStacked）
-  stacking --> superseded: 統合に失敗し、別のタスクが引き継いだ（TaskSuperseded）
-  gated --> pending: 再計画で範囲が変わった（TasksPlanned）
-  stacked --> discarded: 確定した再計画が破棄した（TasksDiscarded）
-  stacked --> gated: 破棄した所より上にあった（TasksReturnedToQueue）
-  pending --> dropped: 止めた
-  running --> dropped: 止めた
-  escalated --> dropped: 止めた
-  gated --> dropped: 止めた
-  stacking --> dropped: 止めた
-</pre>
+<div class="states">
+  <span class="chip">pending<small>未着手</small></span>
+  <span class="chip">running<small>走っている</small></span>
+  <span class="chip">escalated<small>回答待ち</small></span>
+  <span class="chip">gated<small>積む列で待つ</small></span>
+  <span class="chip">stacking<small>積んでいる途中</small></span>
+  <span class="chip end">stacked<small>積んだ</small></span>
+  <span class="chip end">dropped<small>止めた</small></span>
+  <span class="chip end">superseded<small>引き継がれた</small></span>
+  <span class="chip end">discarded<small>破棄した</small></span>
+</div>
+<div class="table-wrap">
+<table class="tr">
+<thead><tr><th>元</th><th></th><th>先</th><th>きっかけ</th></tr></thead>
+<tbody>
+<tr><td><span class="chip start">はじめ</span></td><td>→</td><td><span class="chip">pending</span></td><td>計画に載る（TasksPlanned）・差し込まれる（TaskInserted）</td></tr>
+<tr><td><span class="chip">pending</span></td><td>→</td><td><span class="chip">running</span></td><td>始める（TaskStarted）</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">escalated</span></td><td>エスカレーションが上がった</td></tr>
+<tr><td><span class="chip">escalated</span></td><td>→</td><td><span class="chip">running</span></td><td>回答・閉じた・範囲が変わった・応えるフローを受けた</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">gated</span></td><td>フローを終えた</td></tr>
+<tr><td><span class="chip">gated</span></td><td>→</td><td><span class="chip">stacking</span></td><td>積む仕事が取り出された</td></tr>
+<tr><td><span class="chip">stacking</span></td><td>→</td><td><span class="chip">gated</span></td><td>積むフローを捨てた</td></tr>
+<tr><td><span class="chip">stacking</span></td><td>→</td><td><span class="chip end">stacked</span></td><td>積み終えた（TaskMarkedStacked）</td></tr>
+<tr><td><span class="chip">stacking</span></td><td>→</td><td><span class="chip end">superseded</span></td><td>統合に失敗し、別のタスクが引き継いだ（TaskSuperseded）</td></tr>
+<tr><td><span class="chip">gated</span></td><td>→</td><td><span class="chip">pending</span></td><td>再計画で範囲が変わった（TasksPlanned）</td></tr>
+<tr><td><span class="chip end">stacked</span></td><td>→</td><td><span class="chip end">discarded</span></td><td>確定した再計画が破棄した（TasksDiscarded）</td></tr>
+<tr><td><span class="chip end">stacked</span></td><td>→</td><td><span class="chip">gated</span></td><td>破棄した所より上にあった（TasksReturnedToQueue）</td></tr>
+<tr><td><span class="chip">pending</span> <span class="chip">running</span> <span class="chip">escalated</span> <span class="chip">gated</span> <span class="chip">stacking</span></td><td>→</td><td><span class="chip end">dropped</span></td><td>止めた</td></tr>
+</tbody>
+</table>
+</div>
+<div class="legend"><span><span class="chip">状態</span>途中の状態</span><span><span class="chip end">状態</span>終端</span><span><span class="chip start">はじめ</span>状態が生まれる前</span></div>
 <figcaption>Run が持つ実装タスクの状態（TaskStatus）。「止めた」の矢印はどれも TasksStopped。ほかのイベント名の無い矢印は、ほかの集約のイベントを受けたポリシーが知らせ、Run が TaskStatusChanged を出す。stacked・dropped・superseded・discarded は終端。計画タスクと git 管理タスクは running と escalated を行き来し、計画タスクはランを終えたとき、git 管理タスクは仕上げを終えたときに finished になる。</figcaption>
 </figure>
 </div>
@@ -403,33 +674,39 @@ stateDiagram-v2
   <dt>主に出す</dt><dd><code>FlowAccepted</code>・<code>StageRequested</code>・<code>StageStarted</code>・<code>StageCompleted</code>・<code>StageFailed</code>・<code>EscalationRaised</code>・<code>FlowFinished</code>・<code>TaskGated</code></dd>
 </dl>
 <figure>
-<pre class="mermaid">
-stateDiagram-v2
-  state "requested（走らせると決めた）" as requested
-  state "running（走っている）" as running
-  state "completed（完了）" as completed
-  state "refused（渡した先が受けなかった）" as refused
-  state "failed（落ちた）" as failed
-  state "reported（報告して上げた）" as reported
-  state "deferred（ask で聞いて止まった）" as deferred
-  state "interrupted（止めた）" as interrupted
-  state "restarted（作り直す）" as restarted
-  state "abandoned（やめた）" as abandoned
-  [*] --> requested: Task が次の一手を決めた
-  requested --> running: 実行器が始めた
-  requested --> failed: 始められなかった
-  requested --> abandoned: フローを捨てた（StageCancelled）
-  running --> completed: 結果が合格（StageCompleted）・完了チェックが落ちた（GateFailed）
-  running --> failed: エラー・結果の形が違う・実物が無い
-  running --> reported: ステージが報告を返した（StageReported）
-  running --> deferred: ask で問いを出した（StageDeferred）
-  running --> interrupted: 止めた・driver が落ちた・パニック（StageInterrupted）
-  running --> restarted: 続きのセッションを起こせなかった（ExecutionRestarted）
-  completed --> refused: 結果を渡した先が受けなかった（HandoffFailed）
-  interrupted --> running: 続きから再開
-  deferred --> running: 回答を受けて再開
-  deferred --> abandoned: 回答以外で閉じた・応えるフローを受けた
-</pre>
+<div class="states">
+  <span class="chip">requested<small>走らせると決めた</small></span>
+  <span class="chip">running<small>走っている</small></span>
+  <span class="chip">completed<small>完了</small></span>
+  <span class="chip">refused<small>渡した先が受けなかった</small></span>
+  <span class="chip">failed<small>落ちた</small></span>
+  <span class="chip">reported<small>報告して上げた</small></span>
+  <span class="chip">deferred<small>ask で聞いて止まった</small></span>
+  <span class="chip">interrupted<small>止めた</small></span>
+  <span class="chip">restarted<small>作り直す</small></span>
+  <span class="chip">abandoned<small>やめた</small></span>
+</div>
+<div class="table-wrap">
+<table class="tr">
+<thead><tr><th>元</th><th></th><th>先</th><th>きっかけ</th></tr></thead>
+<tbody>
+<tr><td><span class="chip start">はじめ</span></td><td>→</td><td><span class="chip">requested</span></td><td>Task が次の一手を決めた</td></tr>
+<tr><td><span class="chip">requested</span></td><td>→</td><td><span class="chip">running</span></td><td>実行器が始めた</td></tr>
+<tr><td><span class="chip">requested</span></td><td>→</td><td><span class="chip">failed</span></td><td>始められなかった</td></tr>
+<tr><td><span class="chip">requested</span></td><td>→</td><td><span class="chip">abandoned</span></td><td>フローを捨てた（StageCancelled）</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">completed</span></td><td>結果が合格（StageCompleted）・完了チェックが落ちた（GateFailed）</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">failed</span></td><td>エラー・結果の形が違う・実物が無い</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">reported</span></td><td>ステージが報告を返した（StageReported）</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">deferred</span></td><td>ask で問いを出した（StageDeferred）</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">interrupted</span></td><td>止めた・driver が落ちた・パニック（StageInterrupted）</td></tr>
+<tr><td><span class="chip">running</span></td><td>→</td><td><span class="chip">restarted</span></td><td>続きのセッションを起こせなかった（ExecutionRestarted）</td></tr>
+<tr><td><span class="chip">completed</span></td><td>→</td><td><span class="chip">refused</span></td><td>結果を渡した先が受けなかった（HandoffFailed）</td></tr>
+<tr><td><span class="chip">interrupted</span></td><td>→</td><td><span class="chip">running</span></td><td>続きから再開</td></tr>
+<tr><td><span class="chip">deferred</span></td><td>→</td><td><span class="chip">running</span></td><td>回答を受けて再開</td></tr>
+<tr><td><span class="chip">deferred</span></td><td>→</td><td><span class="chip">abandoned</span></td><td>回答以外で閉じた・応えるフローを受けた</td></tr>
+</tbody>
+</table>
+</div>
 <figcaption>ステージの実行の状態（ExecutionStatus）。failed・reported・refused・restarted の後は、同じ位置を新しい実行でやり直す。interrupted を呼び直しで自動で再開するのは、driver が落ちた・パニックで止めたときだけ。</figcaption>
 </figure>
 </div>
@@ -449,19 +726,25 @@ stateDiagram-v2
   <dt>主に出す</dt><dd><code>FindingRaised</code>・<code>FindingClosed</code>・<code>FindingRejected</code>・<code>FindingReopened</code>・<code>FindingStalled</code>・<code>FindingsEvaluated</code>・<code>ResultReceived</code>・<code>ResultRefused</code></dd>
 </dl>
 <figure>
-<pre class="mermaid">
-stateDiagram-v2
-  state "open（未解決）" as open
-  state "closed（直った）" as closed
-  state "rejected（当たらない）" as rejected
-  state "carried（別のタスクへ移した）" as carried
-  [*] --> open: 指摘が立った
-  open --> closed: 判定する者が閉じた
-  open --> rejected: 判定する者が退けた
-  closed --> open: 開き直した
-  rejected --> open: 開き直した
-  open --> carried: 再計画で移した（FindingCarried）
-</pre>
+<div class="states">
+  <span class="chip">open<small>未解決</small></span>
+  <span class="chip">closed<small>直った</small></span>
+  <span class="chip">rejected<small>当たらない</small></span>
+  <span class="chip end">carried<small>別のタスクへ移した</small></span>
+</div>
+<div class="table-wrap">
+<table class="tr">
+<thead><tr><th>元</th><th></th><th>先</th><th>きっかけ</th></tr></thead>
+<tbody>
+<tr><td><span class="chip start">はじめ</span></td><td>→</td><td><span class="chip">open</span></td><td>指摘が立った</td></tr>
+<tr><td><span class="chip">open</span></td><td>→</td><td><span class="chip">closed</span></td><td>判定する者が閉じた</td></tr>
+<tr><td><span class="chip">open</span></td><td>→</td><td><span class="chip">rejected</span></td><td>判定する者が退けた</td></tr>
+<tr><td><span class="chip">closed</span></td><td>→</td><td><span class="chip">open</span></td><td>開き直した</td></tr>
+<tr><td><span class="chip">rejected</span></td><td>→</td><td><span class="chip">open</span></td><td>開き直した</td></tr>
+<tr><td><span class="chip">open</span></td><td>→</td><td><span class="chip end">carried</span></td><td>再計画で移した（FindingCarried）</td></tr>
+</tbody>
+</table>
+</div>
 <figcaption>指摘の状態（FindingStatus）。carried だけが終端。</figcaption>
 </figure>
 </div>
@@ -481,21 +764,26 @@ stateDiagram-v2
   <dt>主に出す</dt><dd><code>DesignProposed</code>・<code>DesignRevisionStarted</code>・<code>DesignRevised</code>・<code>DesignSettled</code>・<code>DesignRoundsExhausted</code>・<code>DesignReverted</code>・<code>DesignAmbiguous</code>・<code>DesignProposalAbandoned</code></dd>
 </dl>
 <figure>
-<pre class="mermaid">
-stateDiagram-v2
-  state "judging（判定を待つ）" as judging
-  state "revising（直している）" as revising
-  state "awaiting（回答を待つ）" as awaiting
-  [*] --> judging: 提案が届いた（ラウンド 1）
-  judging --> revising: must-fix が残った（ラウンド +1）
-  revising --> judging: 直した版が届いた
-  judging --> awaiting: ラウンドを使い切った・前の版に戻った・受入条件が曖昧
-  awaiting --> revising: 回答を受けた（ラウンドを 1 から数え直す）
-  judging --> [*]: 確定した（must-fix が 0 件）
-  judging --> [*]: 再計画で捨てた
-  revising --> [*]: 再計画で捨てた
-  awaiting --> [*]: 再計画で捨てた
-</pre>
+<div class="states">
+  <span class="chip">judging<small>判定を待つ</small></span>
+  <span class="chip">revising<small>直している</small></span>
+  <span class="chip">awaiting<small>回答を待つ</small></span>
+</div>
+<div class="table-wrap">
+<table class="tr">
+<thead><tr><th>元</th><th></th><th>先</th><th>きっかけ</th></tr></thead>
+<tbody>
+<tr><td><span class="chip start">はじめ</span></td><td>→</td><td><span class="chip">judging</span></td><td>提案が届いた（ラウンド 1）</td></tr>
+<tr><td><span class="chip">judging</span></td><td>→</td><td><span class="chip">revising</span></td><td>must-fix が残った（ラウンド +1）</td></tr>
+<tr><td><span class="chip">revising</span></td><td>→</td><td><span class="chip">judging</span></td><td>直した版が届いた</td></tr>
+<tr><td><span class="chip">judging</span></td><td>→</td><td><span class="chip">awaiting</span></td><td>ラウンドを使い切った・前の版に戻った・受入条件が曖昧</td></tr>
+<tr><td><span class="chip">awaiting</span></td><td>→</td><td><span class="chip">revising</span></td><td>回答を受けた（ラウンドを 1 から数え直す）</td></tr>
+<tr><td><span class="chip">judging</span></td><td>→</td><td><span class="chip end">おわり</span></td><td>確定した（must-fix が 0 件）</td></tr>
+<tr><td><span class="chip">judging</span> <span class="chip">revising</span> <span class="chip">awaiting</span></td><td>→</td><td><span class="chip end">おわり</span></td><td>再計画で捨てた</td></tr>
+</tbody>
+</table>
+</div>
+<div class="legend"><span><span class="chip end">おわり</span>提案が確定前の状態を抜けた</span></div>
 <figcaption>確定していない提案の状態（ProposalState）。「再計画で捨てた」はどれも DesignProposalAbandoned。</figcaption>
 </figure>
 </div>
@@ -515,21 +803,28 @@ stateDiagram-v2
   <dt>主に出す</dt><dd><code>GitJobQueued</code>・<code>GitJobTaken</code>・<code>TaskStacked</code>・<code>IntegrationFailed</code>・<code>StackCutBack</code>・<code>GitJobFinished</code></dd>
 </dl>
 <figure>
-<pre class="mermaid">
-stateDiagram-v2
-  state "列で待つ" as queued
-  state "処理中（1 つだけ）" as current
-  state "止めて待つ" as parked
-  [*] --> queued: 列に入った
-  queued --> current: 取り出した（取り出してよいときだけ）
-  current --> [*]: 終えた・相手を止めた・統合に失敗した・済ませなくてよい仕事（概要 PR の書き直し）を捨てた
-  current --> queued: フローを捨てた（列の先頭へ戻す）
-  current --> parked: 戻した回数が上限に達した
-  parked --> queued: ラン統括が続けると決めた（GitJobRetried）
-  parked --> [*]: ラン統括がやめると決めた（GitJobDropped）
-  parked --> [*]: 相手のタスクを止めた（GitJobWithdrawn）
-  queued --> [*]: 相手のタスクを止めた・範囲が変わった（GitJobWithdrawn）
-</pre>
+<div class="states">
+  <span class="chip">列で待つ</span>
+  <span class="chip">処理中<small>1 つだけ</small></span>
+  <span class="chip">止めて待つ</span>
+</div>
+<div class="table-wrap">
+<table class="tr">
+<thead><tr><th>元</th><th></th><th>先</th><th>きっかけ</th></tr></thead>
+<tbody>
+<tr><td><span class="chip start">はじめ</span></td><td>→</td><td><span class="chip">列で待つ</span></td><td>列に入った</td></tr>
+<tr><td><span class="chip">列で待つ</span></td><td>→</td><td><span class="chip">処理中</span></td><td>取り出した（取り出してよいときだけ）</td></tr>
+<tr><td><span class="chip">処理中</span></td><td>→</td><td><span class="chip end">おわり</span></td><td>終えた・相手を止めた・統合に失敗した・済ませなくてよい仕事（概要 PR の書き直し）を捨てた</td></tr>
+<tr><td><span class="chip">処理中</span></td><td>→</td><td><span class="chip">列で待つ</span></td><td>フローを捨てた（列の先頭へ戻す）</td></tr>
+<tr><td><span class="chip">処理中</span></td><td>→</td><td><span class="chip">止めて待つ</span></td><td>戻した回数が上限に達した</td></tr>
+<tr><td><span class="chip">止めて待つ</span></td><td>→</td><td><span class="chip">列で待つ</span></td><td>ラン統括が続けると決めた（GitJobRetried）</td></tr>
+<tr><td><span class="chip">止めて待つ</span></td><td>→</td><td><span class="chip end">おわり</span></td><td>ラン統括がやめると決めた（GitJobDropped）</td></tr>
+<tr><td><span class="chip">止めて待つ</span></td><td>→</td><td><span class="chip end">おわり</span></td><td>相手のタスクを止めた（GitJobWithdrawn）</td></tr>
+<tr><td><span class="chip">列で待つ</span></td><td>→</td><td><span class="chip end">おわり</span></td><td>相手のタスクを止めた・範囲が変わった（GitJobWithdrawn）</td></tr>
+</tbody>
+</table>
+</div>
+<div class="legend"><span><span class="chip end">おわり</span>仕事が列から消えた</span></div>
 <figcaption>git の仕事の進み方。処理中の仕事を終えた形は GitJobOutcome（done・withdrawn・integration-failed・dropped・abandoned・stuck）。</figcaption>
 </figure>
 </div>
@@ -548,15 +843,21 @@ stateDiagram-v2
   <dt>主に出す</dt><dd><code>QuestionPosted</code>・<code>QuestionAnswered</code>・<code>QuestionWithdrawn</code></dd>
 </dl>
 <figure>
-<pre class="mermaid">
-stateDiagram-v2
-  state "open（回答待ち）" as open
-  state "answered（答えた）" as answered
-  state "withdrawn（取り下げた）" as withdrawn
-  [*] --> open: 質問を出した
-  open --> answered: ユーザーが答えた
-  open --> withdrawn: もとのエスカレーションが回答以外で閉じた
-</pre>
+<div class="states">
+  <span class="chip">open<small>回答待ち</small></span>
+  <span class="chip">answered<small>答えた</small></span>
+  <span class="chip">withdrawn<small>取り下げた</small></span>
+</div>
+<div class="table-wrap">
+<table class="tr">
+<thead><tr><th>元</th><th></th><th>先</th><th>きっかけ</th></tr></thead>
+<tbody>
+<tr><td><span class="chip start">はじめ</span></td><td>→</td><td><span class="chip">open</span></td><td>質問を出した</td></tr>
+<tr><td><span class="chip">open</span></td><td>→</td><td><span class="chip">answered</span></td><td>ユーザーが答えた</td></tr>
+<tr><td><span class="chip">open</span></td><td>→</td><td><span class="chip">withdrawn</span></td><td>もとのエスカレーションが回答以外で閉じた</td></tr>
+</tbody>
+</table>
+</div>
 <figcaption>質問の状態（QuestionStatus）。回答待ちの質問があり、進められるものが無いと、driver は終了コード 4 で止まる。</figcaption>
 </figure>
 </div>
@@ -567,12 +868,15 @@ stateDiagram-v2
 <p>集約は互いを呼ばない。ある集約が出したイベントを<strong>ポリシー</strong>が受けて、別の集約へのコマンドに変える。ポリシーは <code>policies/registry.py</code> の表に 80 行あり、1 行が「このイベントを受けたら、このコマンドを出す」を表す。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart LR
-  A["集約 A"] -->|"イベント"| P["ポリシー&lt;br/&gt;イベントだけを見る"]
-  P -->|"コマンド"| B["集約 B"]
-  B -->|"handle で規則を確かめる"| B2["イベント"]
-</pre>
+<div class="hf">
+  <div class="n">集約 A</div>
+  <div class="e r"><span>イベント</span><i></i></div>
+  <div class="n key">ポリシー<small>イベントだけを見る</small></div>
+  <div class="e r"><span>コマンド</span><i></i></div>
+  <div class="n">集約 B</div>
+  <div class="e r"><span>handle で規則を確かめる</span><i></i></div>
+  <div class="n">イベント</div>
+</div>
 <figcaption>つなぎ方の形。例: Task の TaskGated → ポリシー enqueue-gated → Stack の EnqueueStack。</figcaption>
 </figure>
 
@@ -585,41 +889,69 @@ flowchart LR
 <h3>1 回のランの流れ</h3>
 <p>計画 → 実装 → 積む → 終える の順で、実装タスク 1 つの場合を示す。ステージの起動と統括の起動は省いた。</p>
 <figure>
-<pre class="mermaid">
-sequenceDiagram
-  autonumber
-  participant U as /autodev
-  participant R as Run
-  participant P as Task（計画）
-  participant D as Design
-  participant L as ReviewLedger
-  participant T as Task（実装）
-  participant G as Task（git）
-  participant S as Stack
-  U->>R: StartRun
-  R-->>S: RunStarted → 概要ブランチを切る仕事を列へ
-  S-->>G: GitJobTaken → CutBranch を走らせる
-  G-->>P: WorktreeReady → Prepare・Plan・DesignLoop を組む
-  P-->>D: Plan の提案 → ProposeDesign
-  P-->>L: DesignReview の指摘・DesignJudge の判定
-  L-->>D: must-fix が 0 件 → SettleDesign
-  D-->>R: DesignSettled → 計画を反映（TasksPlanned）
-  R-->>S: 概要 PR を作る仕事を列へ
-  Note over S: 概要 PR ができるまで、ほかの git の仕事は取り出さない
-  R-->>T: TaskStarted → OpenTask
-  R-->>S: TaskStarted → タスクのブランチを切る仕事を列へ
-  Note over T: タスク統括がフローを組む（例）&lt;br/&gt;TestGen → ConfirmRed → Impl → ReviewLoop → Gate → WritePrBody
-  T-->>L: Review の指摘・Judge の判定
-  L-->>T: open の指摘が無い → ReviewLoop を抜ける
-  T-->>S: TaskGated → EnqueueStack
-  S-->>G: GitJobTaken → Rebase … Push → CreatePR → StackLink
-  G-->>S: AppendEntry → TaskStacked
-  S-->>R: MarkStacked → AllTasksSettled
-  Note over R: ラン統括が finish を返す
-  R-->>S: RunFinished → 仕上げの仕事を列へ
-  S-->>G: 概要 PR を書き直す（外すと決めたら draft から外す）
-  G-->>R: 仕上げを終えた → git 管理タスクが finished
-</pre>
+<!-- 参加者 i（1〜8）は列の線 2i から 2i+2 を占め、中心は線 2i+1。やり取りは送り手と受け手の中心の線どうしを結ぶ -->
+<div class="seq">
+  <div class="p" style="grid-area: 1 / 2 / 2 / 4;">/autodev</div>
+  <div class="p" style="grid-area: 1 / 4 / 2 / 6;">Run</div>
+  <div class="p" style="grid-area: 1 / 6 / 2 / 8;">Task（計画）</div>
+  <div class="p" style="grid-area: 1 / 8 / 2 / 10;">Design</div>
+  <div class="p" style="grid-area: 1 / 10 / 2 / 12;">ReviewLedger</div>
+  <div class="p" style="grid-area: 1 / 12 / 2 / 14;">Task（実装）</div>
+  <div class="p" style="grid-area: 1 / 14 / 2 / 16;">Task（git）</div>
+  <div class="p" style="grid-area: 1 / 16 / 2 / 18;">Stack</div>
+  <div class="life" style="grid-area: 2 / 2 / 25 / 4;"></div>
+  <div class="life" style="grid-area: 2 / 4 / 25 / 6;"></div>
+  <div class="life" style="grid-area: 2 / 6 / 25 / 8;"></div>
+  <div class="life" style="grid-area: 2 / 8 / 25 / 10;"></div>
+  <div class="life" style="grid-area: 2 / 10 / 25 / 12;"></div>
+  <div class="life" style="grid-area: 2 / 12 / 25 / 14;"></div>
+  <div class="life" style="grid-area: 2 / 14 / 25 / 16;"></div>
+  <div class="life" style="grid-area: 2 / 16 / 25 / 18;"></div>
+
+  <div class="sn" style="grid-row: 2;">1</div>
+  <div class="m solid" style="grid-area: 2 / 3 / 3 / 5;"><span>StartRun</span><i></i></div>
+  <div class="sn" style="grid-row: 3;">2</div>
+  <div class="m" style="grid-area: 3 / 5 / 4 / 17;"><span>RunStarted → 概要ブランチを切る仕事を列へ</span><i></i></div>
+  <div class="sn" style="grid-row: 4;">3</div>
+  <div class="m to-l" style="grid-area: 4 / 15 / 5 / 17;"><span>GitJobTaken → CutBranch を走らせる</span><i></i></div>
+  <div class="sn" style="grid-row: 5;">4</div>
+  <div class="m to-l" style="grid-area: 5 / 7 / 6 / 15;"><span>WorktreeReady → Prepare・Plan・DesignLoop を組む</span><i></i></div>
+  <div class="sn" style="grid-row: 6;">5</div>
+  <div class="m" style="grid-area: 6 / 7 / 7 / 9;"><span>Plan の提案 → ProposeDesign</span><i></i></div>
+  <div class="sn" style="grid-row: 7;">6</div>
+  <div class="m" style="grid-area: 7 / 7 / 8 / 11;"><span>DesignReview の指摘・DesignJudge の判定</span><i></i></div>
+  <div class="sn" style="grid-row: 8;">7</div>
+  <div class="m to-l" style="grid-area: 8 / 9 / 9 / 11;"><span>must-fix が 0 件 → SettleDesign</span><i></i></div>
+  <div class="sn" style="grid-row: 9;">8</div>
+  <div class="m to-l" style="grid-area: 9 / 5 / 10 / 9;"><span>DesignSettled → 計画を反映（TasksPlanned）</span><i></i></div>
+  <div class="sn" style="grid-row: 10;">9</div>
+  <div class="m" style="grid-area: 10 / 5 / 11 / 17;"><span>概要 PR を作る仕事を列へ</span><i></i></div>
+  <div class="note" style="grid-row: 11;"><b>Stack</b>概要 PR ができるまで、ほかの git の仕事は取り出さない</div>
+  <div class="sn" style="grid-row: 12;">10</div>
+  <div class="m" style="grid-area: 12 / 5 / 13 / 13;"><span>TaskStarted → OpenTask</span><i></i></div>
+  <div class="sn" style="grid-row: 13;">11</div>
+  <div class="m" style="grid-area: 13 / 5 / 14 / 17;"><span>TaskStarted → タスクのブランチを切る仕事を列へ</span><i></i></div>
+  <div class="note" style="grid-row: 14;"><b>Task（実装）</b>タスク統括がフローを組む（例）TestGen → ConfirmRed → Impl → ReviewLoop → Gate → WritePrBody</div>
+  <div class="sn" style="grid-row: 15;">12</div>
+  <div class="m to-l" style="grid-area: 15 / 11 / 16 / 13;"><span>Review の指摘・Judge の判定</span><i></i></div>
+  <div class="sn" style="grid-row: 16;">13</div>
+  <div class="m" style="grid-area: 16 / 11 / 17 / 13;"><span>open の指摘が無い → ReviewLoop を抜ける</span><i></i></div>
+  <div class="sn" style="grid-row: 17;">14</div>
+  <div class="m" style="grid-area: 17 / 13 / 18 / 17;"><span>TaskGated → EnqueueStack</span><i></i></div>
+  <div class="sn" style="grid-row: 18;">15</div>
+  <div class="m to-l" style="grid-area: 18 / 15 / 19 / 17;"><span>GitJobTaken → Rebase … Push<br>→ CreatePR → StackLink</span><i></i></div>
+  <div class="sn" style="grid-row: 19;">16</div>
+  <div class="m" style="grid-area: 19 / 15 / 20 / 17;"><span>AppendEntry → TaskStacked</span><i></i></div>
+  <div class="sn" style="grid-row: 20;">17</div>
+  <div class="m to-l" style="grid-area: 20 / 5 / 21 / 17;"><span>MarkStacked → AllTasksSettled</span><i></i></div>
+  <div class="note" style="grid-row: 21;"><b>Run</b>ラン統括が finish を返す</div>
+  <div class="sn" style="grid-row: 22;">18</div>
+  <div class="m" style="grid-area: 22 / 5 / 23 / 17;"><span>RunFinished → 仕上げの仕事を列へ</span><i></i></div>
+  <div class="sn" style="grid-row: 23;">19</div>
+  <div class="m to-l" style="grid-area: 23 / 15 / 24 / 17;"><span>概要 PR を書き直す<br>（外すと決めたら draft から外す）</span><i></i></div>
+  <div class="sn" style="grid-row: 24;">20</div>
+  <div class="m to-l" style="grid-area: 24 / 5 / 25 / 15;"><span>仕上げを終えた → git 管理タスクが finished</span><i></i></div>
+</div>
 <figcaption>点線の矢印はイベントを受けたポリシーが運ぶ知らせ。</figcaption>
 </figure>
 </section>
@@ -629,18 +961,24 @@ sequenceDiagram
 <p>エスカレーションは段を飛ばさない。ステージ → タスク統括 → ラン統括 → /autodev → ユーザーの順に 1 段ずつ上がる。回答は、上げたタスクへ直に戻る。タスク統括を経由せず、Task が止めていたフローを続ける（ask で止まった実行なら、続きから再開する）。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart TB
-  ST["ステージ&lt;br/&gt;報告・2 回続けて落ちた・停滞"] -->|"EscalationRaised（タスク）"| TS["タスク統括"]
-  TS -->|"新しいフローで応える"| ST
-  TS -->|"EscalateToRun&lt;br/&gt;needs-replan・needs-human など"| RS["ラン統括"]
-  RS -->|"answer&lt;br/&gt;ResolveEscalation"| TK["Task&lt;br/&gt;止めたフローを続ける"]
-  RS -->|"replan・insert-task・stop-tasks"| RUN["Run が計画とタスクを直す"]
-  RS -->|"ask-user（PostQuestion）"| AD["/autodev"]
-  AD -->|"質問"| USR["ユーザー"]
-  USR -->|"回答"| AD
-  AD -->|"AnswerQuestion&lt;br/&gt;Run が記録し、ラン統括を起こす"| RS
-</pre>
+<div class="g" style="grid-template-columns: repeat(4, minmax(7.5rem, max-content)); column-gap: 0.6rem;">
+  <div class="n wide" style="grid-area: 1 / 1 / 2 / 5;">ステージ<small>報告・2 回続けて落ちた・停滞</small></div>
+  <div class="e d side" style="grid-area: 2 / 1 / 3 / 3;"><i></i><span>EscalationRaised（タスク）</span></div>
+  <div class="e u side" style="grid-area: 2 / 3 / 3 / 5;"><i></i><span>新しいフローで応える</span></div>
+  <div class="n wide" style="grid-area: 3 / 1 / 4 / 5;">タスク統括</div>
+  <div class="e d side" style="grid-area: 4 / 1 / 5 / 5;"><i></i><span>EscalateToRun<br>needs-replan・needs-human など</span></div>
+  <div class="n wide key" style="grid-area: 5 / 1 / 6 / 5;">ラン統括</div>
+  <div class="e d side" style="grid-area: 6 / 1;"><i></i><span>answer<br>ResolveEscalation</span></div>
+  <div class="e d side" style="grid-area: 6 / 2;"><i></i><span>replan・insert-task・<br>stop-tasks</span></div>
+  <div class="e d side" style="grid-area: 6 / 3;"><i></i><span>ask-user<br>（PostQuestion）</span></div>
+  <div class="e u side" style="grid-area: 6 / 4;"><i></i><span>AnswerQuestion<br>Run が記録し、<br>ラン統括を起こす</span></div>
+  <div class="n wide" style="grid-area: 7 / 1; align-self: stretch;">Task<small>止めたフローを続ける</small></div>
+  <div class="n wide" style="grid-area: 7 / 2; align-self: stretch;">Run が計画とタスクを直す</div>
+  <div class="n wide" style="grid-area: 7 / 3 / 8 / 5;">/autodev</div>
+  <div class="e d side" style="grid-area: 8 / 3;"><i></i><span>質問</span></div>
+  <div class="e u side" style="grid-area: 8 / 4;"><i></i><span>回答</span></div>
+  <div class="n wide" style="grid-area: 9 / 3 / 10 / 5;">ユーザー</div>
+</div>
 <figcaption>上がる道と下りる道。下りた回答はタスクの notes に出どころ付きで残り、以後のステージに毎回渡る。</figcaption>
 </figure>
 
@@ -658,22 +996,31 @@ flowchart TB
 <p>どの集約の状態にも属さない判断は、ドメインサービスに置く。集約は handle の中でこれに聞く。ドメインの外の層も、判断が要るときはこれに聞き、自分では決めない。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart LR
-  R["Run"] --> TSC["TaskScheduler"]
-  R --> ER["EscalationRouter"]
-  T["Task"] --> ER
-  T --> GE["GateEvaluator"]
-  T --> FV["FlowValidator"]
-  L["ReviewLedger"] --> GE
-  L --> SP["StallPolicy"]
-  X["ステージの実行器と&lt;br/&gt;決まった処理（app）"] -.->|"証拠を集めるときに聞く"| UC["UnionChecker"]
-  X -.-> VS["VerifySelector"]
-  X -.->|"Gate の項目ごとの合否"| GE
-  HOOK["ガードのフック（adapters）"] -.-> GD["ガードの規則"]
-  RE["反応（app）"] -.-> WF["wake_for"]
-  CLI["CLI の clean・purge・呼び直し"] -.-> HK["housekeeping"]
-</pre>
+<div class="calls">
+  <div class="h">集約から聞く（実線）</div>
+  <div class="n">Run</div>
+  <div class="e r"><i></i></div>
+  <div class="to"><span class="n">TaskScheduler</span><span class="n">EscalationRouter</span></div>
+  <div class="n">Task</div>
+  <div class="e r"><i></i></div>
+  <div class="to"><span class="n">EscalationRouter</span><span class="n">GateEvaluator</span><span class="n">FlowValidator</span></div>
+  <div class="n">ReviewLedger</div>
+  <div class="e r"><i></i></div>
+  <div class="to"><span class="n">GateEvaluator</span><span class="n">StallPolicy</span></div>
+  <div class="h">ドメインの外から聞く（点線）</div>
+  <div class="n">ステージの実行器と決まった処理（app）</div>
+  <div class="e r dash"><i></i></div>
+  <div class="to"><span class="n">UnionChecker<small>証拠を集めるときに聞く</small></span><span class="n">VerifySelector</span><span class="n">GateEvaluator<small>Gate の項目ごとの合否</small></span></div>
+  <div class="n">ガードのフック（adapters）</div>
+  <div class="e r dash"><i></i></div>
+  <div class="to"><span class="n">ガードの規則</span></div>
+  <div class="n">反応（app）</div>
+  <div class="e r dash"><i></i></div>
+  <div class="to"><span class="n">wake_for</span></div>
+  <div class="n">CLI の clean・purge・呼び直し</div>
+  <div class="e r dash"><i></i></div>
+  <div class="to"><span class="n">housekeeping</span></div>
+</div>
 <figcaption>どこから聞くか。実線は集約、点線はドメインの外から。</figcaption>
 </figure>
 
@@ -701,17 +1048,15 @@ flowchart LR
 <p>値オブジェクトは不変で、等しさは値で決まる。作るときに形を検査し、不正な値はその場で拒む。集約の状態を見ないと決められない検査（使った番号と重ねない など）は、集約の handle が行う。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart LR
-  VO["値オブジェクト"] --> ID["識別子"]
-  VO --> EN["列挙"]
-  VO --> CP["組の値"]
-  VO --> LM["上限の値"]
-  ID --> ID1["TaskId・StreamId・EventId&lt;br/&gt;ExecutionId・FindingId・QuestionId"]
-  EN --> EN1["TaskStatus・StageKind&lt;br/&gt;EscalationKind・FindingStatus&lt;br/&gt;Rating・GitJobKind"]
-  CP --> CP1["TaskSpec・Proposal・GitJob&lt;br/&gt;StackEntry・Decision・Issuer"]
-  LM --> LM1["limits.py の上限"]
-</pre>
+<div class="vo">
+  <div class="box-t">値オブジェクト</div>
+  <div class="vo-g">
+    <div class="vo-c"><div class="box-t">識別子</div><code>TaskId</code> <code>StreamId</code> <code>EventId</code> <code>ExecutionId</code> <code>FindingId</code> <code>QuestionId</code></div>
+    <div class="vo-c"><div class="box-t">列挙</div><code>TaskStatus</code> <code>StageKind</code> <code>EscalationKind</code> <code>FindingStatus</code> <code>Rating</code> <code>GitJobKind</code></div>
+    <div class="vo-c"><div class="box-t">組の値</div><code>TaskSpec</code> <code>Proposal</code> <code>GitJob</code> <code>StackEntry</code> <code>Decision</code> <code>Issuer</code></div>
+    <div class="vo-c"><div class="box-t">上限の値</div><code>limits.py</code> の上限</div>
+  </div>
+</div>
 <figcaption>分類と代表例。全部で約 70 個ある（<code>domain/value_objects/</code>）。</figcaption>
 </figure>
 
@@ -733,18 +1078,45 @@ flowchart LR
 <p>状態の正本はイベントである。集約の状態はどこにも保存せず、イベントの列を頭から当て直して作る。</p>
 
 <figure>
-<pre class="mermaid">
-flowchart LR
-  C["コマンド"] --> H{"handle&lt;br/&gt;不変条件を確かめる"}
-  H -->|"拒む（Rejected）"| X["イベントを出さない&lt;br/&gt;理由を出した者へ返す"]
-  H -->|"通す"| E["イベント"]
-  E --> ST[("events.db&lt;br/&gt;追記だけ")]
-  ST --> A["apply&lt;br/&gt;状態に当てる"]
-  ST -->|"起動時・status --json"| RP["再生&lt;br/&gt;apply だけを通る"]
-  RP --> A
-  ST --> PO["ポリシー"]
-  PO -->|"次のコマンド"| C
-</pre>
+<svg class="sv" viewBox="0 0 800 290" role="img" aria-label="コマンドは handle で不変条件を確かめられる。拒むとイベントを出さず、理由を出した者へ返す。通すとイベントになり、追記だけの events.db に入る。events.db から apply が状態に当て、起動時と status --json では apply だけを通る再生が状態を作り直す。events.db のイベントはポリシーにも渡り、ポリシーが次のコマンドを出す。">
+  <defs>
+    <marker id="ah-src" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect class="nd" x="15" y="88" width="90" height="44" rx="6"/>
+    <text x="60" y="115">コマンド</text>
+    <polygon class="nd key" points="140,110 225,65 310,110 225,155"/>
+    <text x="225" y="106">handle</text><text class="sub" x="225" y="124">不変条件を確かめる</text>
+    <rect class="nd" x="355" y="88" width="90" height="44" rx="6"/>
+    <text x="400" y="115">イベント</text>
+    <path class="nd" d="M505,90 v40 a55,8 0 0,0 110,0 v-40"/>
+    <ellipse class="nd" cx="560" cy="90" rx="55" ry="8"/>
+    <text x="560" y="115">events.db</text><text class="sub" x="560" y="131">追記だけ</text>
+    <rect class="nd" x="660" y="88" width="110" height="44" rx="6"/>
+    <text x="715" y="115">ポリシー</text>
+    <rect class="nd" x="140" y="222" width="170" height="48" rx="6"/>
+    <text class="sub" x="225" y="242">イベントを出さない</text><text class="sub" x="225" y="260">理由を出した者へ返す</text>
+    <rect class="nd" x="420" y="222" width="100" height="44" rx="6"/>
+    <text x="470" y="240">apply</text><text class="sub" x="470" y="257">状態に当てる</text>
+    <rect class="nd" x="610" y="222" width="120" height="44" rx="6"/>
+    <text x="670" y="240">再生</text><text class="sub" x="670" y="257">apply だけを通る</text>
+  </g>
+  <g marker-end="url(#ah-src)">
+    <line class="ln" x1="105" y1="110" x2="138" y2="110"/>
+    <line class="ln" x1="310" y1="110" x2="353" y2="110"/>
+    <line class="ln" x1="445" y1="110" x2="503" y2="110"/>
+    <line class="ln" x1="615" y1="110" x2="658" y2="110"/>
+    <polyline class="ln" points="715,88 715,40 60,40 60,86"/>
+    <line class="ln" x1="225" y1="155" x2="225" y2="220"/>
+    <line class="ln" x1="545" y1="140" x2="492" y2="220"/>
+    <line class="ln" x1="585" y1="140" x2="648" y2="220"/>
+    <line class="ln" x1="610" y1="244" x2="522" y2="244"/>
+  </g>
+  <text class="lb" x="331" y="102" text-anchor="middle">通す</text>
+  <text class="lb" x="388" y="33" text-anchor="middle">次のコマンド</text>
+  <text class="lb" x="233" y="192" text-anchor="start">拒む（Rejected）</text>
+  <text class="lb" x="627" y="182" text-anchor="start">起動時・status --json</text>
+</svg>
 <figcaption>コマンドからイベント、イベントから状態と次のコマンドへ。</figcaption>
 </figure>
 
@@ -758,45 +1130,5 @@ flowchart LR
 </section>
 </main>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>
-(function () {
-  var blocks = Array.prototype.slice.call(document.querySelectorAll("pre.mermaid"));
-  blocks.forEach(function (block) { block.dataset.source = block.textContent; });
-  var media = window.matchMedia("(prefers-color-scheme: dark)");
-
-  function isDark() {
-    var forced = document.documentElement.getAttribute("data-theme");
-    if (forced === "dark") return true;
-    if (forced === "light") return false;
-    return media.matches;
-  }
-
-  function render() {
-    if (!window.mermaid) return;
-    window.mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "strict",
-      theme: isDark() ? "dark" : "default",
-      // 参加者が 8 つあるので、狭い画面でも縮めずに描き、figure の横スクロールで読ませる
-      sequence: { useMaxWidth: false },
-      fontFamily: "Hiragino Sans, Noto Sans JP, Yu Gothic UI, sans-serif"
-    });
-    blocks.forEach(function (block) {
-      block.removeAttribute("data-processed");
-      block.textContent = block.dataset.source;
-    });
-    window.mermaid.run({ nodes: blocks });
-  }
-
-  render();
-  if (media.addEventListener) media.addEventListener("change", render);
-  new MutationObserver(render).observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"]
-  });
-})();
-</script>
 </body>
 </html>

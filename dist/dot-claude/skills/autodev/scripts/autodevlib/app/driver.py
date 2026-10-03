@@ -24,13 +24,18 @@ from __future__ import annotations
 
 import logging
 import shlex
+import time
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 
+from ..adapters import children
+from ..adapters._proc import KILL_AFTER_SECONDS
+from ..adapters.agent_runtime import INTERRUPT_GRACE
 from ..adapters.guard import write_hook_settings
 from ..domain.aggregate import Aggregate
-from ..domain.commands import ResumeRun, StartRun
+from ..domain.commands import Panic, ResumeRun, StartRun
 from ..domain.events import RunStarted
 from ..domain.policies import RECEIVERS
 from ..domain.questions import Questions
@@ -46,6 +51,7 @@ from .executor import StageExecutor, StagePrompt
 from .mainloop import Delivery, Inbox, LoopExit, MainLoop, Outcome, Subscriber
 from .prompts import Prompts, skill_root
 from .reactions import reactions
+from .stopping import SignalStop
 from .supervisors import AgentRuntimeLike, SupervisorRunner, SupervisorSetting
 
 log = logging.getLogger(__name__)
@@ -54,6 +60,9 @@ log = logging.getLogger(__name__)
 PANIC = "driver-panic"
 #: 呼び直されたときの ResumeRun の CommandId に入れる名前
 RESUME = "driver-resume"
+#: パニックで止めた実行の子が終わるまで待つ秒数。claude は interrupt から INTERRUPT_GRACE 秒で、
+#: 決定的なステージの子は SIGTERM から KILL_AFTER_SECONDS 秒で kill されるので、その後まで待つ
+STOP_JOIN_SECONDS = INTERRUPT_GRACE + KILL_AFTER_SECONDS + 20
 
 
 class ExitCode(IntEnum):
@@ -210,9 +219,38 @@ class Driver:
                     self.executor.begin(execution, self.inbox.expect(execution))
 
     def drive(self, start: StartRequest | None = None) -> ExitCode:
-        """ランを進め、終了コードを返す。`start` は新しいラン名のときだけ渡す。"""
+        """ランを進め、終了コードを返す。`start` は新しいラン名のときだけ渡す。
+
+        シグナルのハンドラは頭から子を待ち終えるまで付けておく（`app/stopping.py`）。付いていない間に
+        シグナルが来ると、子を待たずに driver だけが終わり、子が残る。
+        """
         self.paths.root.mkdir(parents=True, exist_ok=True)
         write_hook_settings(self.paths.guard)
+        children.track_in(self.paths.children)
+        stopper = SignalStop(
+            panic=self._submit_panic, kill=self._kill_children, stop=self.inbox.stop
+        )
+        try:
+            with stopper:
+                return self._drive(start, stopper)
+        finally:
+            children.track_in(None)
+
+    def _submit_panic(self, cause: str, rejected: Callable[[str], None]) -> None:
+        self.inbox.expect().submit(
+            Panic(
+                command_id=CommandId(f"signal/{uuid.uuid4().hex}"),
+                issuer=Issuer.driver(),
+                cause=cause,
+            ),
+            reply=lambda _command, reason: rejected(reason),
+        )
+
+    def _kill_children(self) -> None:
+        for child in children.kill_survivors(self.paths.children):
+            log.warning("子をグループごと止めた: pid %d（%s）", child.pid, child.command)
+
+    def _drive(self, start: StartRequest | None, stopper: SignalStop) -> ExitCode:
         store = EventStore.open(self.paths.events_db)
         try:
             kwargs = {} if self._poll_interval is None else {"poll_interval": self._poll_interval}
@@ -251,10 +289,24 @@ class Driver:
                 )
                 self._begin_left_requested()
             outcome = loop.run()
-            if outcome.exit is LoopExit.STOPPED and _run(loop.aggregates).panicked:
+            stopped = outcome.exit is LoopExit.STOPPED
+            if stopped and (_run(loop.aggregates).panicked or stopper.received):
                 # 走っている実行を interrupted にし、反応（実行器の interrupt）に止めさせる
                 loop.interrupt_running(InterruptCause.PANIC, PANIC)
                 loop.drain()
+                # 子は新しいセッションで起こしているので、driver が先に終わると止まらずに残る。
+                # ステージと統括を同時に止め、同じ締め切りまで待つ
+                self.supervisors.shutdown()
+                deadline = time.monotonic() + STOP_JOIN_SECONDS
+                self.executor.join(max(0.0, deadline - time.monotonic()))
+                self.supervisors.join(max(0.0, deadline - time.monotonic()))
+                if left := children.survivors(self.paths.children):
+                    log.error(
+                        "待ち切れずに残った子: %s",
+                        ", ".join(f"pid {c.pid}（{c.command}）" for c in left),
+                    )
+            if stopper.received and outcome.exit is not LoopExit.FINISHED:
+                return ExitCode.PANICKED
             return exit_code(outcome, loop.aggregates)
         finally:
             self.supervisors.shutdown()

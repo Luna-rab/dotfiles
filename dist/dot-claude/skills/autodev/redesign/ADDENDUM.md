@@ -270,4 +270,15 @@ HUD（statusline・`autodev-watch`）と `/autodev` が読む、外向けの形�
 | `plan.design.versions`・`settled` | 入った設計の版（増えるだけ）と、最後に確定した版 | |
 | `plan.design.proposal` | 確定していない提案。無ければ `null`。`round` は今の提案の何ラウンド目か | `state`: `judging`・`revising`・`awaiting`。`awaiting`: `design-rounds-exhausted`・`design-reverted`・`design-ambiguous`（`state` が `awaiting` のときだけ。ほかは `null`） |
 
-`/autodev` が終了コード 0 の後に見分けること: 積んだのは `kind` が `implementation` で `status` が `stacked` のタスク、止めたのは `dropped`、破棄したのは `discarded`。回答待ち（終了コード 4）なら `run.awaiting_answer` が真で、`questions[]` に答える。
+`/autodev` が終了コード 0 の後に見分けること: 積んだのは `kind` が `implementation` で `status` が `stacked` のタスク、止めたのは `dropped`、引き継がれたのは `superseded`、破棄したのは `discarded`。回答待ち（終了コード 4）なら `run.awaiting_answer` が真で、`questions[]` に答える。
+
+### driver の止め方と、ランの跡の片付け（6）
+
+- **SIGTERM・SIGINT は、パニックと同じ道で止める（終了コード 3）。** 1 回目は `Panic` を出し、走っている実行を `MarkInterrupted(panic)` にして止め、ステージと統括の子が終わるまで待ってから終える。呼び直せば、止めたステージを `--resume` で続ける。2 回目と、`Panic` が拒まれたとき（ランを終えた後など）は、子をグループごと SIGKILL で止め、待ち終えてから 3 で終える。ハンドラは `drive` の頭から子を待ち終えるまで付けておく（`app/stopping.py`）
+- **子プロセスの控え。** 子はどれも新しいセッションで起こすので、driver が SIGKILL で落ちると残る。driver は起こした子（claude・git・検証コマンド）ごとに `<ランディレクトリ>/children/<pid>.json` に pid・開始時刻（`/proc/<pid>/stat` の starttime）・boot_id を書き、待ち終えたら消す。pid は使い回されるので、3 つが同じで、状態がゾンビでないときだけ生きているとみなす。控えを書けない子は走らせない（止めてから落ちる）。**Linux の `/proc` が前提**で、無い所では子を起こせない
+- 前の driver の子が生きていれば、`run` は 1 で止まり、`clean`・`purge` は `--force` でも消さない（同じ実行が 2 本走る・走っている claude の下から worktree を消す）
+- **`clean`・`purge` が拒む理由は、証拠からドメインのサービスが決める**（`domain/services/housekeeping.py`）。アプリケーション層は証拠（`Leftovers`）を集めて渡すだけ
+  - `clean`: ランを終えていない（`Run.complete` が偽）・worktree にコミットしていない変更がある・HEAD を切り離した worktree にしか無いコミットがある
+  - `purge`: 記録の上で走っている実行がある・origin（fetch した後）に無いコミットがある・worktree にコミットしていない変更がある・切り離した HEAD にしか無いコミットがある
+  - どちらも、確かめられなかったこと（fetch できない・壊れた worktree）を理由にする
+  - 前の driver の生きている子のほかは、`--force` で越えられる。squash・rebase でマージした PR のコミットも origin に無いと数えるので、そのときは `--force` で消す

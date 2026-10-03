@@ -164,6 +164,9 @@ class FakeExecutor:
     def abort_rebase(self, task: TaskId) -> None:
         self.aborted.append(task)
 
+    def join(self, timeout: float = 30.0) -> None:
+        """子プロセスを起こさないので、待つものが無い。"""
+
     # --- 中身 ---
 
     @staticmethod

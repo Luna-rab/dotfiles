@@ -16,6 +16,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from . import children
+
 #: 見つからないコマンド・時間切れに付ける終了コード（シェルの慣習に合わせる）
 NOT_FOUND = 127
 TIMED_OUT = 124
@@ -202,6 +204,11 @@ def run_raw(
         return RawCompleted(args, NOT_FOUND, b"", f"コマンドが見つからない: {args[0]}")
     # 渡すものが無くても空の入力を渡して閉じる。driver の標準入力を受け継ぐと、入力を待って止まりうる
     feed = (stdin or "").encode("utf-8")
+    try:
+        children.record(child.pid, args)
+    except BaseException:
+        children.stop_unwatched(child)
+        raise
     with tracked(child):
         try:
             out, err = child.communicate(feed, timeout=timeout)
@@ -209,10 +216,13 @@ def run_raw(
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(child.pid, signal.SIGKILL)
             out, err = child.communicate()
+            children.forget(child.pid)
             check_stopped()
             return RawCompleted(
                 args, TIMED_OUT, out, _decode(err) + f"\n制限時間を超えた（{timeout} 秒）"
             )
+    # 待ち終えた後だけ消す。待てずに抜けた（例外）なら、控えを残して生きているかを後で見分ける
+    children.forget(child.pid)
     check_stopped()
     return RawCompleted(args, child.returncode, out, _decode(err))
 

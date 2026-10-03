@@ -56,6 +56,17 @@ class WorktreeMismatch(RuntimeError):
     """在る worktree が、求めたものと違う（別のブランチ・ランディレクトリの外の古いディレクトリ）。"""
 
 
+def toplevel(path: str | os.PathLike[str]) -> Path | None:
+    """`path` を含む git のリポジトリの根。リポジトリの中でなければ None。"""
+    got = run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], env=_ENV)
+    return Path(got.out.strip()) if got.ok and got.out.strip() else None
+
+
+def available() -> bool:
+    """`git` が PATH にあって起動できるか（LEDGER GH-15）。"""
+    return run(["git", "--version"], env=_ENV).ok
+
+
 class Git:
     def __init__(self, repo: str | os.PathLike[str]) -> None:
         #: 対象リポジトリ（worktree を足す元）
@@ -181,6 +192,10 @@ class Git:
         got = self._git(self.repo, "worktree", "remove", "--force", str(path))
         if not got.ok and "is not a working tree" not in got.err:
             raise CommandFailed(got)
+
+    def is_worktree(self, path: str | os.PathLike[str]) -> bool:
+        """`path` が、このリポジトリに登録した worktree か（中の `.git` が壊れていても、登録で見る）。"""
+        return self._worktree(path)[0]
 
     def _worktree(self, path: str | os.PathLike[str]) -> tuple[bool, str | None]:
         """（git に登録されているか, チェックアウトしているもの）。ブランチなら `refs/heads/…`、
@@ -403,6 +418,14 @@ class Git:
             f"{branch}:{branch}",
             timeout=NETWORK_TIMEOUT,
         )
+
+    def commits_off_refs(self, tree: str | os.PathLike[str]) -> int:
+        """`tree` の HEAD から辿れて、どの手元のブランチにも origin にも無いコミットの数（HEAD を
+        切り離した worktree で作ったコミット。worktree を外すと辿れなくなる）。"""
+        out = self._ok(
+            tree, "rev-list", "--count", "HEAD", "--not", "--branches", "--remotes=origin"
+        )
+        return int(out.strip())
 
     def unpushed_count(self, branch: BranchName) -> int:
         """origin のどのブランチにも無いコミットの数。worktree やブランチを消すと失う数である。"""

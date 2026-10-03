@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import uuid
 from collections import deque
 from collections.abc import Callable, Mapping
@@ -235,6 +236,8 @@ class SupervisorRunner:
         #: 走っている `claude -p`（id → プロセス）。止めるときに使う
         self._running: dict[int, AgentProcessLike] = {}
         self._closed = False
+        #: ターンを回すスレッド。daemon なので、driver が待たずに終わると統括の claude が残る（`join`）
+        self._threads: list[threading.Thread] = []
         #: この driver で起こした（並べた）知らせ
         self._queued: set[EventId] = set()
 
@@ -289,6 +292,8 @@ class SupervisorRunner:
             name=f"supervisor-{supervisor.name}",
             daemon=True,
         )
+        with self._lock:
+            self._threads.append(thread)
         thread.start()
 
     def _settled(self, supervisor: Supervisor, turn: _Turn, reason: str | None) -> None:
@@ -336,6 +341,14 @@ class SupervisorRunner:
                 process.interrupt("driver を止める")
             except Exception:  # 止める途中の誤りで、ほかを止め損ねない
                 log.exception("統括のプロセスを止められなかった")
+
+    def join(self, timeout: float) -> None:
+        """`shutdown` の後、ターンを回すスレッド（とその claude）が終わるまで待つ。`timeout` は全体の上限。"""
+        deadline = time.monotonic() + timeout
+        with self._lock:
+            threads = list(self._threads)
+        for thread in threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
 
     # --- 別のスレッド ---
 

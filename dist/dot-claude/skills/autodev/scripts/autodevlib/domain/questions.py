@@ -34,6 +34,8 @@ class Question:
     escalation: EventId | None
     status: QuestionStatus = QuestionStatus.OPEN
     answer: str | None = None
+    #: 取り下げた理由（経路のエスカレーションを閉じた理由）。回答を拒むときに添える
+    withdrawn_reason: str | None = None
 
 
 class Questions(Aggregate):
@@ -89,6 +91,12 @@ class Questions(Aggregate):
         question = self.questions.get(command.question)
         if question is None:
             raise Rejected(f"{command.question} という質問は無い")
+        if question.status is QuestionStatus.WITHDRAWN:
+            # `autodev answer` が要求を足す前にこの判断を借りて、理由ごと /autodev に返す（S6）
+            raise Rejected(
+                f"{command.question} は取り下げた質問で、回答は使われない。"
+                f"取り下げた理由: {question.withdrawn_reason}"
+            )
         if question.status is not QuestionStatus.OPEN:
             raise Rejected(
                 f"{command.question} は {question.status.value} で、回答できるのは open の質問だけ"
@@ -119,5 +127,7 @@ class Questions(Aggregate):
     @applies(QuestionWithdrawn)
     def _on_withdrawn(self, event: QuestionWithdrawn) -> None:
         self.questions[event.question] = replace(
-            self.questions[event.question], status=QuestionStatus.WITHDRAWN
+            self.questions[event.question],
+            status=QuestionStatus.WITHDRAWN,
+            withdrawn_reason=event.reason,
         )

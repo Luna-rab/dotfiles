@@ -46,7 +46,8 @@ from pathlib import Path
 from typing import IO, Any
 
 from ..domain.values import SessionId
-from ._proc import merged_env
+from . import children
+from ._proc import merged_env, run
 
 #: 外して起動する変数（AR-01）
 REMOVED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
@@ -330,6 +331,14 @@ class AgentProcess:
             self._err.close()
             self._remove_gh_config_dir()
             raise
+        try:
+            children.record(self._proc.pid, argv)
+        except BaseException:
+            children.stop_unwatched(self._proc)
+            self._log.close()
+            self._err.close()
+            self._remove_gh_config_dir()
+            raise
         threading.Thread(target=self._pump, daemon=True).start()
         if call.prompt is None:
             self._close_stdin()
@@ -408,6 +417,7 @@ class AgentProcess:
                 last_progress, last_denials = now, self._state.hook_denials
                 self._notify()
         code = self._proc.wait()
+        children.forget(self._proc.pid)
         self._notify()
         self._log.close()
         self._err.close()
@@ -492,6 +502,10 @@ class AgentRuntime:
         self, call: AgentCall, on_progress: Callable[[Progress], None] | None = None
     ) -> AgentOutcome:
         return self.start(call, on_progress).wait()
+
+    def available(self) -> bool:
+        """`claude` が起動できるか（LEDGER GH-15。走り出す前に確かめる）。"""
+        return run([self.claude, "--version"], env=dict.fromkeys(REMOVED_ENV)).ok
 
 
 class _Collector:

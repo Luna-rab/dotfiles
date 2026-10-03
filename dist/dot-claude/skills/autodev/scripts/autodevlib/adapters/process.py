@@ -17,8 +17,8 @@ DEFAULT_TAIL_CHARS = 4000
 
 @dataclass(frozen=True)
 class ProcessRunner:
-    """検証コマンドだけは `bash -lc` で流す（LEDGER FP-01）。パイプやリダイレクトを含みうるからで、
-    計画ステージが返したコマンドも driver の権限で流れる（FP-02。受け入れている）。"""
+    """検証コマンドだけは `bash -lc` で流す。パイプやリダイレクトを含みうるからで、
+    計画ステージが返したコマンドも driver の権限で流れる（受け入れている）。"""
 
     timeout: float | None = 1800
     tail_chars: int = DEFAULT_TAIL_CHARS

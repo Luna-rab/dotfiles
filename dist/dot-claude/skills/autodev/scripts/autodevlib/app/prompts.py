@@ -1,14 +1,14 @@
-"""ステージと統括に渡すプロンプトの組み立て（LEDGER CT-01・CT-02・TX-09）。
+"""ステージと統括に渡すプロンプトの組み立て。
 
 - **指示書の本文はプロンプトに入れない。** 指示書のパスと、指示書の `<名前>`（プレースホルダ）が
-  このランで何を指すかの表だけを渡し、指示書はモデルが自分で読む（CT-02）
+  このランで何を指すかの表だけを渡し、指示書はモデルが自分で読む
 - **何を渡すかは指示書の「入力」の表が決める。** ここは指示書が挙げたプレースホルダを、下の
   `SOURCES` の出どころから埋めるだけで、どれを渡すかを自分で選ばない。指示書に足したプレースホルダが
   `SOURCES` に無ければ、組み立ての時点で落ちる（検査でも確かめる）
 - 埋める値は、イベントストア（再生した集約と、確定したイベントの列）と成果物の在りか
   （`ArtifactRef`）から読む。実行のときにしか分からない値（ステージの cwd）は、呼ぶ側が渡す
 - 1 行で書ける値は表に、複数行の値（タスクの中身・指摘の台帳など）は表の後ろの節に置く
-- 破ると取り返しがつかない決まりだけを `--append-system-prompt` に置く（CT-01）。指示書の要約は
+- 破ると取り返しがつかない決まりだけを `--append-system-prompt` に置く。指示書の要約は
   置かない（出どころが 2 つになる）
 """
 
@@ -59,7 +59,7 @@ _A = ArtifactKind
 
 @cache
 def skill_root() -> Path:
-    """スキルの根。階層を数えて上らず、`SKILL.md` を探して決める（LEDGER FP-06）。"""
+    """スキルの根。階層を数えて上らず、`SKILL.md` を探して決める。"""
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "SKILL.md").is_file():
@@ -77,7 +77,7 @@ def contract_path(name: str) -> Path:
 
 
 def schema_text(name: str) -> str:
-    """`claude --json-schema` に渡す本文（パスではない。LEDGER AR-17）。"""
+    """`claude --json-schema` に渡す本文（パスではない）。"""
     return (skill_root() / "schemas" / f"{name}.json").read_text(encoding="utf-8")
 
 
@@ -453,7 +453,7 @@ def render(name: str, sources: Sources, role: str) -> str:
 
 
 def system_rules(role: str) -> str:
-    """`--append-system-prompt` に置く、破ると取り返しがつかない決まり（LEDGER CT-01）。"""
+    """`--append-system-prompt` に置く、破ると取り返しがつかない決まり。"""
     return "\n".join(
         [
             f"あなたは autodev の {role} である。進め方を決めるのは driver で、あなたは自分の役だけを"
@@ -552,7 +552,7 @@ class Prompts:
         return StagePrompt(text, system_rules(role))
 
     def continuation(self, context: StageContext) -> str:
-        """interrupt で止めた実行を `--resume` で続けるときの、短い続きの指示（実測が無い。ARCHITECTURE §14）。"""
+        """interrupt で止めた実行を `--resume` で続けるときの、短い続きの指示（実測が無い）。"""
         name = asset_name(context.execution.stage)
         return (
             "driver の都合で、このステージを途中で止めた。止まったところから、指示書 "

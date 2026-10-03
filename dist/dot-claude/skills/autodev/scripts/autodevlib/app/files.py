@@ -1,6 +1,6 @@
-"""反応と実行器が書き出す、ランディレクトリのファイル（DOMAIN_MODEL §14）。
+"""反応と実行器が書き出す、ランディレクトリのファイル。
 
-どれも一時ファイルに書いてから置き換え（LEDGER FP-04）、2 回書いても同じ中身になる（反応は
+どれも一時ファイルに書いてから置き換え、2 回書いても同じ中身になる（反応は
 落ちた後にもう一度呼ばれることがある）。書くかどうかはイベントが決めていて、ここは書くだけ。
 
 | ファイル | 書く者 | 読む者 |
@@ -36,7 +36,7 @@ def write_design(paths: RunPaths, version: DesignVersion, body: str) -> Path:
 def append_appendix(
     paths: RunPaths, version: DesignVersion, findings: Sequence[FindingSummary]
 ) -> None:
-    """確定した設計の、must-fix 以外の指摘を末尾に書き足す（DOMAIN_MODEL §6.4・LEDGER CT-17）。
+    """確定した設計の、must-fix 以外の指摘を末尾に書き足す。
 
     前に書き足した所（`APPENDIX_MARKER` から後ろ）は書き直す。2 回呼ばれても 2 回足さない。
     """

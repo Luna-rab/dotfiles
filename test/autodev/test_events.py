@@ -101,7 +101,7 @@ def test_補足で足したコマンドがある():
 
 
 def test_複数の集約に属するのはエスカレーションと結果の受け渡しの知らせだけ():
-    # Run の側のエスカレーションも EscalationClosed で閉じる（ADDENDUM §8）。ステージの結果を受け取る
+    # Run の側のエスカレーションも EscalationClosed で閉じる。ステージの結果を受け取る
     # 側は、どれも同じ形で受けた／受けられないを返す
     owners: dict[type[Event], list[str]] = {}
     for aggregate, classes in EVENTS_BY_AGGREGATE.items():

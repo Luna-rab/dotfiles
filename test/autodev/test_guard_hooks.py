@@ -1,9 +1,9 @@
 """ガードのフック（deny-writes.py・park-on-ask.py）と、その翻訳（adapters/guard.py・adapters/shell.py）。
 
 止めるか通すかはドメインの Guard が決める（test_domain_guard.py）。ここでは、コマンド行とパスが
-正しい宛先・場所・操作に翻訳され、その結果として通す場合と止める場合を、LEDGER のフックの行（HK-）
-ごとに確かめる。フックは claude の子プロセスとして別に起動され、落ちてもガードが黙って消えるだけ
-なので（HK-19）、入口のスクリプトも実際に起動する。
+正しい宛先・場所・操作に翻訳され、その結果として通す場合と止める場合を
+確かめる。フックは claude の子プロセスとして別に起動され、落ちてもガードが黙って消えるだけ
+なので、入口のスクリプトも実際に起動する。
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ def test_一時ディレクトリがホームの下でも一時ディレクト�
         (STUBS, "tests/test_app.py", True),
         (TESTS_ONLY, "src/app.py", False),
         (TESTS_ONLY, "tests/test_app.py", True),
-        # golden と snapshot もテストのパスに入れておけば守られる（HK-17）
+        # golden と snapshot もテストのパスに入れておけば守られる
         (TESTS_ONLY, "tests/golden/draw.json", True),
         (NON_TESTS, "tests/golden/draw.json", False),
     ],
@@ -157,7 +157,6 @@ def test_衝突したファイルだけを書ける(places: Places):
 
 
 def test_MultiEditはeditsの宛先もNotebookEditはnotebook_pathも見る(places: Places):
-    """HK-05。"""
     edits = {"edits": [{"file_path": str(places.tree / "tests" / "test_app.py")}]}
     assert check(places, NON_TESTS, "MultiEdit", edits) is not None
     notebook = {"notebook_path": str(places.tree / "tests" / "test_n.ipynb")}
@@ -168,7 +167,7 @@ def test_ほかのツールは見ない(places: Places):
     assert check(places, NONE, "Read", {"file_path": str(places.tree / "src" / "app.py")}) is None
 
 
-# --- worktree の外（HK-11・CL-07） ---
+# --- worktree の外 ---
 
 
 def test_ランディレクトリとホームと対象リポジトリには書けない(places, monkeypatch):
@@ -248,7 +247,7 @@ def test_git_Cの先で数える(places: Places):
     assert bash(places, NON_TESTS, "git -C src checkout app.py") is None
 
 
-# --- Bash のコマンド行（HK-06・HK-07・HK-08） ---
+# --- Bash のコマンド行 ---
 
 
 @pytest.mark.parametrize(
@@ -369,7 +368,7 @@ def test_引用が閉じていなければ止める側に倒す(places: Places):
     assert bash(places, NONE, "echo 'unterminated > src/app.py") is not None
 
 
-# --- gh と git push（HK-12） ---
+# --- gh と git push ---
 
 
 @pytest.mark.parametrize(
@@ -429,7 +428,7 @@ def test_ghとgit_pushでないものは止めない(places: Places, command: st
     assert bash(places, STUBS, command) is None
 
 
-# --- 受け渡し（HK-01・HK-18・N-92） ---
+# --- 受け渡し ---
 
 
 def test_Guardと場所は環境変数で往復する(places: Places):
@@ -456,7 +455,7 @@ def test_設定が渡っていなければ使えない():
 
 
 def test_フックの設定は2つのフックを置きパスは実在する(tmp_path: Path):
-    """HK-01・HK-05・HK-19。worktree に置かず、--settings で渡す。"""
+    """worktree に置かず、--settings で渡す。"""
     path = guard.write_hook_settings(tmp_path / "run" / "guard.json", python="/usr/bin/python3")
     entries = json.loads(path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
     assert [e["matcher"] for e in entries] == ["Write|Edit|MultiEdit|NotebookEdit|Bash", "Bash"]
@@ -468,7 +467,7 @@ def test_フックの設定は2つのフックを置きパスは実在する(tmp
     assert not (tmp_path / "run" / ".guard.json.tmp").exists()
 
 
-# --- 入口のスクリプトを起動する（HK-02・HK-19・N-92） ---
+# --- 入口のスクリプトを起動する ---
 
 
 def env_for(places: Places, scope: WriteScope, *, can_ask: bool = False) -> dict[str, str]:
@@ -515,7 +514,6 @@ def test_deny_writesは書いてよい呼び出しを通す(places: Places):
 
 @pytest.mark.parametrize("name", ["deny-writes.py", "park-on-ask.py"])
 def test_入力が読めなければ止める(places: Places, name: str):
-    """LEDGER N-92 を採用（ADDENDUM §11）。"""
     got = run_hook(name, "not json", env_for(places, NON_TESTS))
     assert got.returncode == 2
     assert "読めなかった" in got.stderr
@@ -530,7 +528,7 @@ def test_設定が渡っていなければ止める(places: Places, name: str):
 
 @pytest.mark.parametrize("name", ["deny-writes.py", "park-on-ask.py"])
 def test_共通の入口を読み込めなければ止める(tmp_path: Path, places: Places, name: str):
-    """フックが黙って落ちると、ガードが消えたまま走る（HK-19）。"""
+    """フックが黙って落ちると、ガードが消えたまま走る。"""
     lonely = tmp_path / "lonely" / name
     lonely.parent.mkdir()
     shutil.copy(HOOKS / name, lonely)
@@ -551,7 +549,7 @@ def test_autodevlibを読み込めなければ止める(tmp_path: Path, places: 
     assert "読み込めない" in got.stderr
 
 
-# --- ask（HK-20・HK-21・HK-23・HK-24） ---
+# --- ask ---
 
 LAUNCHER = str(SKILL_ROOT / "scripts" / "autodev.py")
 
@@ -611,7 +609,7 @@ def test_回答が無ければdeferで止め何度呼んでも同じ判断にな
 
 
 def test_回答のファイルがあれば通しaskの語だけで組み直す(places: Places):
-    """回答のファイルの実在だけを見て、中身は解釈しない（HK-24）。後ろのパイプや `;` は落とす。"""
+    """回答のファイルの実在だけを見て、中身は解釈しない。後ろのパイプや `;` は落とす。"""
     path = answered(places)
     command = f"python3 {LAUNCHER} ask --question 'どちら?' 2>&1 | tail -5; rm -rf src"
     got = run_hook(
@@ -676,5 +674,5 @@ def test_ask以外のBashはpark_on_askが通す(places: Places):
 
 
 def test_askの呼び出しは書き込みとして止めない(places: Places):
-    """deny > defer なので、deny-writes が ask を止めると defer に届かない（HK-22）。"""
+    """deny > defer なので、deny-writes が ask を止めると defer に届かない。"""
     assert bash(places, NONE, f"python3 {LAUNCHER} ask --question 'a > b か'") is None

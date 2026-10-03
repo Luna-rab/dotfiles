@@ -403,7 +403,7 @@ def test_結果を報告できるのは走っている実行だけ(task: TaskLoo
         task.report(ex(S.IMPL))
 
 
-# --- 結果の判断（§6.7 の順） ---
+# --- 結果の判断 ---
 
 
 def test_完了するとcursorが進み次のステージを決める(task: TaskLoop):
@@ -1169,7 +1169,7 @@ def test_DesignLoopは判定の後Designの結果でReviseか抜けるかを決�
     planning.run(ex(S.DESIGN_REVIEW, 2, task=p))
     planning.run(ex(S.DESIGN_JUDGE, 2, task=p))
     events = conclude(ex(S.DESIGN_JUDGE, 2, task=p), 2)
-    # 計画タスクは TaskGated を出さない（ADDENDUM §1）
+    # 計画タスクは TaskGated を出さない
     assert names(events) == ["RoundConcluded", "FlowFinished"]
     assert planning.aggregate.artifacts[A.DESIGN] == ArtifactRef(A.DESIGN, "2")
     # フローを終えたので、再計画のフローを受ける

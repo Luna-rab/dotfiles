@@ -1,6 +1,6 @@
-"""autodev の `status --json` を呼ぶ。**ランディレクトリの中は読まない**（ARCHITECTURE §10）。
+"""autodev の `status --json` を呼ぶ。**ランディレクトリの中は読まない**。
 
-外向けの形は ADDENDUM §12「status --json の形」にある。ここは呼んだ結果を返すだけで、終了コードの
+ここは呼んだ結果を返すだけで、終了コードの
 意味も JSON の中身も解釈しない（`core/runs.py` が読む）。
 """
 

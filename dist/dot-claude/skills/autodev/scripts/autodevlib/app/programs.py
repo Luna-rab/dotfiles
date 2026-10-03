@@ -1,12 +1,11 @@
-"""決定的なステージの中身（DOMAIN_MODEL §11.1・§11.2・§11.4）。
+"""決定的なステージの中身。
 
 どれも、ドメインが決めたこと（フローの段・git 管理タスクの仕事の相手）をアダプタで実行し、起きた事実
 （作った成果物・検証の結果・衝突したファイル・作った PR の番号）を `ProgramOutcome` で返すだけである。
-合否と次の一手は、実行器が渡した証拠を見て Task が決める（IMPLEMENTING §1）。落ちたら例外を投げ、
+合否と次の一手は、実行器が渡した証拠を見て Task が決める。落ちたら例外を投げ、
 実行器がエラーの証拠にする。
 
-2 回流しても同じ結果になるように作る（DOMAIN_MODEL §9.2「決定的なステージにセッションは無い。再開とは
-もう一度流すこと」）。作り済みのブランチ・worktree・PR はそのまま使う。
+2 回流しても同じ結果になるように作る。作り済みのブランチ・worktree・PR はそのまま使う。
 """
 
 from __future__ import annotations
@@ -94,7 +93,7 @@ def own_commits(ctx: StageContext, tools: Tools, tree: Path) -> list[str]:
 
 
 def _changed(tools: Tools, tree: Path, since: str) -> tuple[ChangedFile, ...]:
-    """`since` から変わったファイルと、glob との照合の答え（照合の規則はアダプタ。LEDGER HK-15）。"""
+    """`since` から変わったファイルと、glob との照合の答え（照合の規則はアダプタ）。"""
     setting = tools.setting
     return tuple(
         ChangedFile(
@@ -260,7 +259,7 @@ def rebase(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
     載せ直すのは、根元（`Task.base_commit`）から HEAD までのコミットだけ（`git rebase --onto <一番上>
     <根元>`）。積み直すブランチは前に積んだブランチから切るので、破棄した下のタスクのコミットも含むが、
-    それは根元より下にあるので載せない（ADDENDUM §10）。載せ直すものがあるかはドメインに聞き
+    それは根元より下にあるので載せない。載せ直すものがあるかはドメインに聞き
     （`has_own_commits`）、無ければブランチを一番上へ動かさずに数だけ返す（落とすのは Task）。流す前に
     実行器が、途中の rebase を取りやめ、始めた時点へ戻している（`StageSpec.abandons_rebase`・
     `restores_start`）。
@@ -297,7 +296,7 @@ def check_union(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     checked = UnionVerdict(tuple(verdicts))
     if not checked.passed or not git.rebase_in_progress(tree):
         return ProgramOutcome(union=checked)
-    # 続けるのは、このステージの中身（ADDENDUM §12）。両側を残したかの答えは UnionVerdict が出す
+    # 続けるのは、このステージの中身。両側を残したかの答えは UnionVerdict が出す
     outcome = git.rebase_continue(tree)
     verdicts += [UnionChecker.still_conflicted(p) for p in outcome.conflicts]
     return ProgramOutcome(union=UnionVerdict(tuple(verdicts)))
@@ -320,7 +319,7 @@ def _read(tools: Tools, ref: ArtifactRef | None, what: str) -> str:
 
 
 def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    """タスク PR を、実装タスクが書いた本文で作る。同じブランチの PR があればそれを使う（GH-09）。"""
+    """タスク PR を、実装タスクが書いた本文で作る。同じブランチの PR があればそれを使う。"""
     job = _job(ctx)
     branch = _branch(job)
     found = tools.forge.find_pr(ctx.tree, branch)
@@ -342,7 +341,7 @@ def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
 
 
 def _link(ctx: StageContext, tools: Tools, prs: Sequence[PrNumber]) -> None:
-    """概要 PR から下から順に渡して、つないだ後に概要 PR の base がランの base のままか確かめる（GH-07）。"""
+    """概要 PR から下から順に渡して、つないだ後に概要 PR の base がランの base のままか確かめる。"""
     paths, base = tools.setting.paths, tools.setting.base
     tools.forge.stack_link(paths.overview_tree, base, prs)
     seen = tools.forge.view_pr(paths.overview_tree, prs[0])
@@ -351,7 +350,7 @@ def _link(ctx: StageContext, tools: Tools, prs: Sequence[PrNumber]) -> None:
 
 
 def stack_link(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    """概要 PR から一番上（このタスクの PR）まで、全部を下から順につなぐ（link は足すだけ。GH-08）。"""
+    """概要 PR から一番上（このタスクの PR）まで、全部を下から順につなぐ（link は足すだけ）。"""
     branch = _branch(_job(ctx))
     found = tools.forge.find_pr(ctx.tree, branch)
     if found is None:
@@ -381,7 +380,7 @@ _ORIGIN_LABELS: Mapping[DecisionOrigin, str] = {
 
 
 def overview_values(ctx: StageContext, tools: Tools) -> dict[str, str]:
-    """概要 PR のマーカーの中身。表のラベルに無い状態は、隠さずに値のまま出す（LEDGER TX-07）。"""
+    """概要 PR のマーカーの中身。表のラベルに無い状態は、隠さずに値のまま出す。"""
     facts = ctx.overview
     rows = [
         f"{row.task} {row.title} — {_STATUS_LABELS.get(row.status, row.status.value)}"
@@ -402,7 +401,7 @@ def overview_values(ctx: StageContext, tools: Tools) -> dict[str, str]:
 
 
 def _overview_body(ctx: StageContext, tools: Tools) -> str:
-    """保存したマーカー入りの本文から、毎回埋め直す（LEDGER TX-06）。"""
+    """保存したマーカー入りの本文から、毎回埋め直す。"""
     path = tools.setting.paths.overview_body
     if not path.is_file():
         raise RuntimeError("概要 PR の本文（WriteOverview の結果）が無い")
@@ -418,7 +417,7 @@ def _overview_title(tools: Tools) -> str:
 
 def create_overview_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     """概要ブランチを push し、概要 PR を draft で作る。base との差分が 0 だと作れないので、空のコミットを
-    1 つ載せる（GH-01）。同じブランチの PR があればそれを使う。"""
+    1 つ載せる。同じブランチの PR があればそれを使う。"""
     job = _job(ctx)
     branch = _branch(job)
     git, tree = tools.git, tools.setting.paths.overview_tree

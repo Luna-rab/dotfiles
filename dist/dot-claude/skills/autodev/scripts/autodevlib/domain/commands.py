@@ -1,4 +1,4 @@
-"""コマンド（DOMAIN_MODEL §7.2・ADDENDUM）。
+"""コマンド。
 
 コマンドは「〜せよ」という命令で、宛先の集約は 1 つ（`target`）。どれも `command_id` と、出した者
 （`issuer`）を持つ。出してよい者は `ISSUERS` に書き、外れた者のコマンドは集約の土台が拒む
@@ -135,9 +135,8 @@ class ApplyPlan(RunCommand):
 class ApplyReplan(RunCommand):
     """ラン統括の `apply-plan`。確定した再計画を、止める・破棄する・反映するまで 1 回で行う。
 
-    ADDENDUM §3 はアプリケーション層が StopTasks → DiscardTasks → ApplyPlan の 3 つに置き換えると
-    するが、それだと「前が拒まれたら後ろを出さない」という並びの知識がドメインの外に残り、前半だけが
-    確定することもある。そこで 1 つのコマンドにし、Run がまとめて確かめて TasksStopped・
+    StopTasks → DiscardTasks → ApplyPlan の 3 つに分けると、「前が拒まれたら後ろを出さない」という
+    並びの知識がドメインの外に残り、前半だけが確定することもある。そこで 1 つのコマンドにし、Run がまとめて確かめて TasksStopped・
     TasksDiscarded・TasksPlanned を出す（空の一覧のイベントは出さない）。初回の反映は ApplyPlan。
     """
 
@@ -179,7 +178,7 @@ class InsertTask(RunCommand):
     spec: TaskSpec
     blocked_by: frozenset[TaskId] = frozenset()
     takes_over: TaskId | None = None
-    #: 応える Run のエスカレーション。処理したら閉じる（ADDENDUM §8）
+    #: 応える Run のエスカレーション。処理したら閉じる
     responds_to: EventId | None = None
 
 
@@ -187,7 +186,7 @@ class InsertTask(RunCommand):
 class StopTasks(RunCommand):
     ISSUERS = frozenset({_K.RUN_SUPERVISOR})
     tasks: frozenset[TaskId]
-    #: 応える Run のエスカレーション。処理したら閉じる（ADDENDUM §8）
+    #: 応える Run のエスカレーション。処理したら閉じる
     responds_to: EventId | None = None
 
 
@@ -263,8 +262,7 @@ class AnswerEscalation(RunCommand):
     """ラン統括の `answer`。Run のエスカレーションに答え、上げてきたタスクへ回答を下ろす。
 
     自分で答えるなら `answer`、ユーザーの回答を渡すなら `question` のどちらか一方を書く。ユーザーの
-    回答の本文は、ラン統括の判断からではなく、Run が受け取った回答（AnswerRecorded）から写す
-    （ADDENDUM §8）。
+    回答の本文は、ラン統括の判断からではなく、Run が受け取った回答（AnswerRecorded）から写す。
     """
 
     ISSUERS = frozenset({_K.RUN_SUPERVISOR})
@@ -312,7 +310,7 @@ class FinishRun(RunCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class UpdateTaskStatus(RunCommand):
-    """Task・Stack のイベントを受けたポリシーが、Run の持つタスクの状態を動かす（ADDENDUM §2）。"""
+    """Task・Stack のイベントを受けたポリシーが、Run の持つタスクの状態を動かす。"""
 
     ISSUERS = frozenset({_K.POLICY})
     task: TaskId
@@ -331,7 +329,7 @@ class RecordSettledPlan(RunCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class ResumeRun(RunCommand):
-    """既にあるラン名で呼び直された（パニックの後も、driver が落ちた後も。ADDENDUM §9）。"""
+    """既にあるラン名で呼び直された（パニックの後も、driver が落ちた後も）。"""
 
     ISSUERS = frozenset({_K.CLI, _K.DRIVER})
 
@@ -373,7 +371,7 @@ class OpenTask(TaskCommand):
     kind: TaskKind
     #: 実装タスクだけが持つ
     spec: TaskSpec | None = None
-    #: そのときのラン共通の成果物（brief・codemap・design の版。ADDENDUM §7）
+    #: そのときのラン共通の成果物（brief・codemap・design の版）
     artifacts: tuple[ArtifactRef, ...] = ()
     blocked_by: frozenset[TaskId] = frozenset()
     #: 実装タスクのブランチ（TaskStarted から写す）
@@ -386,7 +384,7 @@ class OpenTask(TaskCommand):
 class BeginStage(TaskCommand):
     """走らせると決めたステージを始める（2 段目）。StageRequested を受けた実行器が出す。
 
-    HEAD とセッション id はドメインの外の値なので、実行器が集めて載せる（DOMAIN_MODEL §6.7）。
+    HEAD とセッション id はドメインの外の値なので、実行器が集めて載せる。
     まだ始まっていない StageRequested の実行と合わなければ、Task が拒む。
     """
 
@@ -434,7 +432,7 @@ class InterruptStage(TaskCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class MarkInterrupted(TaskCommand):
-    """driver が、running のまま残っていた実行を interrupted にする（ADDENDUM §9）。
+    """driver が、running のまま残っていた実行を interrupted にする。
 
     起動時の後始末なら startup、パニックで止めるときなら panic。どれが running かは Task に聞く
     （`Task.running_executions`）。
@@ -527,7 +525,7 @@ class CloseEscalation(TaskCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class ChangeScope(TaskCommand):
-    """実装タスクにだけ送る（ADDENDUM §1）。"""
+    """実装タスクにだけ送る。"""
 
     ISSUERS = frozenset({_K.POLICY})
     spec: TaskSpec
@@ -556,7 +554,7 @@ class RecordBase(TaskCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class ConcludeReviewRound(TaskCommand):
-    """ReviewLoop の Judge の判定を台帳に当て終えた。台帳の結果を Task に渡す（ADDENDUM §4・§5）。
+    """ReviewLoop の Judge の判定を台帳に当て終えた。台帳の結果を Task に渡す。
 
     指摘の台帳の FindingsEvaluated（RecordJudgement が出す）から組む。次の一手（Fix・抜ける・停滞で
     上げる）は Task が決める。Judge の結果を台帳が受けたことの知らせも兼ねる。
@@ -576,7 +574,7 @@ class ConcludeReviewRound(TaskCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class ConcludeGateRound(TaskCommand):
-    """Gate の不合格の後、G- の指摘を判定した台帳の結果を Task に渡す（ADDENDUM §6）。
+    """Gate の不合格の後、G- の指摘を判定した台帳の結果を Task に渡す。
 
     指摘の台帳の FindingsEvaluated（RecordGateResult が出す）から組む。Fix へ戻るか、停滞で上げるかは
     Task が決める。Gate が通った後の結果なら、何もしない。
@@ -592,7 +590,7 @@ class ConcludeGateRound(TaskCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class ConcludeDesignRound(TaskCommand):
-    """DesignLoop の DesignJudge の後、Design が確定したか直すかを Task に渡す（ADDENDUM §4・§11）。
+    """DesignLoop の DesignJudge の後、Design が確定したか直すかを Task に渡す。
 
     `settled` があれば設計が確定した（DesignSettled）ので DesignLoop を抜ける。無ければ Revise の
     ラウンドを使った（DesignRevisionStarted）ので Revise へ進む。
@@ -694,7 +692,7 @@ class CountFix(ReviewCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class RecordJudgement(ReviewCommand):
-    """Judge・DesignJudge の判定を当て、判定を締める（ADDENDUM §5）。
+    """Judge・DesignJudge の判定を当て、判定を締める。
 
     判定をすべて当ててから、修正を STALL_AFTER_FIXES 回以上受けたまま open に残った指摘ごとに
     FindingStalled を出し、最後に FindingsEvaluated（ジャッジの分類を写す）を出す。中身の問題（無い
@@ -775,7 +773,7 @@ class ProposeDesign(DesignCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class ReviseDesign(DesignCommand):
-    """Revise を起動する前に出す（ADDENDUM §11）。"""
+    """Revise を起動する前に出す。"""
 
     ISSUERS = frozenset({_K.POLICY})
     #: must-fix を残した判定（設計の台帳の FindingsEvaluated の DesignJudge の実行）
@@ -826,7 +824,7 @@ class MarkAmbiguous(DesignCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class DiscardProposal(DesignCommand):
-    """確定していない提案を捨てる（ReplanRequested を受けて。ADDENDUM §3）。"""
+    """確定していない提案を捨てる（ReplanRequested を受けて）。"""
 
     ISSUERS = frozenset({_K.POLICY})
     reason: str
@@ -845,7 +843,7 @@ class StackCommand(Command):
 
     @property
     def supervised_task(self) -> TaskId | None:
-        """スタックを変えるのは git 管理タスクだけ（DOMAIN_MODEL §6.5）。"""
+        """スタックを変えるのは git 管理タスクだけ。"""
         return TaskId.git()
 
 
@@ -952,7 +950,7 @@ class RecordOverview(StackCommand):
 
 @dataclass(frozen=True, kw_only=True)
 class WithdrawRequest(StackCommand):
-    """止めたタスクを相手にする仕事を、列から外す（TasksStopped を受けて。ADDENDUM §2）。"""
+    """止めたタスクを相手にする仕事を、列から外す（TasksStopped を受けて）。"""
 
     ISSUERS = frozenset({_K.POLICY})
     task: TaskId

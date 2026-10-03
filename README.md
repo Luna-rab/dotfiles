@@ -128,9 +128,7 @@ driver はステージを起動するとき `ANTHROPIC_API_KEY` などを外す�
 サブスクリプションではなく従量課金に切り替わる。無人のマシンでは
 `CLAUDE_CODE_OAUTH_TOKEN` を置く。
 
-何をするかの概観は
-[dist/dot-claude/skills/autodev/README.md](dist/dot-claude/skills/autodev/README.md)、
-設計と落とし穴は [DESIGN.md](dist/dot-claude/skills/autodev/DESIGN.md) に書いた。
+動きは [dist/dot-claude/skills/autodev/README.md](dist/dot-claude/skills/autodev/README.md) に書いた。
 
 ### archify（図を作るスキル）
 
@@ -197,7 +195,7 @@ autodev add-cache ▸ task1 ジャッジ r2 · 4m12s 7ターン Read · 回答�
 ```
 
 - **読むのは `autodev status --json` だけ**（`~/.claude/skills/autodev/scripts/autodev.py` を
-  サブプロセスで呼ぶ。形は `autodev/redesign/ADDENDUM.md` §12）。ランディレクトリの中は読まない。
+  サブプロセスで呼ぶ。形は `autodev/scripts/autodevlib/infra/status_sections.py`）。ランディレクトリの中は読まない。
   1 回の描画で呼ぶのは全ランの一覧の 1 回だけで、2 秒で返らなければ「読めない」と出す。
 - 段の並びは `tasks[].flow.steps` の `state` をそのまま出す。今の段が合成ステージ（ReviewLoop など）
   なら、中で走っているステージとラウンド（2 ラウンド目から）を出す。済んだ段が 4 つを超えたら古いものを `…` にする。

@@ -17,7 +17,7 @@ def test_終了コードと出力を返す(tmp_path: Path):
 
 
 def test_パイプとリダイレクトを含むコマンドを流せる(tmp_path: Path):
-    """検証コマンドだけは bash -lc で流す（LEDGER FP-01）。"""
+    """検証コマンドだけは bash -lc で流す。"""
     got = ProcessRunner().run(
         VerifyCommand("printf 'a\\nb\\n' | wc -l > n.txt && cat n.txt"), tmp_path
     )

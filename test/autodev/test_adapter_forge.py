@@ -175,7 +175,7 @@ def test_draftから外せなければForgeErrorにする(gh: FakeGh, tmp_path: 
 
 
 def test_stack_linkはbaseを必ず渡しPR番号を下から順に渡す(gh: FakeGh, tmp_path: Path):
-    """--base を省くと一番下の base が既定ブランチに書き換わる（LEDGER GH-07）。"""
+    """--base を省くと一番下の base が既定ブランチに書き換わる。"""
     forge(gh).stack_link(
         tmp_path, BranchName("develop"), [PrNumber(10), PrNumber(11), PrNumber(12)]
     )
@@ -186,7 +186,7 @@ def test_stack_linkはbaseを必ず渡しPR番号を下から順に渡す(gh: Fa
 
 
 def test_stack_linkにPRを1つだけ渡すと拒む(gh: FakeGh, tmp_path: Path):
-    """gh stack link は 2 つ以上を要る（LEDGER GH-08）。"""
+    """gh stack link は 2 つ以上を要る。"""
     with pytest.raises(ValueError, match="2 つ以上"):
         forge(gh).stack_link(tmp_path, BranchName("main"), [PrNumber(10)])
     assert gh.calls() == []

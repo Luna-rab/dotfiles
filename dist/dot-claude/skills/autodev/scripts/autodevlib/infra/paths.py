@@ -1,8 +1,7 @@
-"""ランディレクトリの置き場（DOMAIN_MODEL §14）。**パスを呼び出し側で連結しない。**
+"""ランディレクトリの置き場。**パスを呼び出し側で連結しない。**
 
 置き場は対象リポジトリの外で、`$XDG_STATE_HOME/autodev/<ラン名>/`（既定 `~/.local/state`）。
-`AUTODEV_STATE_DIR` で `autodev/` までの根を差し替えられる（検査で `~/.local/state` を汚さない。
-LEDGER FP-08）。
+`AUTODEV_STATE_DIR` で `autodev/` までの根を差し替えられる（検査で `~/.local/state` を汚さない）。
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ class RunPaths:
 
     @property
     def answers(self) -> Path:
-        """計画ステージの ask への回答。questions/ と分ける（同じ所だと聞いた瞬間に再開する。LEDGER HK-24）。"""
+        """計画ステージの ask への回答。questions/ と分ける（同じ所だと聞いた瞬間に再開する）。"""
         return self.root / "answers"
 
     def answer(self, tool_use_id: str) -> Path:
@@ -117,7 +116,7 @@ class RunPaths:
     @property
     def overview_body(self) -> Path:
         """WriteOverview が返した概要 PR の本文。マーカーを入れたまま置き、RefreshOverview が毎回ここから
-        埋め直す（埋めた本文で上書きすると、後から積んでも古いまま残る。LEDGER TX-06）。"""
+        埋め直す（埋めた本文で上書きすると、後から積んでも古いまま残る）。"""
         return self.root / "overview.md"
 
     @property
@@ -134,7 +133,7 @@ class RunPaths:
         return self.task_dir(task) / "awaiting-expectations.json"
 
     def tree_of(self, task: TaskId) -> Path:
-        """タスクのステージの cwd。計画タスクは、再計画も含めて trees/overview（ADDENDUM §10）。
+        """タスクのステージの cwd。計画タスクは、再計画も含めて trees/overview。
         git 管理タスクは自分の worktree を持たず、概要ブランチの worktree で gh を叩く。"""
         if task.kind is TaskKind.IMPLEMENTATION:
             return self.task_tree(task)
@@ -161,7 +160,7 @@ class RunPaths:
 
     @property
     def rejections(self) -> Path:
-        """拒んだコマンドの記録（DOMAIN_MODEL §7.1。`autodev status` に出す）。"""
+        """拒んだコマンドの記録（`autodev status` に出す）。"""
         return self.logs / "rejected.jsonl"
 
     @property

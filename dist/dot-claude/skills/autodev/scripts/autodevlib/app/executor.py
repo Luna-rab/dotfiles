@@ -1,7 +1,7 @@
-"""ステージの実行器（DOMAIN_MODEL §11.5・ADDENDUM §4・§9）。
+"""ステージの実行器。
 
 **実行器は判断しない。** ステージを起動し、証拠を集めて `ReportStageResult` にするだけで、完了・失敗・
-エスカレーションのどれにするかは `Task.handle` が決める（IMPLEMENTING §1）。何を集めるかは
+エスカレーションのどれにするかは `Task.handle` が決める。何を集めるかは
 `StageSpec` の宣言（`produces`・`may_produce`・`expects`・`result`）と `VerifySelector` が決める。
 
 ```mermaid
@@ -30,7 +30,7 @@ sequenceDiagram
   `ReportBeginFailure` で Task に渡す。やり直すか上げるかは Task が決める
 - 呼び直し（配り直した StageRequested・StageStarted）で、もう始めた・済んだ実行を走らせない。実行の
   状態が求めるものと違えば、札を返さずに cancel する
-- 利用枠の上限に当たったら、証拠ではなく `Panic` を返す（ARCHITECTURE §9。インフラのエラー）
+- 利用枠の上限に当たったら、証拠ではなく `Panic` を返す（インフラのエラー）
 - `--resume` で起こしたか・claude が init を出したか・result を返さずに自分で終わったかを、証拠で
   返す。続けられなかったか（作り直すか）は Task が決める
 - プロンプトを組む・走らせる途中で実行器が落ちても、エラーの証拠を札で返す（札が返らないと、
@@ -135,8 +135,7 @@ class StageExecutor(Protocol):
         ...
 
     def abort_rebase(self, task: TaskId) -> None:
-        """IntegrationFailed を受けて。そのタスクの worktree の途中の rebase を取りやめる（DOMAIN_MODEL
-        §11.4）。続く begin より先に済む。"""
+        """IntegrationFailed を受けて。そのタスクの worktree の途中の rebase を取りやめる。続く begin より先に済む。"""
         ...
 
     def join(self, timeout: float = 30.0) -> None:
@@ -152,7 +151,7 @@ class StagePrompts(Protocol):
     ) -> StagePrompt: ...
 
     def continuation(self, context: StageContext) -> str:
-        """interrupt で止めた実行を `--resume` で続けるときの、短い続きの指示（ARCHITECTURE §14 の未決）。"""
+        """interrupt で止めた実行を `--resume` で続けるときの、短い続きの指示（実測が無い）。"""
         ...
 
 
@@ -375,7 +374,7 @@ class Executor:
         return None
 
     def _prompt(self, context: StageContext) -> StagePrompt | None:
-        """LLM のステージに渡すプロンプト。defer から続けるときは渡さない（LEDGER AR-21）。"""
+        """LLM のステージに渡すプロンプト。defer から続けるときは渡さない。"""
         if context.spec.mode is not StageMode.LLM or context.resume is ResumeMode.DEFERRED:
             return None
         if context.resume is ResumeMode.INTERRUPTED:
@@ -411,7 +410,7 @@ class Executor:
             try:
                 work()
             except Exception:
-                # 監視の誤りでドライバを止めない（LEDGER AR-25）。札は work の中で返す
+                # 監視の誤りでドライバを止めない。札は work の中で返す
                 log.exception("実行器の順番待ちの仕事で落ちた")
 
     def _issuer(self, execution: ExecutionId) -> Issuer:
@@ -626,7 +625,7 @@ class Executor:
                 remove_progress(self.setting.paths, execution)
 
     def _progress(self, context: StageContext, body: Mapping[str, Any]) -> None:
-        # 進み具合の書き損じでステージを止めない（LEDGER AR-25）
+        # 進み具合の書き損じでステージを止めない
         with contextlib.suppress(OSError):
             write_progress(self.setting.paths, context.execution, {**body, "updated": utc_now()})
 
@@ -699,7 +698,7 @@ class Executor:
         )
         schema = self._skill / "schemas" / f"{asset_name(context.execution.stage)}.json"
         if not setting.paths.guard.is_file():
-            # フックの設定はランの頭で 1 回書けばよい（LEDGER HK-01。driver も起動時に書く）
+            # フックの設定はランの頭で 1 回書けばよい（driver も起動時に書く）
             write_hook_settings(setting.paths.guard)
         return AgentCall(
             prompt=prompt.text if prompt is not None else None,

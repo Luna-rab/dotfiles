@@ -2,7 +2,7 @@
 
 集約を読み書きするのはメインループだけなので、実行器はメインループのスレッドで呼ばれたときに
 ここで写し取り、別のスレッドへはスナップショットだけを渡す。ここに書くのは「どの集約のどの欄を
-写すか」だけで、何を走らせるか・通すかは決めない（IMPLEMENTING §1）。
+写すか」だけで、何を走らせるか・通すかは決めない。
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ ResumeMode = StartMode
 
 @dataclass(frozen=True)
 class RunSetting:
-    """ランの間変わらない値。組み立ての根が、起動時の引数とリポジトリごとの設定（LEDGER FP-09）から作る。"""
+    """ランの間変わらない値。組み立ての根が、起動時の引数とリポジトリごとの設定から作る。"""
 
     paths: RunPaths
     #: 対象リポジトリの手元の checkout（worktree を足す元。ステージには書かせない）
@@ -72,9 +72,9 @@ class RunSetting:
 
 @dataclass(frozen=True)
 class StagePrompt:
-    #: 標準入力から渡すプロンプト（LEDGER AR-03）
+    #: 標準入力から渡すプロンプト
     text: str
-    #: `--append-system-prompt` に置く、破ると取り返しがつかない決まり（LEDGER CT-01）
+    #: `--append-system-prompt` に置く、破ると取り返しがつかない決まり
     system_append: str | None = None
 
 
@@ -102,7 +102,7 @@ class TaskRow:
 
 @dataclass(frozen=True)
 class OverviewFacts:
-    """RefreshOverview が概要 PR のマーカーを埋める材料（数と状態は毎回ここから組む。LEDGER TX-06）。"""
+    """RefreshOverview が概要 PR のマーカーを埋める材料（数と状態は毎回ここから組む）。"""
 
     tasks: tuple[TaskRow, ...] = ()
     #: 回答を待っているエスカレーション（タスクと種類）

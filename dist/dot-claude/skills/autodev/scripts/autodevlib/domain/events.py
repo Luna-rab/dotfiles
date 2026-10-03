@@ -1,4 +1,4 @@
-"""ドメインイベント（DOMAIN_MODEL §8.1・§8.3・ADDENDUM）。
+"""ドメインイベント。
 
 イベントは起きたことで、過去形で名付ける。各イベントは形の版（`VERSION`）を持つ。形を変えたら
 `VERSION` を上げ、古い版を新しい版に読み替えるアップキャスタを `UPCASTERS` に足す。古いランの
@@ -86,7 +86,7 @@ class RunStarted(Event):
 
 @dataclass(frozen=True)
 class TaskStarted(Event):
-    """タスクを始めた。そのときのラン共通の成果物（brief・codemap・design の版）を載せる（ADDENDUM §7）。"""
+    """タスクを始めた。そのときのラン共通の成果物（brief・codemap・design の版）を載せる。"""
 
     task: TaskId
     kind: TaskKind
@@ -125,7 +125,7 @@ class TasksPlanned(Event):
     #: 上限と依存を見て始め直す（TaskStarted の reopened）。ポリシーは積む頼みを外す（WithdrawRequest）
     withdraw: frozenset[TaskId] = frozenset()
     carry: tuple[FindingTransfer, ...] = ()
-    #: 反映した後もまだ開いている Run のエスカレーション。ラン統括を起こし直す（ADDENDUM §3）
+    #: 反映した後もまだ開いている Run のエスカレーション。ラン統括を起こし直す
     still_open: tuple[EventId, ...] = ()
 
 
@@ -134,7 +134,7 @@ class ReplanRequested(Event):
     reason: str
     trigger: EventId | None = None
     answer: QuestionId | None = None
-    #: 設計が一度でも確定していたか。まだなら Replan ではなく Prepare → Plan からやり直す（ADDENDUM §3）
+    #: 設計が一度でも確定していたか。まだなら Replan ではなく Prepare → Plan からやり直す
     settled_before: bool = True
     #: 反映したときに閉じる Run のエスカレーション。進んでいた再計画（確定した提案を退けた）の
     #: きっかけに、今度のきっかけを足したもの。計画タスクのエスカレーション（一緒に閉じる）は足さない
@@ -175,7 +175,7 @@ class TasksDiscarded(Event):
 class TasksReturnedToQueue(Event):
     #: 積み直す順（下から）
     tasks: tuple[TaskId, ...]
-    #: 積み直すときに切り直すブランチ（tasks と同じ順。ADDENDUM §10 の `-r<積み直した回数>`）
+    #: 積み直すときに切り直すブランチ（tasks と同じ順。`-r<積み直した回数>` が付く）
     branches: tuple[BranchName, ...] = ()
 
 
@@ -222,7 +222,7 @@ class EscalationRaised(Event):
 
 @dataclass(frozen=True)
 class TaskStatusChanged(Event):
-    """Run が持つタスクの状態が変わった（ADDENDUM §2）。`cause` はきっかけのイベントの名前。"""
+    """Run が持つタスクの状態が変わった。`cause` はきっかけのイベントの名前。"""
 
     task: TaskId
     from_status: TaskStatus
@@ -237,7 +237,7 @@ class AllTasksSettled(Event):
 
 @dataclass(frozen=True)
 class SettledPlanRecorded(Event):
-    """確定した提案を Run が受け取った。DiscardTasks の検査と ApplyPlan に使う（ADDENDUM §3）。"""
+    """確定した提案を Run が受け取った。DiscardTasks の検査と ApplyPlan に使う。"""
 
     proposal: Proposal
     #: ラン共通の成果物（brief・codemap・design）
@@ -294,7 +294,7 @@ class RunPanicked(Event):
 
 @dataclass(frozen=True)
 class RunResumed(Event):
-    """既にあるラン名で呼び直された（パニックの後も、driver が落ちた後も。ADDENDUM §9）。
+    """既にあるラン名で呼び直された（パニックの後も、driver が落ちた後も）。
 
     ポリシーは `tasks` の各タスクに ResumeInterrupted を送り、どの実行を続きから再開するかは
     Task が止めた理由（InterruptCause）で決める。
@@ -382,7 +382,7 @@ class StageStarted(Event):
 
 @dataclass(frozen=True)
 class ExecutionRestarted(Event):
-    """再開に失敗した実行を捨てた（restarted。§9.2）。続きは新しい実行で、始めた時点のコミットから。"""
+    """再開に失敗した実行を捨てた（restarted）。続きは新しい実行で、始めた時点のコミットから。"""
 
     execution: ExecutionId
     reason: str
@@ -482,7 +482,7 @@ class GateFailed(Event):
     """Gate が不合格だった（ステージの失敗ではない）。cursor は直前の ReviewLoop の直す役（Fix）を指す。
 
     Fix はすぐには起動しない。G- の指摘を判定した台帳の結果（FindingsEvaluated）を受けた
-    ポリシーの ConcludeGateRound で起動する（ADDENDUM §6）。
+    ポリシーの ConcludeGateRound で起動する。
     """
 
     execution: ExecutionId
@@ -530,7 +530,7 @@ class BaseRecorded(Event):
 
 @dataclass(frozen=True)
 class RoundConcluded(Event):
-    """合成ステージの 1 ラウンドの判定を受けた（ADDENDUM §4）。Gate の不合格の後の判定も含む。
+    """合成ステージの 1 ラウンドの判定を受けた。Gate の不合格の後の判定も含む。
 
     `finished` なら合成ステージを抜けて `produced` を作り、次の段へ進む。そうでなければ、
     同じラウンドの直す役（ReviewLoop は Fix、DesignLoop は Revise）へ進む。行き先は `cursor`。
@@ -605,7 +605,7 @@ class EscalationClosed(Event):
 
     Task では回答以外で片付いたときで、defer で止まっていた実行は abandoned になり、そのフローは
     置き換えを待つ。Run では、ラン統括の判断（answer・insert-task・stop-tasks・apply-plan）や
-    再計画を処理したとき（ADDENDUM §8）。
+    再計画を処理したとき。
     """
 
     escalation: EventId
@@ -691,11 +691,11 @@ class FixCounted(Event):
 
 @dataclass(frozen=True)
 class FindingStalled(Event):
-    """判定の後も、修正を STALL_AFTER_FIXES 回以上受けたまま open に残った（ADDENDUM §5）。
+    """判定の後も、修正を STALL_AFTER_FIXES 回以上受けたまま open に残った。
 
     判定を締めたとき（EvaluateStall・RecordGateResult）に、条件を満たす指摘ごとに 1 つ出る。
     **ただの記録で、これを受けてエスカレーションを出さない。** 停滞のエスカレーションは、同じ
-    コマンドの最後に出る FindingsEvaluated の `stalled` を受けて 1 回だけ上げる（ADDENDUM §4）。
+    コマンドの最後に出る FindingsEvaluated の `stalled` を受けて 1 回だけ上げる。
     台帳は `fixes` を覚え、そこから STALL_AFTER_FIXES 回の修正を受けるまで、同じ指摘を停滞に
     しない（回答の後にすぐまた上げない）。
     """
@@ -798,7 +798,7 @@ class DesignProposed(Event):
 
 @dataclass(frozen=True)
 class DesignRevised(Event):
-    """直した提案の新しい版が入った（ADDENDUM §11: Revise の結果は ProposeDesign で入れる）。"""
+    """直した提案の新しい版が入った（Revise の結果は ProposeDesign で入れる）。"""
 
     proposal: Proposal
     artifacts: tuple[ArtifactRef, ...] = ()
@@ -806,7 +806,7 @@ class DesignRevised(Event):
 
 @dataclass(frozen=True)
 class DesignRevisionStarted(Event):
-    """Revise を起動する前に、ラウンドを 1 つ使った（ADDENDUM §11）。"""
+    """Revise を起動する前に、ラウンドを 1 つ使った。"""
 
     round: int
     #: 回答を待っていた所から続けるなら、その回答。Revise の入力に足す
@@ -820,8 +820,7 @@ class DesignSettled(Event):
     """提案を確定した。
 
     `appendix` は確定した時点で open だった must-fix 以外の指摘で、反応が設計ファイル
-    （`proposal.design` の版）の末尾に書き足し、ポリシーが `execution` の判定として rejected にする
-    （DOMAIN_MODEL §6.4・LEDGER CT-17）。
+    （`proposal.design` の版）の末尾に書き足し、ポリシーが `execution` の判定として rejected にする。
     """
 
     proposal: Proposal
@@ -862,7 +861,7 @@ class DesignRoundsReset(Event):
 
 @dataclass(frozen=True)
 class DesignProposalAbandoned(Event):
-    """確定していない提案を捨てた（再計画を頼まれた。ADDENDUM §3）。"""
+    """確定していない提案を捨てた（再計画を頼まれた）。"""
 
     design: DesignVersion | None
     reason: str
@@ -902,7 +901,7 @@ class GitJobFinished(Event):
 
 @dataclass(frozen=True)
 class GitJobWithdrawn(Event):
-    """タスクを止めたので、そのタスクを相手にする仕事を列から外した（ADDENDUM §2）。
+    """タスクを止めたので、そのタスクを相手にする仕事を列から外した。
 
     `in_progress` なら処理中の仕事で、ポリシーが git 管理タスクのフローを捨てさせる（AbandonFlow）。
     その後に届く、この仕事への AppendEntry などは受けない（ResultRefused）。
@@ -1016,7 +1015,7 @@ class QuestionWithdrawn(Event):
 
 # --- 表 ---
 
-#: 集約ごとに、apply に書くイベント（DOMAIN_MODEL §8.3 に ADDENDUM の追加を足したもの）
+#: 集約ごとに、apply に書くイベント
 EVENTS_BY_AGGREGATE: Mapping[str, tuple[type[Event], ...]] = {
     "Run": (
         RunStarted,

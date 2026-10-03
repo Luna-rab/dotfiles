@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hud.core import pipeline, tasklist
 from hud.core.pipeline import Mark
-from hud_samples import ADDENDUM_TASK, status
+from hud_samples import SAMPLE_TASK, status
 
 
 def plain(steps: list[pipeline.Step]) -> list[tuple[str, str]]:
@@ -16,7 +16,7 @@ def flow(*steps: dict) -> dict:
 
 
 def test_今の合成ステージは中で走っているステージとラウンドを出す():
-    assert plain(pipeline.steps(ADDENDUM_TASK)) == [
+    assert plain(pipeline.steps(SAMPLE_TASK)) == [
         ("テスト作成", "done"),
         ("ジャッジ r2", "current"),
         ("完了チェック", "next"),

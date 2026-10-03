@@ -9,15 +9,11 @@ when_to_use: >-
   「人が見ていなくても進むようにしてほしい」と頼んだとき、走っている autodev のランの質問に
   答えたい・状態を知りたい・ランを片付けたいと言ったときに使う。受入条件が書けるだけの大きさがある
   作業に使う。1 ファイルの小さな修正には重すぎる。
-disable-model-invocation: true
 ---
 
 # autodev
 
-**作り直しの途中である。** 新しい作りに書き直したが、本物の claude・gh でまだ確かめていない。
-
 あなたは driver の外にいて、役目は 3 つだけである: driver を起動する・質問をユーザーに渡す・回答を driver に届ける。
-用語の意味は [GLOSSARY.md](GLOSSARY.md) にある。
 
 入口は `~/.claude/skills/autodev/scripts/autodev.py`（以下 `autodev.py`）。PATH に無いので、毎回この絶対パスで呼ぶ。
 結果の JSON は標準出力に、知らせと落ちた理由は標準エラーに出る。
@@ -73,8 +69,7 @@ driver が走っていれば、置いた回答をそのまま受け取る。回�
 取り下げた質問に答えると、`answer` は 1 で落ち、標準エラーに取り下げた理由が出る。ユーザーに
 「その質問は取り下げられた」と理由を添えて伝え、次の質問を待つ。答え済み・無い質問・空の回答も 1 で落ちる。
 
-状態を知りたいときは `autodev.py status --json --name <ラン名>` を読む。形は
-[redesign/ADDENDUM.md](redesign/ADDENDUM.md) の §12「status --json の形」にある。
+状態を知りたいときは `autodev.py status --json --name <ラン名>` を読む（形は `scripts/autodevlib/infra/status_sections.py`）。
 
 ## 3. 終わったとき
 
@@ -110,5 +105,3 @@ squash マージや rebase マージを済ませたランの `purge` は `--forc
 - 統括の代わりに質問に答える
 - `gh pr merge` / `gh stack merge` を呼ぶ
 - `ask` を呼ぶ（計画ステージが使う）
-
-線引きの理由は [redesign/ARCHITECTURE.md](redesign/ARCHITECTURE.md) の §3・§11 にある。

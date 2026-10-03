@@ -1,4 +1,4 @@
-"""値オブジェクト（DOMAIN_MODEL §4・ADDENDUM）。
+"""値オブジェクト。
 
 どれも不変で、等しさは値で決まる。作るときに形を検査し、不正な値はその場で `InvalidValue` にする。
 集約の状態を見ないと決められない検査（「使ったことのある番号と重ねない」など）は、ここではなく
@@ -74,7 +74,7 @@ def _non_blank(owner: str, value: str) -> None:
 
 
 class RunName(Text):
-    """ラン名。ブランチ名と置き場のパスに入るので、英小文字・数字・`-` の 1〜49 字で、先頭は `-` でない（LEDGER FP-12）。
+    """ラン名。ブランチ名と置き場のパスに入るので、英小文字・数字・`-` の 1〜49 字で、先頭は `-` でない。
 
     `--` と末尾の `-` も拒む。ブランチ名の `stack/<ラン名>--task-<番号>` で、`--` がラン名と
     タスクの区切りになっているため。
@@ -91,7 +91,7 @@ _TASK_ID = r"task[1-9][0-9]*|planning|git"
 class TaskId(Text):
     """`task<番号>`。計画タスクと git 管理タスクは、ランに 1 つずつなので固定の名前を持つ。
 
-    番号を使い回さないこと（捨てたタスクのブランチが残る。LEDGER GH-12）は、使った番号を知っている
+    番号を使い回さないこと（捨てたタスクのブランチが残る）は、使った番号を知っている
     Run が確かめる。
     """
 
@@ -143,7 +143,7 @@ class CommitSha(Text):
 
 
 class FindingId(Text):
-    """`R<番号>`（タスクの台帳）・`D<番号>`（設計の台帳）・`G-<項目>`（Gate の項目ごとの指摘。ADDENDUM §6）。
+    """`R<番号>`（タスクの台帳）・`D<番号>`（設計の台帳）・`G-<項目>`（Gate の項目ごとの指摘）。
 
     台帳の中で一意かは、ReviewLedger が確かめる。
     """
@@ -177,7 +177,7 @@ class FindingId(Text):
 class BranchName(Text):
     """git のブランチ名。ランの base（`main` など）もこれで持つ。
 
-    autodev が切るブランチの規約（LEDGER N-93 を ADDENDUM §11 で採用・ADDENDUM §10）は
+    autodev が切るブランチの規約は
     `overview` と `for_task` で作る。使ったことのある名前と重ねないことは、集約が確かめる。
     """
 
@@ -222,7 +222,7 @@ class PrNumber(Number):
     pass
 
 
-#: autodev が作った概要 PR と分かる印（LEDGER N-93）。ステージには書かせず、driver が付ける
+#: autodev が作った概要 PR と分かる印。ステージには書かせず、driver が付ける
 OVERVIEW_PR_MARK = "[autodev]"
 
 
@@ -336,20 +336,20 @@ class Repository(Text):
 
 
 class VerifyCommand(Text):
-    """検証コマンド 1 本。`bash -lc` で流すので、パイプやリダイレクトを含んでよい（LEDGER FP-01）。"""
+    """検証コマンド 1 本。`bash -lc` で流すので、パイプやリダイレクトを含んでよい。"""
 
     def _check(self) -> None:
         _non_blank("検証コマンド", self.value)
 
 
 class GlobPattern(Text):
-    """テストのパス・変更禁止パス・テストが要らないパス。照合の規則（LEDGER HK-15）はアダプタとフックが持つ。"""
+    """テストのパス・変更禁止パス・テストが要らないパス。照合の規則はアダプタとフックが持つ。"""
 
     def _check(self) -> None:
         _non_blank("glob", self.value)
 
 
-#: テストのパスの既定（LEDGER N-99 を ADDENDUM §11 で採用）
+#: テストのパスの既定
 DEFAULT_TEST_GLOBS: tuple[GlobPattern, ...] = tuple(
     GlobPattern(g)
     for g in (
@@ -414,7 +414,7 @@ class ParallelLimit(Number):
     DEFAULT: ClassVar[int] = 3
 
 
-# --- 歯止めの値（DOMAIN_MODEL §4）。進め方の形は縛らず、回り続けるループを止めて上へ上げる ---
+# --- 歯止めの値。進め方の形は縛らず、回り続けるループを止めて上へ上げる ---
 
 #: タスクを 1 本も積まないまま続けた再計画の数の上限
 MAX_REPLANS_WITHOUT_STACK = 2
@@ -434,7 +434,7 @@ MAX_SUPERVISOR_FAILURES = 2
 
 
 class StageKind(Enum):
-    """ステージの種類（DOMAIN_MODEL §11）。値はフローの JSON に書く名前。"""
+    """ステージの種類。値はフローの JSON に書く名前。"""
 
     # 計画タスク
     PREPARE = "Prepare"
@@ -478,7 +478,7 @@ class StageKind(Enum):
 class ArtifactKind(Enum):
     """ステージが作り、後のステージが要るもの。
 
-    `proposal`（確定前の設計の提案）は DOMAIN_MODEL §4 の列挙に無いが、§11.1 の Plan・Replan の
+    `proposal`（確定前の設計の提案）は、Plan・Replan の
     produces と DesignLoop の needs に「提案」として現れるので足した。FlowValidator が計画タスクの
     フローも同じ規則で照合できるようにするためである。
     """
@@ -507,7 +507,7 @@ class ArtifactKind(Enum):
         return self in (ArtifactKind.TESTS, ArtifactKind.IMPL)
 
 
-#: ラン共通の成果物。計画タスクが作り、TaskStarted・ScopeChanged で実装タスクへ渡る（ADDENDUM §7）
+#: ラン共通の成果物。計画タスクが作り、TaskStarted・ScopeChanged で実装タスクへ渡る
 RUN_SHARED_ARTIFACTS: frozenset[ArtifactKind] = frozenset(
     {ArtifactKind.BRIEF, ArtifactKind.CODEMAP, ArtifactKind.DESIGN}
 )
@@ -561,7 +561,7 @@ class TaskKind(Enum):
 
 
 class TaskStatus(Enum):
-    """Run が持つ、各タスクの状態（DOMAIN_MODEL §9.1・ADDENDUM §2）。"""
+    """Run が持つ、各タスクの状態。"""
 
     PENDING = "pending"
     RUNNING = "running"
@@ -577,7 +577,7 @@ class TaskStatus(Enum):
 
     @property
     def is_terminal(self) -> bool:
-        """終端の状態か（ADDENDUM §11）。`stacked` は破棄されると動くが、終端に数える。"""
+        """終端の状態か。`stacked` は破棄されると動くが、終端に数える。"""
         return self in _TERMINAL_STATUSES
 
 
@@ -598,7 +598,7 @@ class DecisionOrigin(Enum):
 
 
 class EscalationKind(Enum):
-    """DOMAIN_MODEL §8.2 の一覧に、ADDENDUM §6 の `gate-unfixable` を足したもの。"""
+    """エスカレーションの種類。"""
 
     STALL = "stall"
     DESIGN_GAP = "design-gap"
@@ -642,7 +642,7 @@ class IssuerKind(Enum):
 
 
 class GateItem(Enum):
-    """完了チェックの項目（ADDENDUM §6）。"""
+    """完了チェックの項目。"""
 
     #: そのタスクのコミットが親ブランチから 1 件以上ある
     COMMITS = "commits"
@@ -660,7 +660,7 @@ class GateItem(Enum):
     @property
     def escalation(self) -> EscalationKind | None:
         """この項目が落ちたときに上げるエスカレーション。None ならコードを直せば解けるので、
-        上げずに G- の指摘を開く（ADDENDUM §6）。"""
+        上げずに G- の指摘を開く。"""
         return _GATE_ESCALATIONS[self]
 
 
@@ -748,8 +748,8 @@ class Guard:
 
     worktree の外の扱いは、どの LLM のステージでも同じなので欄にしない: ランディレクトリ（自分の
     worktree を除く）・ホームディレクトリ・対象リポジトリの手元の checkout・場所の分からないものへの
-    書き込みは止め、OS の一時ディレクトリ（`/tmp`・`$TMPDIR`）は許す。`gh` と `git push` も止める
-    （DOMAIN_MODEL §4・ARCHITECTURE §10）。規則は `domain/guard.py` にあり、下のメソッドが呼ぶ。
+    書き込みは止め、OS の一時ディレクトリ（`/tmp`・`$TMPDIR`）は許す。`gh` と `git push` も止める。
+    規則は `domain/guard.py` にあり、下のメソッドが呼ぶ。
     決定的なステージは claude を起動しないので、Guard を持たない。
     """
 
@@ -757,7 +757,7 @@ class Guard:
     writes: WriteScope
     #: 指摘の状態を動かせるか（JudgeCapability。Judge・DesignJudge）
     judge: bool = False
-    #: 設計ファイルを渡すか。AdversarialReview には渡さない（LEDGER CT-11・CT-15）
+    #: 設計ファイルを渡すか。AdversarialReview には渡さない
     reads_design: bool = True
     #: ask で聞けるか（計画ステージ。PreToolUse のフックの defer で止める）
     can_ask: bool = False
@@ -810,7 +810,7 @@ class TaskSpec:
 
 @dataclass(frozen=True)
 class Decision:
-    """回答で決めたこと。出どころを持つ（DOMAIN_MODEL §8.2・ADDENDUM §8）。
+    """回答で決めたこと。出どころを持つ。
 
     ユーザーの回答は、その質問の QuestionId を持つ。ラン統括が自分で答えたものは持たない。
     """
@@ -826,7 +826,7 @@ class Decision:
 
     @property
     def is_human(self) -> bool:
-        """DOMAIN_MODEL の `HumanDecision`。ラン統括が答えるときの根拠にしてよいのはこれだけ。"""
+        """ラン統括が答えるときの根拠にしてよいのはこれだけ。"""
         return self.origin is DecisionOrigin.USER
 
 
@@ -997,7 +997,7 @@ class StackEntry:
 
 
 class GitJobKind(Enum):
-    """git 管理タスクの仕事の種類（DOMAIN_MODEL §11.4）。種類ごとの並びは `stages.GIT_JOB_STAGES`。"""
+    """git 管理タスクの仕事の種類。種類ごとの並びは `stages.GIT_JOB_STAGES`。"""
 
     #: ランの開始: 概要ブランチと trees/overview を切る
     CUT_OVERVIEW = "cut-overview"
@@ -1085,7 +1085,7 @@ class GitJob:
 
     @property
     def cut_point(self) -> CutPoint | None:
-        """CutBranch が切る元（ADDENDUM §10 の 4 つの場合）。切る元を持たない仕事は None。
+        """CutBranch が切る元（4 つの場合がある）。切る元を持たない仕事は None。
 
         stack-top は一番上のコミットに HEAD を固定する。概要ブランチはランの base から切る。積み直す
         タスクは前に積んだブランチから、ほかはスタックの一番上から、新しい名前で切る。
@@ -1170,7 +1170,7 @@ class Evidence:
     """実行器が外から集めた証拠。判断は入れない（完了・失敗・エスカレーションを決めるのは Task）。"""
 
     exit: StageExit
-    #: 結果の JSON がスキーマの形をしているか（空なら False。LEDGER AR-16）
+    #: 結果の JSON がスキーマの形をしているか（空なら False）
     result_valid: bool
     #: `produces` の実物を確かめられた成果物
     products: tuple[ArtifactRef, ...] = ()
@@ -1185,9 +1185,9 @@ class Evidence:
     union: UnionVerdict | None = None
     #: Rebase が衝突したファイル
     conflicts: tuple[str, ...] = ()
-    #: エラーで終わったときの理由（result が無ければ標準エラー。LEDGER AR-13）
+    #: エラーで終わったときの理由（result が無ければ標準エラー）
     error: str | None = None
-    #: ガードのフックに拒まれた呼び出しの数（LEDGER AR-26・AR-27）。LLM のステージだけが持つ
+    #: ガードのフックに拒まれた呼び出しの数。LLM のステージだけが持つ
     hook_denials: int = 0
     #: claude を `--resume` で起こした（LLM のステージだけ）
     resumed: bool = False
@@ -1255,9 +1255,9 @@ class Proposal:
     #: 破棄する候補（積んだタスク）。再利用できない理由は設計の本文に書く
     discard: frozenset[TaskId] = frozenset()
     carry: tuple[FindingTransfer, ...] = ()
-    #: 計画ステージが自分の判断で決めたこと。概要 PR の判断ログに載せる（LEDGER N-81）
+    #: 計画ステージが自分の判断で決めたこと。概要 PR の判断ログに載せる
     decisions: tuple[str, ...] = ()
-    #: 計画ステージがスコープの外にしたもの。概要 PR の判断ログに載せる（LEDGER N-81）
+    #: 計画ステージがスコープの外にしたもの。概要 PR の判断ログに載せる
     deferrals: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:

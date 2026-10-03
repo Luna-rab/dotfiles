@@ -1,11 +1,10 @@
-"""`autodev status --json` の組み立てと、走っているステージの進み具合のファイル（DOMAIN_MODEL §7.4・§13 の `StatusQuery`）。
+"""`autodev status --json` の組み立てと、走っているステージの進み具合のファイル。
 
-状態を外から読むのは `status --json` だけで、HUD と `/autodev` はこれを呼ぶ（ARCHITECTURE §10）。
+状態を外から読むのは `status --json` だけで、HUD と `/autodev` はこれを呼ぶ。
 `events` を読むだけの接続で読み、自分で再生する。driver のメインループには関わらない。
 
 外向けの形は、どの集約にも依らない骨組み（形の版・ラン名・最後の seq と時刻・拒んだコマンド）に、
-集約ごとの中身を `sections`（既定は `status_sections.SECTIONS`）で差し込む。形の説明は ADDENDUM §12
-「status --json の形」にある。
+集約ごとの中身を `sections`（既定は `status_sections.SECTIONS`）で差し込む。
 """
 
 from __future__ import annotations
@@ -104,7 +103,7 @@ def all_statuses(env: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
 # --- 進み具合 ---
 #
 # 正本ではない使い捨てのファイル。ステージ 1 回で数百の stream-json のイベントが流れるので、
-# イベントにすると events が膨らむ（ARCHITECTURE §8）。消えても状態は変わらない。
+# イベントにすると events が膨らむ。消えても状態は変わらない。
 
 
 def write_progress(paths: RunPaths, execution: ExecutionId, progress: Mapping[str, Any]) -> None:

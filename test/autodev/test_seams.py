@@ -644,7 +644,7 @@ def plan_on_worktree(e: WorktreeReady, src: EventId) -> list[Draft]:
 
 
 def status(to: TaskStatus) -> Callable[[Event, EventId], list[Draft]]:
-    """Task・Stack のイベントで、Run が持つタスクの状態を動かす（ADDENDUM §2）。"""
+    """Task・Stack のイベントで、Run が持つタスクの状態を動かす。"""
 
     def build(e: Event, src: EventId) -> list[Draft]:
         if isinstance(e, GitJobTaken):

@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 def write_atomic(path: Path, text: str) -> None:
-    """一時ファイルに書いてから置き換える（LEDGER FP-04）。
+    """一時ファイルに書いてから置き換える。
 
     途中で落ちても壊れた中身が残らず、読む側（Monitor・HUD・status）が書きかけを読まない。
     一時ファイルを同じディレクトリに作るのは、`os.replace` がファイルシステムをまたげないため。

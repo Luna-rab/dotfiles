@@ -1,4 +1,4 @@
-"""Design: 設計ファイルの版と、確定前の提案（DOMAIN_MODEL §6.4・ADDENDUM §3・§4・§11）。
+"""Design: 設計ファイルの版と、確定前の提案。
 
 ストリームは `design`。版の本文は `design/v<版>.md` にあり、イベントは版の番号だけを持つ。
 
@@ -22,7 +22,7 @@ stateDiagram-v2
 - 提案を確定してよいのは、今の提案の版を判定した DesignJudge が、open の must-fix を 0 件と
   締めたときだけ。must-fix 以外の open の指摘は、確定したときに設計ファイルの末尾に書き足し
   （`DesignSettled.appendix`）、rejected にする。設計は直すたびに細かい指摘が立ち、must-fix 以外で
-  直し続けると往復が終わらない（LEDGER CT-17）
+  直し続けると往復が終わらない
 - 版は消さず、番号は増えるだけ（DesignJudge が過去の版と見比べる）。番号を選ぶのは本文を
   `design/v<版>.md` に書く側で、ここは使った番号と重ねないことだけを確かめる
 - 1 つの提案で回せる設計のラウンドは MAX_DESIGN_ROUNDS まで。Revise を起動する前に ReviseDesign を
@@ -34,7 +34,7 @@ stateDiagram-v2
 - 判定（ReviseDesign・MarkReverted・MarkAmbiguous・SettleDesign）は、提案があり、Revise の途中でも
   回答待ちでもないときだけ、計画タスクの DesignJudge の実行の結果から受ける
 - 新しい提案（Plan・Replan）は、確定していない提案が無いときだけ受ける。Plan は設計が一度も
-  確定していないとき、Replan は確定した設計があるときだけ（ADDENDUM §3）
+  確定していないとき、Replan は確定した設計があるときだけ
 - **ステージの結果（提案・判定）の中身の問題は、拒否ではなく ResultRefused で返す**（今の状態と
   合わない・使った版の番号・判定した版が今の提案と違う・戻った先の版が無い など）。拒否
   （Rejected）にするのは、出した者の取り違え（計画タスクのステージでない・判定する者でない・

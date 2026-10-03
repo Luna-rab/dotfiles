@@ -60,7 +60,7 @@ def scenario(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str) -> Path
 
 
 def test_ツールの一覧はカンマでつないで1引数にしプロンプトは引数に置かない():
-    """--allowedTools は次のオプションまで後ろの引数を全部取る（LEDGER AR-03）。"""
+    """--allowedTools は次のオプションまで後ろの引数を全部取る。"""
     call = AgentCall(
         prompt="やること",
         cwd="/w",
@@ -117,7 +117,7 @@ def test_resultから事実を拾う(claude: str, tmp_path: Path, monkeypatch: p
     assert seen[-1].turns == 2
     assert seen[-1].last_tool == "Bash"
     assert seen[-1].hook_denials == 2
-    # プロンプトは標準入力から、uuid を振って渡す（AR-03・AR-07）
+    # プロンプトは標準入力から、uuid を振って渡す
     sent = json.loads(json.loads(record.read_text(encoding="utf-8"))["stdin"][0])
     assert sent["type"] == "user"
     assert sent["message"]["content"] == "やること"
@@ -127,7 +127,7 @@ def test_resultから事実を拾う(claude: str, tmp_path: Path, monkeypatch: p
 def test_課金の変数を外しOAuthのトークンは通す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """空文字でも「設定あり」と読む相手がいるので、変数ごと消す（LEDGER AR-01）。"""
+    """空文字でも「設定あり」と読む相手がいるので、変数ごと消す。"""
     record = scenario(monkeypatch, tmp_path, "success")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "")
@@ -191,7 +191,7 @@ def test_壊した環境ではgitが保存済みの資格情報を取り出せ�
 def test_構造化出力が空でもsuccessのまま空を返す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """形を確かめて失敗にするのは実行器と Task で、ここでは空を空のまま返す（LEDGER AR-16）。"""
+    """形を確かめて失敗にするのは実行器と Task で、ここでは空を空のまま返す。"""
     scenario(monkeypatch, tmp_path, "empty-structured")
     got = runtime(claude).run(make_call(tmp_path))
     assert got.subtype == "success"
@@ -202,7 +202,7 @@ def test_構造化出力が空でもsuccessのまま空を返す(
 def test_deferで止まった呼び出しを返す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """再開ではプロンプトを渡さない（LEDGER AR-21）。止まった呼び出しは result に載る（HK-20）。"""
+    """再開ではプロンプトを渡さない。止まった呼び出しは result に載る。"""
     record = scenario(monkeypatch, tmp_path, "deferred")
     got = runtime(claude).run(make_call(tmp_path, prompt=None, resume=True))
     assert got.subtype == "success"
@@ -217,7 +217,7 @@ def test_deferで止まった呼び出しを返す(
 def test_resultが無ければ標準エラーを返す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """引数の誤りは標準エラーにだけ出る（LEDGER AR-13）。"""
+    """引数の誤りは標準エラーにだけ出る。"""
     scenario(monkeypatch, tmp_path, "no-result")
     got = runtime(claude).run(make_call(tmp_path))
     assert got.ending is Ending.NO_RESULT
@@ -330,7 +330,7 @@ def test_overageStatusがrejectedでも利用枠の上限に当たっていな�
 def test_interruptを送るとresultが返る(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """kill と違って usage と停止理由が残る（LEDGER AR-06）。cancel_queued は capability を見て付ける（AR-08）。"""
+    """kill と違って usage と停止理由が残る。cancel_queued は capability を見て付ける。"""
     record = scenario(monkeypatch, tmp_path, "interruptible")
     process = runtime(claude).start(make_call(tmp_path))
     threading.Timer(0.3, process.interrupt, args=("止める",)).start()
@@ -375,7 +375,7 @@ def test_interruptは何度呼んでも制御要求を1回だけ送る(
 def test_interruptが効かなければ一定時間でkillする(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """interrupt を送っても result が返らないことがある（LEDGER AR-11）。"""
+    """interrupt を送っても result が返らないことがある。"""
     scenario(monkeypatch, tmp_path, "stubborn")
     process = runtime(claude, interrupt_grace=0.3).start(make_call(tmp_path))
     threading.Timer(0.3, process.interrupt, args=("止める",)).start()
@@ -397,7 +397,7 @@ def test_制限時間を過ぎたらinterruptを送る(
 def test_resultの後に終わらなければkillしてもresultは残る(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """result を見たら標準入力を閉じ、待つ時間を決めて kill する（LEDGER AR-10）。"""
+    """result を見たら標準入力を閉じ、待つ時間を決めて kill する。"""
     scenario(monkeypatch, tmp_path, "lingering")
     got = runtime(claude, exit_grace=0.3).run(make_call(tmp_path))
     assert got.ending is Ending.RESULT
@@ -407,7 +407,7 @@ def test_resultの後に終わらなければkillしてもresultは残る(
 def test_ログは上書きせず書き足しプロンプトも残す(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """同じステージを 2 度呼ぶことがある。再開ではプロンプトを渡さないので、最初の指示はログにしか残らない（AR-24）。"""
+    """同じステージを 2 度呼ぶことがある。再開ではプロンプトを渡さないので、最初の指示はログにしか残らない。"""
     scenario(monkeypatch, tmp_path, "success")
     call = make_call(tmp_path)
     runtime(claude).run(call)
@@ -422,7 +422,7 @@ def test_ログは上書きせず書き足しプロンプトも残す(
 def test_進み具合を受ける関数が落ちてもステージは止めない(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """監視の誤りでステージを止めない（LEDGER AR-25）。"""
+    """監視の誤りでステージを止めない。"""
     scenario(monkeypatch, tmp_path, "success")
 
     def broken(_: Progress) -> None:
@@ -434,7 +434,7 @@ def test_進み具合を受ける関数が落ちてもステージは止めな�
 def test_進み具合は間隔を空けて知らせる(
     claude: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """数百のイベントのたびには知らせない（AR-28）。フックに拒まれた回数が変わったときは知らせる。"""
+    """数百のイベントのたびには知らせない。フックに拒まれた回数が変わったときは知らせる。"""
     scenario(monkeypatch, tmp_path, "success")
     seen: list[Progress] = []
     AgentRuntime(claude, progress_interval=3600).run(make_call(tmp_path), seen.append)

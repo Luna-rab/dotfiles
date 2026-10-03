@@ -1,7 +1,6 @@
 """雛形と本文のマーカー（`<!-- autodev:<名前> -->`）を埋める。
 
-`string.Template` は使わない。通すと `$$` が `$` になり、`${tasks}` のような文字列が消える（LEDGER
-TX-01・TX-02）。マーカーの規則（TX-03〜TX-05）:
+`string.Template` は使わない。通すと `$$` が `$` になり、`${tasks}` のような文字列が消える。マーカーの規則:
 
 - 1 回の走査で置き換え、差した中身は読み直さない。中身に入ったマーカーの文字列・`\\1`・`$$` は
   そのまま残る
@@ -27,7 +26,7 @@ def fill(body: str, values: Mapping[str, str]) -> str:
 
 
 def templates_dir() -> Path:
-    """スキルの根の `templates/`。階層を数えて上らず、`SKILL.md` を探して決める（LEDGER FP-06）。"""
+    """スキルの根の `templates/`。階層を数えて上らず、`SKILL.md` を探して決める。"""
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "SKILL.md").is_file():

@@ -11,12 +11,12 @@ driver は Guard と場所の根のパス（`GuardContext`）を環境変数 `AU
 それを組み立て直して Guard に判定させる。
 
 - フックの設定（`claude --settings` に渡す JSON）はランの頭で 1 回書けばよく、何を止めるかは
-  ステージごとに環境変数で渡す（LEDGER HK-01）。フックは claude の環境を受け継ぐ
-- フックは終了コード 2 で呼び出しを止め、標準エラーに書いた理由がモデルに渡る（HK-02）。
-  `bypassPermissions` でも走る（HK-03）
-- フックの入力が読めない・設定が渡っていない・フックの中で例外が出たときは止める（LEDGER N-92 を
-  ADDENDUM §11 で採用）。フックが黙って落ちると、ガードが消えたまま走る（HK-19）
-- フックでは Bash 越しの書き込みを全部は見つけられない（HK-10）。worktree の中は最後に git の差分で
+  ステージごとに環境変数で渡す。フックは claude の環境を受け継ぐ
+- フックは終了コード 2 で呼び出しを止め、標準エラーに書いた理由がモデルに渡る。
+  `bypassPermissions` でも走る
+- フックの入力が読めない・設定が渡っていない・フックの中で例外が出たときは止める。
+  フックが黙って落ちると、ガードが消えたまま走る
+- フックでは Bash 越しの書き込みを全部は見つけられない。worktree の中は最後に git の差分で
   確かめられる。gh と git push には、起動するときに資格情報を外す二重の栓がある
   （`agent_runtime.github_withheld_env`）
 """
@@ -43,14 +43,14 @@ from .shell import Where, bash_facts, expand, is_literal, name_of, simple_comman
 
 #: フックへ Guard と GuardContext を渡す環境変数
 GUARD_ENV = "AUTODEV_GUARD"
-#: フックの `matcher`。MultiEdit は `edits[].file_path`、NotebookEdit は `notebook_path` に宛先がある（HK-05）
+#: フックの `matcher`。MultiEdit は `edits[].file_path`、NotebookEdit は `notebook_path` に宛先がある
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Bash"
 ASK_MATCHER = "Bash"
 DENY_WRITES = "deny-writes.py"
 PARK_ON_ASK = "park-on-ask.py"
-#: ask の入口のファイル名。ask の呼び出しは入口のパスで見分ける（HK-23）
+#: ask の入口のファイル名。ask の呼び出しは入口のパスで見分ける
 LAUNCHER = "autodev.py"
-#: 回答のファイルの置き場（ランディレクトリから。DOMAIN_MODEL §14）
+#: 回答のファイルの置き場（ランディレクトリから）
 ANSWERS_DIR = "answers"
 #: 止まった呼び出しを通すとき、回答のファイルのパスを ask のコマンドに足す引数
 ANSWER_FILE_OPTION = "--answer-file"
@@ -156,7 +156,7 @@ def load(environ: Mapping[str, str]) -> tuple[Guard, GuardContext]:
             reads_design=rules["readsDesign"] is True,
             can_ask=rules["canAsk"] is True,
         )
-        # テストのパスが渡らなかったら既定に戻し、テストを無防備にしない（HK-18）
+        # テストのパスが渡らなかったら既定に戻し、テストを無防備にしない
         test_globs = tuple(GlobPattern(g) for g in where.get("testGlobs") or ())
         context = GuardContext(
             tree=_absolute(where["tree"]),
@@ -183,7 +183,7 @@ def _absolute(path: Any) -> str:
 
 
 def hooks_dir() -> Path:
-    """スキルの根の `hooks/`。階層を数えて上らず、`SKILL.md` を探して決める（LEDGER FP-06）。"""
+    """スキルの根の `hooks/`。階層を数えて上らず、`SKILL.md` を探して決める。"""
     here = Path(__file__).resolve()
     for parent in here.parents:
         if (parent / "SKILL.md").is_file():
@@ -192,10 +192,10 @@ def hooks_dir() -> Path:
 
 
 def hook_settings(python: str | None = None, hooks: Path | None = None) -> dict[str, Any]:
-    """`claude --settings` に渡す設定。worktree には置かない（commit に混ざる。HK-01）。
+    """`claude --settings` に渡す設定。worktree には置かない（commit に混ざる）。
 
     判断の優先順位は deny > defer なので、書き込みを止めるフックと ask を止めるフックを並べても
-    順番を気にしなくてよい（HK-22）。
+    順番を気にしなくてよい。
     """
     interpreter = python or sys.executable
     where = hooks or hooks_dir()
@@ -214,7 +214,7 @@ def hook_settings(python: str | None = None, hooks: Path | None = None) -> dict[
 
 
 def write_hook_settings(path: str | os.PathLike[str], python: str | None = None) -> Path:
-    """`guard.json` を書く。一時ファイルに書いてから置き換える（LEDGER FP-04）。"""
+    """`guard.json` を書く。一時ファイルに書いてから置き換える。"""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(hook_settings(python), ensure_ascii=False, indent=2) + "\n"
@@ -488,7 +488,7 @@ def _decision(kind: str, **extra: Any) -> str:
 def park(guard: Guard, context: GuardContext, payload: Mapping[str, Any]) -> HookReply:
     """ask の呼び出しを、Guard の判断（回答のファイルが無ければ defer・在れば通す）に従って返す。
 
-    `--resume` すると同じ呼び出しで PreToolUse がもう一度走り、tool_use_id は変わらない（HK-20）。
+    `--resume` すると同じ呼び出しで PreToolUse がもう一度走り、tool_use_id は変わらない。
     通すときは、ask の単純コマンドの語に回答のファイルのパスを足した 1 つのコマンドに置き換える
     （コマンドは tool_use_id を知らない。元の行の後ろに足すと、パイプや `;` の先へ渡ってしまう）。
     """
@@ -526,7 +526,7 @@ def guard_writes(guard: Guard, context: GuardContext, payload: Mapping[str, Any]
 
 
 def run_hook(handler: str, stdin: str, environ: Mapping[str, str]) -> HookReply:
-    """フックの入口が呼ぶ。読めない入力・渡っていない設定・例外は、どれも止める側に倒す（N-92）。"""
+    """フックの入口が呼ぶ。読めない入力・渡っていない設定・例外は、どれも止める側に倒す。"""
     try:
         payload = json.loads(stdin)
         if not isinstance(payload, dict):

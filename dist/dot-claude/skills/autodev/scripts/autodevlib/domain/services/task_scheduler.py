@@ -1,7 +1,7 @@
-"""始められる実装タスクを選ぶ（DOMAIN_MODEL §10 の TaskScheduler）。
+"""始められる実装タスクを選ぶ。
 
 Run が `StartTask`・`StartReadyTasks` を受けたときに使う。実装タスクを始めてよいかを決めるのは
-ここだけである（DOMAIN_MODEL §6.2）。
+ここだけである。
 """
 
 from __future__ import annotations

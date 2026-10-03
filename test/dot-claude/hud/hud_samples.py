@@ -50,8 +50,8 @@ def stamp(at: dt.datetime) -> str:
     return at.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-#: ADDENDUM §12「status --json の形」の例の task1。時刻だけ `status()` が埋める
-ADDENDUM_TASK: dict[str, Any] = {
+#: `status --json` の task1 の見本。時刻だけ `status()` が埋める
+SAMPLE_TASK: dict[str, Any] = {
     "id": "task1",
     "kind": "implementation",
     "title": "パーサを足す",
@@ -101,20 +101,20 @@ ADDENDUM_TASK: dict[str, Any] = {
 
 
 def task(**over) -> dict[str, Any]:
-    """実装タスク。ADDENDUM の例の欄を持ち、フローも実行も無い未着手のもの。"""
-    base = copy.deepcopy(ADDENDUM_TASK)
+    """実装タスク。見本の欄を持ち、フローも実行も無い未着手のもの。"""
+    base = copy.deepcopy(SAMPLE_TASK)
     base.update(status="pending", flow=None, executions=[], branch=None)
     base.update(over)
     return base
 
 
 def status(**over) -> dict[str, Any]:
-    """ADDENDUM の例のラン。task1 の Judge が 4 分 12 秒走っていて、回答を待つ質問が 1 つある。
+    """見本のラン。task1 の Judge が 4 分 12 秒走っていて、回答を待つ質問が 1 つある。
 
     例の task1 のほかに、終えた計画タスク・積んだ task2・未着手の task3・エスカレーション中の task4 を足す。
     """
     now = dt.datetime.now().astimezone()
-    running = copy.deepcopy(ADDENDUM_TASK)
+    running = copy.deepcopy(SAMPLE_TASK)
     started = stamp(now - dt.timedelta(minutes=4, seconds=12))
     running["executions"][0]["started_at"] = started
     running["executions"][0]["progress"]["updated"] = stamp(now)

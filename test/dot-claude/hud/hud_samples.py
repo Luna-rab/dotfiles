@@ -119,6 +119,27 @@ SAMPLE_TASK: dict[str, Any] = {
 }
 
 
+#: `status --json` の指摘 1 つの見本（`tasks[].findings[]`・`plan.findings[]`）
+SAMPLE_FINDING: dict[str, Any] = {
+    "id": "R1",
+    "rating": "must-fix",
+    "status": "open",
+    "body": "空の入力で落ちる",
+    "location": "parser.py:12",
+    "fixes": 0,
+    "stalled": False,
+    "comments": [],
+    "design": None,
+}
+
+
+def finding(**over) -> dict[str, Any]:
+    """指摘 1 つ。見本の欄を持つ。"""
+    base = copy.deepcopy(SAMPLE_FINDING)
+    base.update(over)
+    return base
+
+
 def execution(**over) -> dict[str, Any]:
     """実行 1 つ。見本の Judge の欄を持つ。"""
     base = copy.deepcopy(SAMPLE_EXECUTION)

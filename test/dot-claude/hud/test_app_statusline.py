@@ -16,6 +16,7 @@ from hud.ports import autodev
 from hud_samples import (
     calls,
     execution,
+    finding,
     judge,
     quiet,
     session,
@@ -267,3 +268,56 @@ def test_statusが返らなければそう出す(tmp_path):
     entry.write_text("import sys; sys.stderr.write('autodev: まだ動かない\\n'); sys.exit(1)")
     lines = run(tmp_path, statuses=[], entry=str(entry))
     assert lines[4:] == ["autodev status を読めない · autodev: まだ動かない"]
+
+
+def row_of(lines: list[str], task_id: str) -> str:
+    """タスク `task_id` の行。タスクリストを右に置いても下に置いても、記号から先だけを返す。"""
+    rows = [line.split("│")[-1].strip() for line in lines]
+    found = [row for row in rows if row.split()[1:2] == [task_id]]
+    assert len(found) == 1, lines
+    return found[0]
+
+
+def test_走っているタスクの行に開いている指摘の件数を評価ごとに出し行数は変えない(tmp_path):
+    plain = run(tmp_path, columns=400, statuses=[status()])
+    st = status()
+    st["tasks"][1]["findings"] = [
+        *(finding(id=f"R{i}", rating="must-fix") for i in (1, 2)),
+        *(finding(id=f"R{i}", rating="should-fix") for i in (3, 4, 5)),
+        # 閉じた指摘は数えない
+        finding(id="R6", rating="must-fix", status="closed"),
+        finding(id="R7", rating="nit", status="rejected"),
+    ]
+    lines = run(tmp_path, columns=400, statuses=[st])
+    row = row_of(lines, "task1")
+    assert "指摘 must 2 / should 3" in row
+    assert "nit" not in row
+    assert len(lines) == len(plain)
+
+
+def test_開いている指摘が無ければ指摘を出さない(tmp_path):
+    st = status()
+    st["tasks"][1]["findings"] = [finding(status="closed"), finding(id="R2", status="carried")]
+    assert "指摘" not in row_of(run(tmp_path, columns=400, statuses=[st]), "task1")
+
+
+def escalation(**over) -> dict:
+    """見本の task4 のエスカレーションを写して変えたもの。"""
+    base = dict(status()["tasks"][4]["escalations"][0])
+    base.update(over)
+    return base
+
+
+def test_エスカレーション中のタスクの行は最初の理由の頭24字を出し種類を出さない(tmp_path):
+    head = "一二三四五六七八九十" * 2 + "一二三四"
+    reason = head + "壱弐参肆伍陸"
+    assert (len(head), len(reason)) == (24, 30)
+    st = status()
+    st["tasks"][4]["escalations"] = [
+        escalation(kind="ask", reason=reason, question="空の入力は弾くか"),
+        escalation(id="task4#4", kind="stall", reason="二つ目の理由"),
+    ]
+    detail = row_of(run(tmp_path, columns=400, statuses=[st]), "task4").split("移行", 1)[1]
+    assert head in detail
+    assert not any(c in detail for c in "壱弐参肆伍陸")
+    assert "ask" not in detail and "stall" not in detail and "二つ目" not in detail

@@ -6,7 +6,7 @@ import asyncio
 import time
 
 from hud.app.watch import Level, Watch
-from hud_samples import calls, status, write_fake_entry
+from hud_samples import calls, finding, status, write_fake_entry
 from textual.pilot import Pilot
 
 #: `--name` を付けたときだけ終了コード `code` で落ち、一覧は `FAKE_STATUS` を返す入口。
@@ -80,6 +80,27 @@ def test_ランから段までEnterで入りEscで戻る(tmp_path, monkeypatch):
             await pilot.press("escape")
             await settle(pilot)
             assert app.level is Level.RUNS
+
+    asyncio.run(drive())
+
+
+def test_指摘や判断の履歴があっても層はランとタスクと段のまま(tmp_path, monkeypatch):
+    st = status()
+    st["tasks"][1]["findings"] = [finding(), finding(id="R2", status="closed")]
+    st["tasks"][1]["notes"] = [{"text": "空の入力は弾く", "origin": "user", "question": "q1"}]
+    st["plan"]["findings"] = [finding(id="D1", design=1)]
+    fake(tmp_path, monkeypatch, [st])
+
+    async def drive() -> None:
+        app = Watch()
+        async with app.run_test(size=(160, 40)) as pilot:
+            await settle(pilot)
+            for level in (Level.TASKS, Level.STAGES, Level.STAGES):
+                await pilot.press("enter")
+                await settle(pilot)
+                assert app.level is level
+            # 指摘は段の下の層にならず、段の項目のまま
+            assert app.cursor[Level.STAGES] == "step:1"
 
     asyncio.run(drive())
 

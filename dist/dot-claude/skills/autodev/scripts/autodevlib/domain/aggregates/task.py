@@ -115,6 +115,7 @@ from ..value_objects.event_id import EventId
 from ..value_objects.evidence import Evidence
 from ..value_objects.execution_id import ExecutionId
 from ..value_objects.finding_id import FindingId
+from ..value_objects.gate_item_result import GateItemResult
 from ..value_objects.gate_report import GateReport
 from ..value_objects.hint import Hint
 from ..value_objects.interrupt_cause import InterruptCause
@@ -225,6 +226,10 @@ class Execution:
     #: 最後の StageStarted が、どの状態から続けたものか（interrupted・deferred）。初めて始めたなら
     #: None。実行器が再開のしかた（プロンプトを渡すか・続きの指示か）を決めるのに読む
     resumed_from: ExecutionStatus | None = None
+    #: 終わった理由（失敗・取り消し・やり直し・受け渡しの失敗・報告）。完了・中断なら None
+    end_reason: str | None = None
+    #: Gate で落ちた項目（GateFailed.failed）
+    gate_failures: tuple[GateItemResult, ...] = ()
 
     @property
     def position(self) -> tuple[int, StageKind, int]:
@@ -248,6 +253,10 @@ class OpenEscalation:
     origin: ExecutionId | None
     #: 上げたときのフローの版。今のフローのものを回答以外で閉じたら、そのフローは置き換えを待つ
     flow_version: int | None = None
+    #: 上げる理由（EscalationRaised.reason）
+    reason: str = ""
+    #: ユーザーに聞くとよいこと（EscalationRaised.question）
+    question: str | None = None
 
 
 @dataclass(frozen=True)
@@ -412,15 +421,20 @@ class Task(Aggregate):
 
     def executions_at(self, step: int) -> list[Execution]:
         """今のフローの版で、その段の実行（始めた順）。"""
-        raise NotImplementedError
+        return [e for e in self.executions.values() if not self._is_obsolete(e) and e.step == step]
 
     def earlier_executions(self) -> list[Execution]:
         """書き直す前のフローの版で、まだ走っている実行（始めた順）。"""
-        raise NotImplementedError
+        return [e for e in self.current_executions() if self._is_obsolete(e)]
 
     def unplaced_executions(self) -> list[Execution]:
         """今のフローの版の実行で、step が flow.steps のどの添字にも当たらないもの（始めた順）。"""
-        raise NotImplementedError
+        if self.flow is None:
+            return []
+        steps = range(len(self.flow.steps))
+        return [
+            e for e in self.executions.values() if not self._is_obsolete(e) and e.step not in steps
+        ]
 
     def running_executions(self) -> list[ExecutionId]:
         """running のまま残っている実行（メインループが起動時とパニックのときに聞く）。"""
@@ -1436,12 +1450,13 @@ class Task(Aggregate):
             start_commit=event.start_commit,
             session=event.session,
             interrupted_by=None,
+            end_reason=None,
             resumed_from=before if before in _RESUMED_FROM else None,
         )
 
     @applies(ExecutionRestarted)
     def _on_restarted(self, event: ExecutionRestarted) -> None:
-        self._mark(event.execution, _X.RESTARTED)
+        self._mark(event.execution, _X.RESTARTED, end_reason=event.reason)
 
     @applies(StageCompleted)
     def _on_completed(self, event: StageCompleted) -> None:
@@ -1473,14 +1488,14 @@ class Task(Aggregate):
 
     @applies(HandoffFailed)
     def _on_handoff_failed(self, event: HandoffFailed) -> None:
-        execution = self._mark(event.execution, _X.REFUSED, awaiting=None)
+        execution = self._mark(event.execution, _X.REFUSED, awaiting=None, end_reason=event.reason)
         key = (execution.flow_version, *execution.position)
         if self.completed.get(key) == execution.id:
             del self.completed[key]
 
     @applies(StageFailed)
     def _on_failed(self, event: StageFailed) -> None:
-        execution = self._mark(event.execution, _X.FAILED)
+        execution = self._mark(event.execution, _X.FAILED, end_reason=event.reason)
         if not self._is_obsolete(execution):
             self.failures[execution.position] = self.failures.get(execution.position, 0) + 1
 
@@ -1494,14 +1509,17 @@ class Task(Aggregate):
 
     @applies(StageReported)
     def _on_reported(self, event: StageReported) -> None:
-        execution = self._mark(event.execution, _X.REPORTED)
+        reason = event.reason or event.kind.value
+        execution = self._mark(event.execution, _X.REPORTED, end_reason=reason)
         if not self._is_obsolete(execution):
             self.failures.pop(execution.position, None)
 
     @applies(GateFailed)
     def _on_gate_failed(self, event: GateFailed) -> None:
         # 調べる先は、G- の指摘が停滞したときの上げに添える
-        self._mark(event.execution, _X.COMPLETED, pointers=event.pointers)
+        self._mark(
+            event.execution, _X.COMPLETED, pointers=event.pointers, gate_failures=event.failed
+        )
         self.cursor = event.cursor
         self.gate_failed = event.execution
 
@@ -1539,7 +1557,7 @@ class Task(Aggregate):
 
     @applies(StageCancelled)
     def _on_cancelled(self, event: StageCancelled) -> None:
-        self._mark(event.execution, _X.ABANDONED)
+        self._mark(event.execution, _X.ABANDONED, end_reason=event.reason)
 
     @applies(TaskGated)
     def _on_gated(self, event: TaskGated) -> None:
@@ -1553,7 +1571,7 @@ class Task(Aggregate):
     def _on_escalated(self, event: EscalationRaised) -> None:
         version = self.flow.version if self.flow is not None else None
         self.escalations[self.event_id] = OpenEscalation(
-            self.event_id, event.kind, event.origin, version
+            self.event_id, event.kind, event.origin, version, event.reason, event.question
         )
         origin = self.executions.get(event.origin) if event.origin is not None else None
         if origin is not None and not self._is_obsolete(origin):

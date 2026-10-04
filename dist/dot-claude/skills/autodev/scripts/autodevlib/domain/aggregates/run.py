@@ -148,7 +148,10 @@ class RunPhase(Enum):
     @property
     def expects_driver(self) -> bool:
         """driver が走っているはずのフェーズ（running・planning・finishing）。"""
-        raise NotImplementedError
+        return self in _DRIVEN_PHASES
+
+
+_DRIVEN_PHASES = frozenset({RunPhase.PLANNING, RunPhase.RUNNING, RunPhase.FINISHING})
 
 
 @dataclass(frozen=True)
@@ -176,6 +179,12 @@ class TaskEntry:
     def is_implementation(self) -> bool:
         return self.id.kind is TaskKind.IMPLEMENTATION
 
+    @property
+    def own_findings(self) -> StreamId | None:
+        """そのタスクの欄に出す指摘の台帳。実装タスクだけが持つ（計画タスクの指摘は設計の台帳で、
+        ランの計画として出す）。"""
+        return StreamId.review(self.id) if self.is_implementation else None
+
 
 @dataclass(frozen=True)
 class RunEscalation:
@@ -192,6 +201,10 @@ class RunEscalation:
     failures: int = 0
     #: 答え以外では閉じられない（EscalationRaised.answer_only）
     answer_only: bool = False
+    #: 上げる理由（EscalationRaised.reason）
+    reason: str = ""
+    #: ユーザーに聞くとよいこと（EscalationRaised.question）
+    question: str | None = None
 
     @property
     def route(self) -> Route:
@@ -342,15 +355,20 @@ class Run(Aggregate):
                 return DesignVersion(int(artifact.at))
         return None
 
+    def driver_stopped(self, driver_running: bool, awaiting_answer: bool) -> bool:
+        """driver が走っているはずのフェーズなのに走っておらず、回答を待っているのでもない。
+        driver の事実と回答待ちはこの集約の外にあるので、呼ぶ側が渡す。"""
+        return self.phase.expects_driver and not driver_running and not awaiting_answer
+
     @property
     def stacked_count(self) -> int:
         """実装タスクのうち、status が stacked の数。"""
-        raise NotImplementedError
+        return sum(1 for entry in self.implementation_tasks if entry.status is _S.STACKED)
 
     @property
     def stack_target_count(self) -> int:
         """実装タスクのうち、dropped・superseded・discarded を除いた数（積む数の分母）。"""
-        raise NotImplementedError
+        return sum(1 for entry in self.implementation_tasks if entry.status not in _UNTOUCHABLE)
 
     @property
     def implementation_tasks(self) -> tuple[TaskEntry, ...]:
@@ -1214,6 +1232,8 @@ class Run(Aggregate):
             event.failed_notice,
             event.failures,
             event.answer_only,
+            event.reason,
+            event.question,
         )
         self.opened_escalations.add(self.event_id)
         # ラン統括が応じなかった上げは、応じなかった知らせのタスクに関わる

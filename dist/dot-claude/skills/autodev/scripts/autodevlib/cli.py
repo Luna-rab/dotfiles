@@ -213,14 +213,15 @@ def cmd_status(args: argparse.Namespace) -> int:
         _emit(all_statuses())
         return OK
     paths = _paths(args.name)
-    if not paths.events_db.is_file():
-        # HUD は 5 を見て、ランが消えたと見分ける
-        _say(f"そのランが無い: {paths.events_db}")
-        return int(ExitCode.RUN_NOT_FOUND)
     try:
         _emit(run_status(paths))
     except FileNotFoundError as error:
-        raise Failed(f"そのランが無い: {error}") from error
+        if paths.events_db.is_file():
+            # events.db はあるので、ランが無いのではなく status を組めなかった
+            raise Failed(f"ランを読めない: {error}") from error
+        # HUD は 5 を見て、ランが消えたと見分ける
+        _say(f"そのランが無い: {paths.events_db}")
+        return int(ExitCode.RUN_NOT_FOUND)
     return OK
 
 

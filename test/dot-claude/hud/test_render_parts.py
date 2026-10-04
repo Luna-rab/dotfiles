@@ -10,7 +10,7 @@ from hud.core.pipeline import Mark, Step
 from hud.core.stagelist import StageItem
 from hud.core.tasklist import Summary
 from hud.render import detail, navigator, parts, tasklist
-from hud_samples import quiet
+from hud_samples import quiet, task
 from rich.text import Text
 
 
@@ -54,21 +54,23 @@ def test_段の並びを記号つきで描く():
 
 def test_タスク行は右に続くものがあるときだけ件名の幅をそろえる():
     running = tasklist.task_row(
-        {"id": "task2", "title": "範囲", "status": "running"}, [Step("実装", None, Mark.CURRENT)]
+        task(id="task2", title="範囲", status="running"), [Step("実装", None, Mark.CURRENT)]
     )
-    pending = tasklist.task_row({"id": "task3", "title": "CLI", "status": "pending"}, [])
+    pending = tasklist.task_row(task(id="task3", title="CLI", status="pending"), [])
     assert running.plain == "  ◼ task2 範囲" + " " * 18 + "  実装 ◼"
     assert pending.plain == "  ◻ task3 CLI"
 
 
 def test_エスカレーション中のタスクは種類を出す():
-    task = {
-        "id": "task4",
-        "title": "移行",
-        "status": "escalated",
-        "escalations": [{"kind": "stall"}],
-    }
-    assert tasklist.task_row(task, []).plain.endswith("  stall")
+    escalated = task(
+        id="task4",
+        title="移行",
+        status="escalated",
+        escalations=[
+            {"id": "task4#3", "kind": "stall", "origin": None, "reason": "", "question": None}
+        ],
+    )
+    assert tasklist.task_row(escalated, []).plain.endswith("  stall")
 
 
 def test_飛ばした段は飛ばしたと出す():
@@ -87,7 +89,7 @@ def detail_lines(st: dict, now: dt.datetime) -> list[str]:
 def test_ランの詳細とリストの行にdriverの止まり方とパニックの原因を出す():
     now = dt.datetime.now().astimezone()
     stopped = quiet()
-    stopped["run"].update(driver_running=False, live_children=[4242])
+    stopped["run"].update(driver_stopped=True, live_children=[4242])
     head = headline.build(stopped, now)
     lines = detail_lines(stopped, now)
     assert lines[2] == (

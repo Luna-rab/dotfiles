@@ -6,18 +6,28 @@ import asyncio
 import time
 
 from hud.app.watch import Level, Watch
-from hud_samples import calls, status, write_fake_entry
+from hud_samples import calls, finding, status, write_fake_entry
 from textual.pilot import Pilot
 
-#: `--name` を付けたときだけ、捕まえていない例外のように終了コード 1 で落ちる入口
-NAME_CRASHES = """\
+#: `--name` を付けたときだけ終了コード `code` で落ち、一覧は `FAKE_STATUS` を返す入口。
+#: 呼ばれた引数を `FAKE_CALLS` に足す
+NAME_FAILS = """\
 import os, sys
+with open(os.environ["FAKE_CALLS"], "a", encoding="utf-8") as fh:
+    fh.write(" ".join(sys.argv[1:]) + "\\n")
 if "--name" in sys.argv:
-    sys.stderr.write("Traceback: boom\\n")
-    sys.exit(1)
+    sys.stderr.write("{message}\\n")
+    sys.exit({code})
 with open(os.environ["FAKE_STATUS"], encoding="utf-8") as fh:
     print(fh.read())
 """
+
+
+def name_fails(tmp_path, monkeypatch, code: int, message: str) -> None:
+    """入口を、`--name` だけが終了コード `code` で落ちるものに替える。"""
+    entry = tmp_path / f"name-fails-{code}.py"
+    entry.write_text(NAME_FAILS.format(code=code, message=message), encoding="utf-8")
+    monkeypatch.setenv("AUTODEV_ENTRY", str(entry))
 
 
 def screen_text(app: Watch) -> str:
@@ -70,6 +80,27 @@ def test_ランから段までEnterで入りEscで戻る(tmp_path, monkeypatch):
             await pilot.press("escape")
             await settle(pilot)
             assert app.level is Level.RUNS
+
+    asyncio.run(drive())
+
+
+def test_指摘や判断の履歴があっても層はランとタスクと段のまま(tmp_path, monkeypatch):
+    st = status()
+    st["tasks"][1]["findings"] = [finding(), finding(id="R2", status="closed")]
+    st["tasks"][1]["notes"] = [{"text": "空の入力は弾く", "origin": "user", "question": "q1"}]
+    st["plan"]["findings"] = [finding(id="D1", design=1)]
+    fake(tmp_path, monkeypatch, [st])
+
+    async def drive() -> None:
+        app = Watch()
+        async with app.run_test(size=(160, 40)) as pilot:
+            await settle(pilot)
+            for level in (Level.TASKS, Level.STAGES, Level.STAGES):
+                await pilot.press("enter")
+                await settle(pilot)
+                assert app.level is level
+            # 指摘は段の下の層にならず、段の項目のまま
+            assert app.cursor[Level.STAGES] == "step:1"
 
     asyncio.run(drive())
 
@@ -146,18 +177,70 @@ def test_読み損じたら前の表示とカーソルを残して理由を出�
     asyncio.run(drive())
 
 
-def test_nameが終了コード1でも一覧にあればランが消えたとは見ない(tmp_path, monkeypatch):
+def test_nameが終了コード1なら一覧を呼ばずに前の表示を残して理由を出す(tmp_path, monkeypatch):
+    """一覧にそのランが無くても、1 は「ランが無い」ではないので、ランのリストに戻らない。"""
     fake(tmp_path, monkeypatch, [status()])
-    entry = tmp_path / "name-crashes.py"
-    entry.write_text(NAME_CRASHES, encoding="utf-8")
-    monkeypatch.setenv("AUTODEV_ENTRY", str(entry))
 
     async def drive() -> None:
         app = Watch("add-cache")
         async with app.run_test(size=(160, 40)) as pilot:
             await settle(pilot)
+            await pilot.press("down")
+            await pilot.pause()
+            write_fake_entry(tmp_path, [])
+            before = len(calls(tmp_path))
+            name_fails(tmp_path, monkeypatch, 1, "Traceback: boom")
+            app.reload()
+            await settle(pilot)
             assert (app.level, app.run_name) == (Level.TASKS, "add-cache")
-            assert "Traceback: boom" in screen_text(app)
+            assert app.cursor[Level.TASKS] == "task2"
+            text = screen_text(app)
+            assert "Traceback: boom" in text and "キャッシュの土台" in text
+            assert calls(tmp_path)[before:] == ["status --json --name add-cache"]
+
+    asyncio.run(drive())
+
+
+def test_nameが終了コード5ならランのリストに戻る(tmp_path, monkeypatch):
+    """一覧にまだそのラン名があっても、5 はランが無いという答えなので戻る。"""
+    fake(tmp_path, monkeypatch, [status()])
+
+    async def drive() -> None:
+        app = Watch("add-cache")
+        async with app.run_test(size=(160, 40)) as pilot:
+            await settle(pilot)
+            await pilot.press("enter")
+            await settle(pilot)
+            assert app.level is Level.STAGES
+            name_fails(tmp_path, monkeypatch, 5, "autodev: そのランが無い")
+            app.reload()
+            await settle(pilot)
+            assert (app.level, app.run_name) == (Level.RUNS, None)
+            assert app.cursor[Level.RUNS] == "add-cache"
+
+    asyncio.run(drive())
+
+
+def test_形の版が2でないランの一覧なら右ペインに形の版が違うと出す(tmp_path, monkeypatch):
+    fake(tmp_path, monkeypatch, [status(format=1)])
+
+    async def drive() -> None:
+        app = Watch()
+        async with app.run_test(size=(160, 40)) as pilot:
+            await settle(pilot)
+            assert "形の版が違う" in screen_text(app)
+
+    asyncio.run(drive())
+
+
+def test_形の版が2でないランの中を見ると右ペインに形の版が違うと出す(tmp_path, monkeypatch):
+    fake(tmp_path, monkeypatch, [status(format=1)])
+
+    async def drive() -> None:
+        app = Watch("add-cache")
+        async with app.run_test(size=(160, 40)) as pilot:
+            await settle(pilot)
+            assert "形の版が違う" in screen_text(app)
 
     asyncio.run(drive())
 

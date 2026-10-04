@@ -1,5 +1,8 @@
 """`autodev status --json` の結果を読む。形は autodev の `infra/status/status_sections.py` にある。
 
+読むのは `format` が `FORMAT` の status だけで、欄の形は確かめない。形が崩れていることがあるのは、
+実行器が書いたファイルの中身そのままの `progress` だけである。
+
 driver が生きているかは `run.driver_running` だけで決める。`updated_at`（イベントを確定した時刻）も
 `progress.updated` も、走っていても古くなるので生存の目安にしない。
 """
@@ -22,8 +25,14 @@ PHASE_LABEL = {
 #: statusline に出すのは、終えていないランのうち、最後のイベントからこの秒数の内のものと回答待ちのもの。
 #: 捨てたランが statusline に残り続けないための窓で、driver が生きているかの判定ではない
 RECENT = 3 * 3600
-#: 積む数の分母に入れないタスクの状態（止めた・引き継がれた・破棄した）
-NOT_COUNTED = ("dropped", "superseded", "discarded")
+#: 指摘の評価（`findings[].rating`）。重い順
+RATINGS = ("must-fix", "should-fix", "nit")
+#: 開いていない指摘の状態（`findings[].status`）。件数だけを出す
+SETTLED = ("closed", "rejected", "carried")
+#: 読める status の形の版（`format`）
+FORMAT = 2
+#: `status --json --name` の終了コードのうち、そのランが無いことを表すもの
+RUN_NOT_FOUND = 5
 
 
 @dataclass(frozen=True)
@@ -48,23 +57,13 @@ class Running:
     tool: str
 
 
-def dicts(value: Any) -> list[dict]:
-    """配列のうち、オブジェクトの要素だけ。配列でなければ空。
+@dataclass(frozen=True)
+class Single:
+    """1 つのランの status。`error` は読めなかった理由、`gone` はそのランが無いこと。"""
 
-    status の欄は崩れていることがある（`progress` は実行器が書いたファイルの中身そのまま）。
-    型を確かめずに回すと、statusline が traceback を出して落ちる。
-    """
-    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-
-
-def items(value: Any) -> list:
-    """配列ならそのまま、配列でなければ空。"""
-    return value if isinstance(value, list) else []
-
-
-def number(value: Any) -> int:
-    """整数ならそのまま、ほかは 0。bool も整数の仲間なので外す。"""
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+    status: dict | None
+    error: str | None = None
+    gone: bool = False
 
 
 def _failure(code: int | None, message: str, shape: str) -> str:
@@ -73,31 +72,39 @@ def _failure(code: int | None, message: str, shape: str) -> str:
     return message or f"終了コード {code}"
 
 
+def _other_format(value: Any) -> str:
+    return f"形の版が違う（{FORMAT} を読む。届いたのは {value}）"
+
+
 def listing(code: int | None, data: Any, message: str) -> Listing:
-    """`status --json`（`--name` なし）の結果。終了コード 0 で配列が返れば一覧。"""
-    if code == 0 and isinstance(data, list):
-        return Listing(dicts(data))
-    return Listing([], _failure(code, message, "JSON の配列"))
+    """`status --json`（`--name` なし）の結果。終了コード 0 で配列が返れば一覧。
 
-
-def single(code: int | None, data: Any, message: str) -> tuple[dict | None, str | None]:
-    """`status --json --name` の結果。（ラン, 読めない理由）。
-
-    終了コード 1 は「ランが無い」だけでなく、CLI の捕まえていない例外でも返るので、ここでは
-    見分けない。ランが消えたかは、一覧にそのラン名があるかで決める（`gone`）。
+    読めないラン（`error` を持つ要素）は形の版を持たないので、版を確かめない。
     """
-    if code == 0 and isinstance(data, dict):
-        return data, None
-    return None, _failure(code, message, "JSON のオブジェクト")
+    if code != 0 or not isinstance(data, list):
+        return Listing([], _failure(code, message, "JSON の配列"))
+    for st in data:
+        if not st.get("error") and st.get("format") != FORMAT:
+            return Listing([], _other_format(st.get("format")))
+    return Listing(data)
 
 
-def gone(name: str, found: Listing) -> bool:
-    """一覧が読めて、そこにもそのラン名が無い。一覧も読めなければ、消えたとは言えない。"""
-    return found.error is None and all(name_of(st) != name for st in found.runs)
+def single(code: int | None, data: Any, message: str) -> Single:
+    """`status --json --name` の結果。終了コード `RUN_NOT_FOUND` のときだけ、ランが無いとみなす。
+
+    終了コード 1 は、CLI の捕まえていない例外でも返るので、ランが無いとは決めない。
+    """
+    if code == RUN_NOT_FOUND:
+        return Single(None, message or "そのランが無い", gone=True)
+    if code != 0 or not isinstance(data, dict):
+        return Single(None, _failure(code, message, "JSON のオブジェクト"))
+    if data.get("format") != FORMAT:
+        return Single(None, _other_format(data.get("format")))
+    return Single(data)
 
 
-def age(stamp: Any, now: dt.datetime) -> float | None:
-    """ISO 8601 の時刻から `now` までの秒数。読めなければ None。
+def moment(stamp: Any) -> dt.datetime | None:
+    """ISO 8601 の時刻。読めなければ None。
 
     status の時刻は `Z` で終わる。Python 3.10 の `fromisoformat` は `Z` を読めないので置き換える。
     """
@@ -107,9 +114,13 @@ def age(stamp: Any, now: dt.datetime) -> float | None:
         at = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if at.tzinfo is None:
-        at = at.astimezone()
-    return (now - at).total_seconds()
+    return at if at.tzinfo is not None else at.astimezone()
+
+
+def age(stamp: Any, now: dt.datetime) -> float | None:
+    """ISO 8601 の時刻から `now` までの秒数。読めなければ None。"""
+    at = moment(stamp)
+    return None if at is None else (now - at).total_seconds()
 
 
 def name_of(st: dict) -> str:
@@ -123,8 +134,7 @@ def error_of(st: dict) -> str | None:
 
 
 def run_of(st: dict) -> dict:
-    run = st.get("run")
-    return run if isinstance(run, dict) else {}
+    return st["run"]
 
 
 def phase(st: dict) -> str:
@@ -141,22 +151,13 @@ def awaiting(st: dict) -> bool:
 
 
 def driver_stopped(st: dict) -> bool:
-    """driver が走っているはずのフェーズなのに走っていない。呼び直すまで進まない。
-
-    回答待ちでは、driver が 4 で終えて回答を待つのがいつもの流れなので、止まっているとは言わない。
-    `driver_running` の無い古い形でも言わない。
-    """
-    run = run_of(st)
-    return (
-        run.get("driver_running") is False
-        and not awaiting(st)
-        and phase(st) in ("running", "planning", "finishing")
-    )
+    """driver が走っているはずのフェーズなのに走っておらず、回答待ちでもない。呼び直すまで進まない。"""
+    return bool(run_of(st)["driver_stopped"])
 
 
 def live_children(st: dict) -> tuple[int, ...]:
     """前の driver が残した、まだ生きている子の pid。"""
-    return tuple(number(pid) for pid in items(run_of(st).get("live_children")) if number(pid))
+    return tuple(run_of(st)["live_children"])
 
 
 def panic_cause(st: dict) -> str:
@@ -165,36 +166,50 @@ def panic_cause(st: dict) -> str:
 
 
 def tasks(st: dict) -> list[dict]:
-    return dicts(st.get("tasks"))
-
-
-def implementation(st: dict) -> list[dict]:
-    return [t for t in tasks(st) if t.get("kind") == "implementation"]
+    return st["tasks"]
 
 
 def questions(st: dict) -> list[dict]:
-    return dicts(st.get("questions"))
+    return st["questions"]
 
 
-def executions(task: dict) -> list[dict]:
-    return dicts(task.get("executions"))
+def task_executions(task: dict) -> list[dict]:
+    """タスクの実行すべて（始めた順。始めていない実行は後ろ）。
+
+    今のフローの段の下・前のフローの版・段の外に分かれて届くので、`started_at` で並べ直す。
+    段の順につなぐだけだと、直しのラウンドを回したタスクで実装 r0 / 実装 r1 / レビュー r0 と並ぶ。
+    """
+    flow = flow_of(task)
+    placed = [e for step in flow["steps"] for e in step["executions"]] if flow else []
+    every = [*placed, *task["earlier_executions"], *task["unplaced_executions"]]
+    # started_at は同じ書式（UTC の `...Z`）なので、文字列のまま比べられる
+    return sorted(every, key=lambda e: (e["started_at"] is None, e["started_at"] or ""))
 
 
 def escalations(owner: dict) -> list[dict]:
     """ラン（`escalations[]`）かタスク（`tasks[].escalations[]`）の、開いているエスカレーション。"""
-    return dicts(owner.get("escalations"))
+    return owner["escalations"]
+
+
+def open_findings(findings: list[dict]) -> list[dict]:
+    """開いている指摘を評価の重い順に（同じ評価の中は台帳に立てた順）。"""
+    opened = [f for f in findings if f["status"] == "open"]
+    return sorted(opened, key=lambda f: RATINGS.index(f["rating"]))
+
+
+def settled_counts(findings: list[dict]) -> list[tuple[str, int]]:
+    """開いていない指摘の状態ごとの件数。0 件の状態は除く。"""
+    counts = [(state, sum(f["status"] == state for f in findings)) for state in SETTLED]
+    return [(state, n) for state, n in counts if n]
 
 
 def flow_of(task: dict) -> dict | None:
-    flow = task.get("flow")
-    return flow if isinstance(flow, dict) else None
+    return task["flow"]
 
 
 def overview_pr(st: dict) -> int | None:
-    stack = st.get("stack")
-    overview = stack.get("overview") if isinstance(stack, dict) else None
-    pr = overview.get("pr") if isinstance(overview, dict) else None
-    return pr if isinstance(pr, int) else None
+    overview = st["stack"]["overview"]
+    return overview["pr"] if overview else None
 
 
 def task_label(task: dict) -> str:
@@ -206,25 +221,36 @@ def task_label(task: dict) -> str:
 
 
 def running(st: dict, now: dt.datetime) -> list[Running]:
-    """走っている実行（タスクの順、タスクの中は始めた順）。書き直す前のフローの実行も含む。"""
+    """走っている実行（タスクの順、タスクの中は始めた順）。前のフローの版の実行と、段の外の実行も含む。"""
     out: list[Running] = []
     for task in tasks(st):
-        for execution in executions(task):
-            if execution.get("status") != "running":
+        for execution in task_executions(task):
+            if execution["status"] != "running":
                 continue
-            progress = execution.get("progress")
-            progress = progress if isinstance(progress, dict) else {}
+            turns, tool = _progress(execution.get("progress"))
             out.append(
                 Running(
-                    task=str(task.get("id") or "?"),
-                    stage=str(execution.get("stage") or "?"),
-                    round=number(execution.get("round")),
-                    seconds=age(execution.get("started_at"), now),
-                    turns=number(progress.get("turns")),
-                    tool=str(progress.get("lastTool") or ""),
+                    task=str(task["id"]),
+                    stage=str(execution["stage"]),
+                    round=execution["round"],
+                    seconds=age(execution["started_at"], now),
+                    turns=turns,
+                    tool=tool,
                 )
             )
     return out
+
+
+def _progress(progress: Any) -> tuple[int, str]:
+    """`progress` のターン数と直前のツール。崩れていれば 0 と空。"""
+    if not isinstance(progress, dict):
+        return 0, ""
+    turns = progress.get("turns")
+    tool = progress.get("lastTool")
+    return (
+        turns if isinstance(turns, int) and not isinstance(turns, bool) else 0,
+        tool if isinstance(tool, str) else "",
+    )
 
 
 def shown(st: dict, now: dt.datetime) -> bool:

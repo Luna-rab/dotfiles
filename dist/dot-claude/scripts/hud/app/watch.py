@@ -53,35 +53,38 @@ class Loaded:
     states: list[dict] | None
     #: 読み損じた理由
     failure: str | None = None
-    #: 選んでいたランが、全ランの一覧にも無い
+    #: 選んでいたランが無い（`status --json --name` が終了コード 5 で答えた）
     gone: bool = False
 
 
 def load(level: Level, name: str | None, now: dt.datetime) -> Loaded:
     """今の層に要る status だけを呼ぶ。イベントループの外のスレッドで動く。
 
-    `--name` の終了コード 1 は「ランが無い」とは限らない（CLI の捕まえていない例外も 1）ので、
-    読めなければ一覧も呼び、一覧にもそのラン名が無いときだけ消えたとみなす。
+    `--name` がランが無いと答えたときだけ、ランのリストに戻るために一覧を呼ぶ。ほかの失敗では
+    一覧を呼ばず、前の表示を残す。
     """
     try:
         if level is not Level.RUNS and name is not None:
             reply = autodev.status(name)
-            st, failure = runs.single(reply.code, reply.data, reply.message)
-            if st is not None:
-                return Loaded([st])
-            reply = autodev.statuses()
-            found = runs.listing(reply.code, reply.data, reply.message)
-            if runs.gone(name, found):
-                return Loaded(runs.order(found.runs, now), gone=True)
-            return Loaded(None, failure)
-        reply = autodev.statuses()
-        found = runs.listing(reply.code, reply.data, reply.message)
-        if found.error is not None:
-            return Loaded(None, found.error)
-        return Loaded(runs.order(found.runs, now))
+            found_one = runs.single(reply.code, reply.data, reply.message)
+            if found_one.status is not None:
+                return Loaded([found_one.status])
+            if not found_one.gone:
+                return Loaded(None, found_one.error)
+            return _all_runs(now, gone=True)
+        return _all_runs(now)
     except Exception as error:
         # 別のスレッドで落ちると Textual が画面ごと終える。読み損じとして出す
         return Loaded(None, f"{type(error).__name__}: {error}")
+
+
+def _all_runs(now: dt.datetime, *, gone: bool = False) -> Loaded:
+    reply = autodev.statuses()
+    found = runs.listing(reply.code, reply.data, reply.message)
+    if found.error is None:
+        return Loaded(runs.order(found.runs, now), gone=gone)
+    # ランが無くて戻るときは、一覧が読めなくても戻る。前のランの表示を残すと、無いランを見続ける
+    return Loaded([] if gone else None, found.error, gone=gone)
 
 
 class Watch(App):
@@ -168,8 +171,9 @@ class Watch(App):
         return next((st for st in self.states if runs.name_of(st) == name), None)
 
     def task(self) -> dict | None:
-        st = self.current_run or {}
-        return next((t for t in runs.tasks(st) if str(t.get("id")) == self.task_id), None)
+        st = self.current_run
+        tasks = runs.tasks(st) if st else []
+        return next((t for t in tasks if str(t.get("id")) == self.task_id), None)
 
     def stage_items(self) -> list[stagelist.StageItem]:
         task = self.task()
@@ -196,8 +200,9 @@ class Watch(App):
         if self.level is Level.RUNS:
             return keys[0] if keys else None
         if self.level is Level.TASKS:
-            st = self.current_run or {}
-            running = next((t for t in runs.tasks(st) if t.get("status") == "running"), None)
+            st = self.current_run
+            tasks = runs.tasks(st) if st else []
+            running = next((t for t in tasks if t.get("status") == "running"), None)
             return str(running.get("id")) if running else (keys[0] if keys else None)
         items = self.stage_items()
         current = next((i for i in items if i.mark is Mark.CURRENT), None)

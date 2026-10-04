@@ -28,7 +28,7 @@ from .status_sections import SECTIONS, DriverFacts, Replayed, Section
 log = logging.getLogger(__name__)
 
 #: 外向けの形の版。欄の意味を変えた・欄を消したら上げる（足すだけなら上げない）
-FORMAT = 1
+FORMAT = 2
 
 #: 骨組みの欄。差し込む欄の名前とぶつけない
 _FRAME_KEYS = frozenset({"format", "name", "last_seq", "updated_at", "rejections"})

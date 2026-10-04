@@ -12,14 +12,15 @@ from hud.core.headline import Headline
 from hud.core.pipeline import Mark, Step, full_name
 from hud.core.runs import (
     age,
-    dicts,
     escalations,
-    executions,
     flow_of,
-    items,
+    moment,
+    open_findings,
     questions,
     run_of,
+    settled_counts,
     short,
+    task_executions,
     task_label,
     tasks,
 )
@@ -58,6 +59,10 @@ NOTE_LABEL = {
 }
 #: 設計の提案の状態（`plan.design.proposal.state`）の表示名
 PROPOSAL_LABEL = {"judging": "ジャッジ中", "revising": "書き直し中", "awaiting": "回答待ち"}
+#: 指摘の評価の色
+RATING_STYLE = {"must-fix": RED, "should-fix": YELLOW, "nit": DIM}
+#: 判断の履歴の出どころ（`notes[].origin`）の表示名
+ORIGIN_LABEL = {"user": "ユーザーの回答", "run-supervisor": "ラン統括の回答"}
 
 
 def run_detail(head: Headline, st: dict, now: dt.datetime) -> Group:
@@ -93,9 +98,13 @@ def run_detail(head: Headline, st: dict, now: dt.datetime) -> Group:
     raised = escalations(st)
     if raised:
         parts += [Text("エスカレーション", style=BOLD), *map(run_escalation, raised), Text()]
-    parts += [Text("スタック", style=BOLD), stack_text(st.get("stack")), Text()]
-    parts += [Text("計画", style=BOLD), plan_text(st.get("plan")), Text()]
-    rejected = dicts(st.get("rejections"))
+    parts += [Text("スタック", style=BOLD), stack_text(st["stack"]), Text()]
+    parts += [Text("計画", style=BOLD), plan_text(st["plan"])]
+    if st["plan"]["findings"]:
+        parts.append(Text("設計レビューの指摘", style=DIM))
+        parts += findings_lines(st["plan"]["findings"])
+    parts.append(Text())
+    rejected = st["rejections"]
     if rejected:
         parts.append(Text(f"拒んだコマンド {len(rejected)} 件", style=BOLD))
         for r in rejected[-REJECTIONS_SHOWN:]:
@@ -128,30 +137,52 @@ def run_escalation(e: dict) -> Text:
         line.append("  /autodev の回答を待つ", style=YELLOW)
     if e.get("failures"):
         line.append(f"  統括が応じなかった {e['failures']} 回", style=RED)
+    if e.get("reason"):
+        line.append(f"\n    理由: {e['reason']}")
+    if e.get("question"):
+        line.append(f"\n    問い: {e['question']}")
     return line
 
 
-def job_text(job: Any) -> str:
-    if not isinstance(job, dict):
+def findings_lines(findings: list[dict]) -> list[Text]:
+    """指摘。開いているものは本文と場所を評価の重い順に、開いていないものは状態ごとの件数だけ。"""
+    out = []
+    for f in open_findings(findings):
+        style = RATING_STYLE.get(str(f["rating"]), DIM)
+        line = Text(f"{f['id']} ", style=DIM).append(str(f["rating"]), style=style)
+        line.append(f"  {f['body']}")
+        if f.get("location"):
+            line.append(f"  {f['location']}", style=DIM)
+        if f.get("fixes"):
+            line.append(f" · 直した {f['fixes']} 回", style=DIM)
+        if f.get("stalled"):
+            line.append(" · 停滞", style=RED)
+        out.append(line)
+    settled = settled_counts(findings)
+    if settled:
+        out.append(Text(" · ".join(f"{state} {n}" for state, n in settled), style=DIM))
+    return out
+
+
+def job_text(job: dict | None) -> str:
+    if job is None:
         return ""
     kind = str(job.get("kind"))
     target = job.get("task") or job.get("branch") or ""
     return f"{JOB_LABEL.get(kind, kind)} {target}".rstrip()
 
 
-def stack_text(stack: Any) -> Text:
-    if not isinstance(stack, dict):
-        return Text("（無い）\n", style=DIM)
+def stack_text(stack: dict) -> Text:
     out = Text()
-    overview = stack.get("overview")
-    if isinstance(overview, dict):
+    overview = stack["overview"]
+    if overview is not None:
         out.append(f"概要 PR #{overview.get('pr')} {overview.get('branch')}\n")
-    for entry in dicts(stack.get("entries")):
+    for entry in stack["entries"]:
         out.append(f"  #{entry.get('pr')} {entry.get('task')} ", style="")
         out.append(f"{entry.get('branch')}\n", style=DIM)
     if stack.get("current"):
         out.append(f"処理中: {job_text(stack['current'])}\n", style=ACCENT)
-    queue = [job_text(j) for j in dicts(stack.get("queue"))]
+    queue = [job_text(j) for j in stack["queue"]]
     if queue:
         out.append(f"順番待ち: {' / '.join(queue)}\n", style=DIM)
     if stack.get("parked"):
@@ -163,24 +194,22 @@ def stack_text(stack: Any) -> Text:
     return out if out.plain else Text("（まだ積んでいない）\n", style=DIM)
 
 
-def plan_text(plan: Any) -> Text:
-    if not isinstance(plan, dict):
-        return Text("（無い）\n", style=DIM)
+def plan_text(plan: dict) -> Text:
     out = Text()
     if plan.get("planning"):
         out.append("計画が進んでいる\n", style=ACCENT)
     elif not plan.get("planned"):
         out.append("まだ計画を反映していない\n", style=DIM)
-    design = plan.get("design") if isinstance(plan.get("design"), dict) else {}
-    versions = items(design.get("versions"))
+    design = plan["design"]
+    versions = design["versions"]
     if versions:
         out.append(
             f"設計の版 {', '.join(map(str, versions))} · 確定 {design.get('settled')}"
             f" · 反映 {plan.get('applied_design')}\n",
             style=DIM,
         )
-    proposal = design.get("proposal")
-    if isinstance(proposal, dict):
+    proposal = design["proposal"]
+    if proposal is not None:
         state = str(proposal.get("state"))
         out.append(f"提案 v{proposal.get('version')} {PROPOSAL_LABEL.get(state, state)}")
         out.append(f" r{proposal.get('round')}", style=DIM)
@@ -204,7 +233,7 @@ def task_line(task: dict) -> Text:
 
 
 def task_detail(task: dict, steps: list[Step], now: dt.datetime) -> Group:
-    """選んだタスクの詳細。段の並び・走っている実行・エスカレーション。"""
+    """選んだタスクの詳細。段の並び・走っている実行・エスカレーション・指摘・spec。"""
     status = str(task.get("status"))
     title = Text(f"{task.get('id')} ", style=DIM).append(task_label(task), style=BOLD)
     meta = Text(f"{STATUS_LABEL.get(status, status)} · {task.get('kind')}", style=DIM)
@@ -226,7 +255,7 @@ def task_detail(task: dict, steps: list[Step], now: dt.datetime) -> Group:
             parts.append(Text(f"仕事: {job_text(flow['job'])}", style=ACCENT))
     parts.append(Text())
 
-    parts += [Text("実行", style=BOLD), executions_text(executions(task), now)]
+    parts += [Text("実行", style=BOLD), executions_text(task_executions(task), now)]
     raised = escalations(task)
     if raised:
         parts.append(Text("エスカレーション", style=BOLD))
@@ -235,13 +264,61 @@ def task_detail(task: dict, steps: list[Step], now: dt.datetime) -> Group:
             if e.get("origin"):
                 line.append(f"  {e['origin']}", style=DIM)
             parts.append(line)
-    return Group(*parts)
+        parts.append(Text())
+    return Group(*parts, *review_sections(task))
+
+
+def review_sections(task: dict) -> list[Any]:
+    """タスクの指摘・完了チェックで落ちた項目・spec・判断の履歴。無いものの節は出さない。"""
+    parts: list[Any] = []
+    if task["findings"]:
+        parts += [Text("指摘", style=BOLD), *findings_lines(task["findings"]), Text()]
+    failures = last_gate_failures(task)
+    if failures:
+        parts.append(Text("完了チェックで落ちた項目", style=BOLD))
+        for g in failures:
+            parts.append(Text(f"{g.get('item')}", style=RED).append(f"  {g.get('reason') or ''}"))
+        parts.append(Text())
+    if task.get("spec"):
+        parts += [*spec_lines(task["spec"]), Text()]
+    if task["notes"]:
+        parts.append(Text("判断の履歴", style=BOLD))
+        for n in task["notes"]:
+            origin = str(n.get("origin"))
+            line = Text(ORIGIN_LABEL.get(origin, origin), style=DIM)
+            if n.get("question"):
+                line.append(f" {n['question']}", style=DIM)
+            parts.append(line.append(f"  {n.get('text')}"))
+    return parts
+
+
+def last_gate_failures(task: dict) -> list[dict]:
+    """今のフローで最後に始めた Gate の実行の、落ちた項目。通っていれば空。"""
+    flow = flow_of(task)
+    if flow is None:
+        return []
+    gates = [e for step in flow["steps"] for e in step["executions"] if e["stage"] == "Gate"]
+    started = [e for e in gates if e["started_at"] is not None]
+    if not started:
+        return []
+    # started_at は同じ書式（UTC の `...Z`）なので、文字列のまま比べられる
+    return list(max(started, key=lambda e: e["started_at"])["gate_failures"])
+
+
+def spec_lines(spec: dict) -> list[Text]:
+    """タスクの spec（完了の定義・受入条件・範囲）。"""
+    out = [Text("完了の定義", style=BOLD), Text(str(spec.get("dod") or ""))]
+    for label, key in (("受入条件", "acceptance"), ("範囲", "scope")):
+        items = spec.get(key) or []
+        if items:
+            out += [Text(label, style=BOLD), *(Text(f"- {item}") for item in items)]
+    return out
 
 
 def relations(task: dict) -> list[Text]:
     """ほかのタスクとの関係と、知らないと読み違える印。"""
     out = []
-    blocked = items(task.get("blocked_by"))
+    blocked = task["blocked_by"]
     if blocked:
         out.append(Text(f"待っているタスク: {' '.join(map(str, blocked))}", style=DIM))
     if task.get("takes_over"):
@@ -255,11 +332,32 @@ def relations(task: dict) -> list[Text]:
     return out
 
 
-def executions_text(runs: list[dict] | tuple[dict, ...], now: dt.datetime) -> Text:
+def executions_text(
+    runs: list[dict] | tuple[dict, ...], now: dt.datetime, *, ending: bool = False
+) -> Text:
+    """実行を 1 行ずつ。`ending` なら、終えた実行に終了時刻・所要時間・終わった理由を添える。"""
     out = Text()
     for e in runs:
-        out.append_text(execution_line(e, now)).append("\n")
+        out.append_text(execution_line(e, now))
+        if ending:
+            out.append_text(ending_text(e))
+        out.append("\n")
     return out if out.plain else Text("（走っている実行は無い）\n", style=DIM)
+
+
+def ending_text(e: dict) -> Text:
+    """終えた実行の終了時刻（手元の時刻帯）・所要時間・終わった理由。終えていなければ空。"""
+    ended = moment(e.get("ended_at"))
+    if ended is None:
+        return Text()
+    out = Text(f" · {ended.astimezone():%H:%M:%S} に終えた", style=DIM)
+    seconds = age(e.get("started_at"), ended)
+    if seconds is not None:
+        out.append(f" · {short(seconds)}", style=DIM)
+    reason = e.get("end_reason") or e.get("interrupted_by")
+    if reason:
+        out.append(f" · {reason}", style=YELLOW)
+    return out
 
 
 def execution_line(e: dict, now: dt.datetime) -> Text:
@@ -291,7 +389,7 @@ def stage_detail(item: StageItem, now: dt.datetime) -> Group:
     if not item.runs:
         empty = "飛ばした" if item.mark is Mark.SKIPPED else "まだ走っていない"
         return Group(title, Text(), Text(empty, style=DIM))
-    return Group(title, Text(), executions_text(item.runs, now))
+    return Group(title, Text(), executions_text(item.runs, now, ending=True))
 
 
 def broken_detail(name: str, error: str) -> Group:

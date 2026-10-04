@@ -15,19 +15,46 @@ from typing import Any, TypeVar
 from ...domain.aggregates.base import Aggregate
 from ...domain.aggregates.design import Design
 from ...domain.aggregates.questions import Questions
+from ...domain.aggregates.review_ledger import ReviewLedger
 from ...domain.aggregates.run import Run, TaskEntry
 from ...domain.aggregates.stack import Stack
 from ...domain.aggregates.task import Execution, ExecutionStatus, Task
 from ...domain.events.base import Event
 from ...domain.events.run import RunStarted
-from ...domain.events.task import StageStarted
+from ...domain.events.task import (
+    ExecutionRestarted,
+    GateFailed,
+    HandoffFailed,
+    StageCancelled,
+    StageCompleted,
+    StageDeferred,
+    StageFailed,
+    StageInterrupted,
+    StageReported,
+    StageStarted,
+)
+from ...domain.value_objects.decision import Decision
 from ...domain.value_objects.git_job import GitJob
 from ...domain.value_objects.stack_entry import StackEntry
 from ...domain.value_objects.stream_id import StreamId
 from ...domain.value_objects.task_id import TaskId
+from ...domain.value_objects.task_spec import TaskSpec
 from ..store.eventstore import AggregateFactory, StoredEvent
 
 A = TypeVar("A", bound=Aggregate)
+
+#: 実行の終わりを確定するイベント。HandoffFailed は StageCompleted の後に来るので、後のもので上書きする
+_ENDINGS = (
+    StageCompleted,
+    GateFailed,
+    StageFailed,
+    StageInterrupted,
+    StageDeferred,
+    StageCancelled,
+    ExecutionRestarted,
+    HandoffFailed,
+    StageReported,
+)
 
 
 @dataclass(frozen=True)
@@ -84,6 +111,16 @@ class Replayed:
             if isinstance(event, StageStarted)
         }
 
+    def ended_at(self) -> dict[str, str]:
+        """実行 → 最後の StageStarted より後に、終わりを確定した時刻。続きから始めたら消える。"""
+        ended: dict[str, str] = {}
+        for stored, event in self.history:
+            if isinstance(event, StageStarted):
+                ended.pop(str(event.execution), None)
+            elif isinstance(event, _ENDINGS):
+                ended[str(event.execution)] = stored.at
+        return ended
+
 
 #: 再生した集約から、外向けの形の 1 つの欄を作る
 Section = Callable[[Replayed], Any]
@@ -100,13 +137,14 @@ def _ids(items: Any) -> list[str]:
 
 def run_section(view: Replayed) -> dict[str, Any]:
     run = view.run
+    awaiting = view.get(StreamId.questions(), Questions).awaiting_answer
     started = next(
         ((stored, event) for stored, event in view.history if isinstance(event, RunStarted)),
         None,
     )
     return {
         "phase": run.phase.value,
-        "awaiting_answer": view.get(StreamId.questions(), Questions).awaiting_answer,
+        "awaiting_answer": awaiting,
         "started_at": started[0].at if started else None,
         "repository": started[1].repository.value if started else None,
         "base": started[1].base.value if started else None,
@@ -116,6 +154,9 @@ def run_section(view: Replayed) -> dict[str, Any]:
         "directory": view.driver.directory,
         "driver_running": view.driver.running,
         "live_children": list(view.driver.live_children),
+        "driver_stopped": run.driver_stopped(view.driver.running, awaiting),
+        "stacked_tasks": run.stacked_count,
+        "stack_target_tasks": run.stack_target_count,
     }
 
 
@@ -130,7 +171,15 @@ def _job(job: GitJob | None) -> dict[str, Any] | None:
     }
 
 
-def _execution(execution: Execution, view: Replayed, started: Mapping[str, str]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class _Times:
+    """実行 id の文字列 → 時刻（始めた・終えた）。タスクごとに履歴を読み直さない。"""
+
+    started: Mapping[str, str]
+    ended: Mapping[str, str]
+
+
+def _execution(execution: Execution, view: Replayed, times: _Times) -> dict[str, Any]:
     key = str(execution.id)
     return {
         "id": key,
@@ -140,20 +189,35 @@ def _execution(execution: Execution, view: Replayed, started: Mapping[str, str])
         "flow_version": execution.flow_version,
         "step": execution.step,
         "status": execution.status.value,
-        "started_at": started.get(key),
+        "started_at": times.started.get(key),
         # 実行器が消し損ねた・止めた後に残ったファイルを、走っていない実行に見せない
         "progress": view.progress.get(key) if execution.status is ExecutionStatus.RUNNING else None,
+        "ended_at": times.ended.get(key),
+        "end_reason": execution.end_reason,
+        "interrupted_by": _value(execution.interrupted_by),
+        "gate_failures": [
+            {"item": failure.item.value, "reason": failure.reason}
+            for failure in execution.gate_failures
+        ],
     }
 
 
-def _flow(task: Task) -> dict[str, Any] | None:
+def _executions(executions: Sequence[Execution], view: Replayed, times: _Times) -> list[Any]:
+    return [_execution(e, view, times) for e in executions]
+
+
+def _flow(task: Task, view: Replayed, times: _Times) -> dict[str, Any] | None:
     flow = task.flow
     if flow is None:
         return None
     cursor = task.cursor
     steps = []
     for index, (step, state) in enumerate(zip(flow.steps, task.step_states(), strict=True)):
-        entry: dict[str, Any] = {"stage": step.stage.value, "state": state.value}
+        entry: dict[str, Any] = {
+            "stage": step.stage.value,
+            "state": state.value,
+            "executions": _executions(task.executions_at(index), view, times),
+        }
         if index == cursor.step and cursor.inner is not None:
             entry["inner"] = cursor.inner.value
             entry["round"] = cursor.round
@@ -167,7 +231,37 @@ def _flow(task: Task) -> dict[str, Any] | None:
     }
 
 
-def _task(entry: TaskEntry, view: Replayed, started: Mapping[str, str]) -> dict[str, Any]:
+def _spec(spec: TaskSpec | None) -> dict[str, Any] | None:
+    if spec is None:
+        return None
+    return {"dod": spec.dod, "acceptance": list(spec.acceptance), "scope": list(spec.scope)}
+
+
+def _note(note: Decision) -> dict[str, Any]:
+    return {"text": note.text, "origin": note.origin.value, "question": _value(note.question)}
+
+
+def _findings(view: Replayed, ledger: StreamId | None) -> list[dict[str, Any]]:
+    """台帳に立てた順。台帳が無ければ空。"""
+    if ledger is None:
+        return []
+    return [
+        {
+            "id": finding.id.value,
+            "rating": finding.rating.value,
+            "status": finding.status.value,
+            "body": finding.body,
+            "location": _value(finding.location),
+            "fixes": finding.fixes,
+            "stalled": finding.stalled,
+            "comments": list(finding.comments),
+            "design": _value(finding.design),
+        }
+        for finding in view.get(ledger, ReviewLedger).findings.values()
+    ]
+
+
+def _task(entry: TaskEntry, view: Replayed, times: _Times) -> dict[str, Any]:
     run = view.run
     task = view.task(entry.id)
     stacked = view.stack.entry_of(entry.id)
@@ -185,25 +279,31 @@ def _task(entry: TaskEntry, view: Replayed, started: Mapping[str, str]) -> dict[
         "takes_over": _value(entry.takes_over),
         "integration_failed": entry.integration_failed,
         "awaiting_requeue": entry.id in run.requeue,
-        "flow": _flow(task),
-        "executions": [_execution(e, view, started) for e in task.current_executions()],
+        "spec": _spec(spec),
+        "notes": [_note(note) for note in task.notes],
+        "flow": _flow(task, view, times),
+        "earlier_executions": _executions(task.earlier_executions(), view, times),
+        "unplaced_executions": _executions(task.unplaced_executions(), view, times),
         "escalations": [
             {
                 "id": e.id.value,
                 "kind": e.kind.value,
                 "origin": str(e.origin) if e.origin is not None else None,
+                "reason": e.reason,
+                "question": e.question,
             }
             for e in task.escalations.values()
         ],
+        "findings": _findings(view, entry.own_findings),
     }
 
 
 def tasks_section(view: Replayed) -> list[dict[str, Any]]:
     """計画タスク・git 管理タスク（始めていれば）、実装タスク（番号の順）。"""
     run = view.run
-    started = view.started_at()
+    times = _Times(view.started_at(), view.ended_at())
     others = [run.tasks[t] for t in (TaskId.planning(), TaskId.git()) if t in run.tasks]
-    return [_task(entry, view, started) for entry in (*others, *run.implementation_tasks)]
+    return [_task(entry, view, times) for entry in (*others, *run.implementation_tasks)]
 
 
 def _entry(entry: StackEntry | None) -> dict[str, Any] | None:
@@ -249,6 +349,8 @@ def escalations_section(view: Replayed) -> list[dict[str, Any]]:
             "for_user": e.for_user,
             "answer_only": e.answer_only,
             "failures": e.failures,
+            "reason": e.reason,
+            "question": e.question,
         }
         for e in view.run.escalations.values()
     ]
@@ -275,6 +377,7 @@ def plan_section(view: Replayed) -> dict[str, Any]:
                 "awaiting": _value(design.awaiting),
             },
         },
+        "findings": _findings(view, StreamId.design_review()),
     }
 
 

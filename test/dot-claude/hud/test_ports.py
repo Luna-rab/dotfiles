@@ -40,11 +40,11 @@ def test_一覧はstatus_jsonを名前なしで呼ぶ(tmp_path, monkeypatch):
     assert calls(tmp_path) == ["status --json"]
 
 
-def test_1つのランはnameを付けて呼びランが無ければ終了コード1(tmp_path, monkeypatch):
+def test_1つのランはnameを付けて呼びランが無ければ終了コード5(tmp_path, monkeypatch):
     fake_env(tmp_path, monkeypatch, [status()])
     assert autodev.status("add-cache").data["name"] == "add-cache"
     missing = autodev.status("nope")
-    assert (missing.code, missing.data, missing.message) == (1, None, "autodev: そのランが無い")
+    assert (missing.code, missing.data, missing.message) == (5, None, "autodev: そのランが無い")
     assert calls(tmp_path) == ["status --json --name add-cache", "status --json --name nope"]
 
 

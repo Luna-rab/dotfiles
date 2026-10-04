@@ -50,7 +50,32 @@ def stamp(at: dt.datetime) -> str:
     return at.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-#: `status --json` の task1 の見本。時刻だけ `status()` が埋める
+#: `status --json` の実行 1 つの見本（task1 の Judge）。時刻だけ `status()` が埋める
+SAMPLE_EXECUTION: dict[str, Any] = {
+    "id": "task1-Judge-r2-a1",
+    "stage": "Judge",
+    "round": 2,
+    "attempt": 1,
+    "flow_version": 1,
+    "step": 1,
+    "status": "running",
+    "started_at": "…",
+    "progress": {
+        "stage": "Judge",
+        "state": "running",
+        "turns": 7,
+        "lastTool": "Read",
+        "hookDenials": 0,
+        "events": 41,
+        "updated": "…",
+    },
+    "ended_at": None,
+    "end_reason": None,
+    "interrupted_by": None,
+    "gate_failures": [],
+}
+
+#: `status --json` の task1 の見本。実行は段の下（`flow.steps[].executions`）に入る
 SAMPLE_TASK: dict[str, Any] = {
     "id": "task1",
     "kind": "implementation",
@@ -64,46 +89,73 @@ SAMPLE_TASK: dict[str, Any] = {
     "takes_over": None,
     "integration_failed": False,
     "awaiting_requeue": False,
+    "spec": {
+        "dod": "パーサが入力を読み、構文木を返す",
+        "acceptance": ["空の入力で空の構文木を返す"],
+        "scope": ["触る: parser.py"],
+    },
+    "notes": [],
     "flow": {
         "version": 1,
         "finished": False,
         "halted": False,
         "job": None,
         "steps": [
-            {"stage": "TestGen", "state": "done"},
-            {"stage": "ReviewLoop", "state": "current", "inner": "Judge", "round": 2},
-            {"stage": "Gate", "state": "pending"},
+            {"stage": "TestGen", "state": "done", "executions": []},
+            {
+                "stage": "ReviewLoop",
+                "state": "current",
+                "inner": "Judge",
+                "round": 2,
+                "executions": [copy.deepcopy(SAMPLE_EXECUTION)],
+            },
+            {"stage": "Gate", "state": "pending", "executions": []},
         ],
     },
-    "executions": [
-        {
-            "id": "task1-Judge-r2-a1",
-            "stage": "Judge",
-            "round": 2,
-            "attempt": 1,
-            "flow_version": 1,
-            "step": 1,
-            "status": "running",
-            "started_at": "…",
-            "progress": {
-                "stage": "Judge",
-                "state": "running",
-                "turns": 7,
-                "lastTool": "Read",
-                "hookDenials": 0,
-                "events": 41,
-                "updated": "…",
-            },
-        }
-    ],
+    "earlier_executions": [],
+    "unplaced_executions": [],
     "escalations": [],
+    "findings": [],
 }
+
+
+#: `status --json` の指摘 1 つの見本（`tasks[].findings[]`・`plan.findings[]`）
+SAMPLE_FINDING: dict[str, Any] = {
+    "id": "R1",
+    "rating": "must-fix",
+    "status": "open",
+    "body": "空の入力で落ちる",
+    "location": "parser.py:12",
+    "fixes": 0,
+    "stalled": False,
+    "comments": [],
+    "design": None,
+}
+
+
+def finding(**over) -> dict[str, Any]:
+    """指摘 1 つ。見本の欄を持つ。"""
+    base = copy.deepcopy(SAMPLE_FINDING)
+    base.update(over)
+    return base
+
+
+def execution(**over) -> dict[str, Any]:
+    """実行 1 つ。見本の Judge の欄を持つ。"""
+    base = copy.deepcopy(SAMPLE_EXECUTION)
+    base.update(over)
+    return base
+
+
+def judge(st: dict) -> dict[str, Any]:
+    """`status()` の task1 で走っている Judge の実行。"""
+    return st["tasks"][1]["flow"]["steps"][1]["executions"][0]
 
 
 def task(**over) -> dict[str, Any]:
     """実装タスク。見本の欄を持ち、フローも実行も無い未着手のもの。"""
     base = copy.deepcopy(SAMPLE_TASK)
-    base.update(status="pending", flow=None, executions=[], branch=None)
+    base.update(status="pending", flow=None, branch=None)
     base.update(over)
     return base
 
@@ -116,10 +168,11 @@ def status(**over) -> dict[str, Any]:
     now = dt.datetime.now().astimezone()
     running = copy.deepcopy(SAMPLE_TASK)
     started = stamp(now - dt.timedelta(minutes=4, seconds=12))
-    running["executions"][0]["started_at"] = started
-    running["executions"][0]["progress"]["updated"] = stamp(now)
+    judging = running["flow"]["steps"][1]["executions"][0]
+    judging["started_at"] = started
+    judging["progress"]["updated"] = stamp(now)
     data: dict[str, Any] = {
-        "format": 1,
+        "format": 2,
         "name": "add-cache",
         "last_seq": 57,
         "updated_at": stamp(now),
@@ -136,6 +189,9 @@ def status(**over) -> dict[str, Any]:
             "directory": "/state/autodev/add-cache",
             "driver_running": True,
             "live_children": [],
+            "driver_stopped": False,
+            "stacked_tasks": 1,
+            "stack_target_tasks": 4,
         },
         "tasks": [
             task(id="planning", kind="planning", title=None, status="finished", terminal=True),
@@ -146,7 +202,15 @@ def status(**over) -> dict[str, Any]:
                 id="task4",
                 title="移行",
                 status="escalated",
-                escalations=[{"id": "task4#3", "kind": "stall", "origin": "task4-Judge-r3-a1"}],
+                escalations=[
+                    {
+                        "id": "task4#3",
+                        "kind": "stall",
+                        "origin": "task4-Judge-r3-a1",
+                        "reason": "",
+                        "question": None,
+                    }
+                ],
             ),
         ],
         "stack": {
@@ -171,6 +235,8 @@ def status(**over) -> dict[str, Any]:
                 "for_user": False,
                 "answer_only": False,
                 "failures": 0,
+                "reason": "空の入力の扱いが受入条件に無い",
+                "question": "空の入力は弾くか",
             }
         ],
         "plan": {
@@ -188,6 +254,7 @@ def status(**over) -> dict[str, Any]:
                     "awaiting": "design-ambiguous",
                 },
             },
+            "findings": [],
         },
     }
     data.update(over)
@@ -199,12 +266,12 @@ def quiet(**over) -> dict[str, Any]:
     st = status(**over)
     st["run"]["awaiting_answer"] = False
     st["questions"] = []
-    st["tasks"][1]["executions"] = []
+    st["tasks"][1]["flow"]["steps"][1]["executions"] = []
     return st
 
 
 #: `autodev.py` の代わりに置く入口。`FAKE_STATUS` の JSON の配列を、本物と同じ約束で返す
-#: （`--name` が無ければ配列、あればその要素で、無ければ終了コード 1）。呼ばれた引数を `FAKE_CALLS` に足す
+#: （`--name` が無ければ配列、あればその要素で、無ければ終了コード 5）。呼ばれた引数を `FAKE_CALLS` に足す
 FAKE_ENTRY = """\
 import json, os, sys
 args = sys.argv[1:]
@@ -219,7 +286,7 @@ name = args[args.index("--name") + 1]
 found = [st for st in data if st.get("name") == name]
 if not found:
     sys.stderr.write("autodev: そのランが無い\\n")
-    sys.exit(1)
+    sys.exit(5)
 print(json.dumps(found[0]))
 """
 

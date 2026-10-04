@@ -13,7 +13,18 @@ import time
 from conftest import CLAUDE_SCRIPTS
 from hud.app import statusline
 from hud.ports import autodev
-from hud_samples import calls, quiet, session, stamp, status, write_fake_entry, write_usage
+from hud_samples import (
+    calls,
+    execution,
+    finding,
+    judge,
+    quiet,
+    session,
+    stamp,
+    status,
+    write_fake_entry,
+    write_usage,
+)
 
 SCRIPT = CLAUDE_SCRIPTS / "statusline.py"
 
@@ -166,24 +177,80 @@ def test_パニックの原因を幅を切って添える(tmp_path):
 
 def test_driverが止まっていれば回答待ちとエスカレーションの後ろに短く出す(tmp_path):
     st = quiet()
-    st["run"].update(driver_running=False, live_children=[4242, 4343])
+    st["run"].update(driver_stopped=True, live_children=[4242, 4343])
     assert run(tmp_path, columns=120, statuses=[st])[4] == (
         "autodev add-cache ▸ 実行中 · スタック済み 1/4 · エスカレーション 1"
         " · driver 停止 · 残った子 pid 4242 4343 · 概要 PR #4"
     )
 
 
-def test_型の違う欄があってもtracebackを出さずに描く(tmp_path):
+def head_of(tmp_path, st: dict) -> str:
+    """ラン `add-cache` の見出しの行。タスクリストを右に置いても下に置いても、見出しから先だけを返す。"""
+    lines = run(tmp_path, columns=200, statuses=[st])
+    found = [line for line in lines if "autodev add-cache ▸ " in line]
+    assert len(found) == 1, lines
+    return found[0][found[0].index("autodev add-cache ▸ ") :]
+
+
+def test_driver停止はrunのdriver_stoppedだけで決めphaseやdriver_runningを見ない(tmp_path):
+    stopped = quiet()
+    # HUD が自分で決めていたなら止まっていないとした組み合わせ（driver は走っている）
+    stopped["run"].update(driver_stopped=True, driver_running=True)
+    assert "driver 停止" in head_of(tmp_path, stopped)
+    running = quiet()
+    # HUD が自分で決めていたなら止まっているとした組み合わせ
+    running["run"].update(driver_stopped=False, driver_running=False, phase="planning")
+    assert "driver 停止" not in head_of(tmp_path, running)
+
+
+def test_積んだ数はrunの欄を読みタスクの状態を数え直さない(tmp_path):
+    st = quiet()
+    st["run"].update(stacked_tasks=1, stack_target_tasks=4)
+    # タスクの状態から数え直すと 0/3 になる
+    st["tasks"][2]["status"] = "pending"
+    st["tasks"][4]["status"] = "dropped"
+    st["tasks"][4]["escalations"] = []
+    assert head_of(tmp_path, st).startswith("autodev add-cache ▸ 実行中 · スタック済み 1/4")
+
+
+def test_段の下で走っている実装を見出しに出す(tmp_path):
+    st = quiet()
+    st["tasks"][1]["flow"]["steps"] = [
+        {"stage": "TestGen", "state": "done", "executions": []},
+        {"stage": "ConfirmRed", "state": "done", "executions": []},
+        {
+            "stage": "Impl",
+            "state": "current",
+            "executions": [execution(id="task1-Impl-r0-a1", stage="Impl", round=0, step=2)],
+        },
+    ]
+    assert head_of(tmp_path, st).startswith("autodev add-cache ▸ task1 実装 r0")
+
+
+def test_前の版で走っている実行も見出しに出す(tmp_path):
+    st = quiet()
+    st["tasks"][1]["earlier_executions"] = [
+        execution(id="task1-Impl-r0-a1", stage="Impl", round=0, flow_version=0, step=2)
+    ]
+    assert head_of(tmp_path, st).startswith("autodev add-cache ▸ task1 実装 r0")
+
+
+def test_形の版が2でないstatusなら形の版が違うと出して0で終わる(tmp_path):
+    lines = run(tmp_path, statuses=[status(format=1)])
+    assert len(lines) == 5
+    assert "形の版が違う" in lines[4]
+    assert not any(line.startswith("autodev add-cache ▸ ") for line in lines)
+
+
+def test_崩れたprogressがあってもtracebackを出さずに描く(tmp_path):
     """`progress` は実行器が書いたファイルの中身そのままなので、崩れていることがある。"""
     st = status()
-    execution = st["tasks"][1]["executions"][0]
-    execution["round"] = "x"
-    execution["progress"]["turns"] = "many"
-    st["tasks"][4]["escalations"] = 5
-    st["tasks"][1]["flow"]["steps"] = "broken"
-    lines = run(tmp_path, columns=120, statuses=[st, status(name="other", tasks=5)])
-    assert lines[4].startswith("autodev add-cache ▸ task1 ジャッジ r0")
-    assert any(line.startswith("autodev other ▸ ") for line in lines)
+    judge(st)["progress"]["turns"] = "many"
+    other = status(name="other")
+    judge(other)["progress"] = "broken"
+    lines = run(tmp_path, columns=120, statuses=[st, other])
+    assert lines[4].startswith("autodev add-cache ▸ task1 ジャッジ r2")
+    assert any(line.startswith("autodev other ▸ task1 ジャッジ r2") for line in lines)
 
 
 def test_組み立ての途中で落ちても理由を1行で出す(monkeypatch):
@@ -201,3 +268,56 @@ def test_statusが返らなければそう出す(tmp_path):
     entry.write_text("import sys; sys.stderr.write('autodev: まだ動かない\\n'); sys.exit(1)")
     lines = run(tmp_path, statuses=[], entry=str(entry))
     assert lines[4:] == ["autodev status を読めない · autodev: まだ動かない"]
+
+
+def row_of(lines: list[str], task_id: str) -> str:
+    """タスク `task_id` の行。タスクリストを右に置いても下に置いても、記号から先だけを返す。"""
+    rows = [line.split("│")[-1].strip() for line in lines]
+    found = [row for row in rows if row.split()[1:2] == [task_id]]
+    assert len(found) == 1, lines
+    return found[0]
+
+
+def test_走っているタスクの行に開いている指摘の件数を評価ごとに出し行数は変えない(tmp_path):
+    plain = run(tmp_path, columns=400, statuses=[status()])
+    st = status()
+    st["tasks"][1]["findings"] = [
+        *(finding(id=f"R{i}", rating="must-fix") for i in (1, 2)),
+        *(finding(id=f"R{i}", rating="should-fix") for i in (3, 4, 5)),
+        # 閉じた指摘は数えない
+        finding(id="R6", rating="must-fix", status="closed"),
+        finding(id="R7", rating="nit", status="rejected"),
+    ]
+    lines = run(tmp_path, columns=400, statuses=[st])
+    row = row_of(lines, "task1")
+    assert "指摘 must 2 / should 3" in row
+    assert "nit" not in row
+    assert len(lines) == len(plain)
+
+
+def test_開いている指摘が無ければ指摘を出さない(tmp_path):
+    st = status()
+    st["tasks"][1]["findings"] = [finding(status="closed"), finding(id="R2", status="carried")]
+    assert "指摘" not in row_of(run(tmp_path, columns=400, statuses=[st]), "task1")
+
+
+def escalation(**over) -> dict:
+    """見本の task4 のエスカレーションを写して変えたもの。"""
+    base = dict(status()["tasks"][4]["escalations"][0])
+    base.update(over)
+    return base
+
+
+def test_エスカレーション中のタスクの行は最初の理由の頭24字を出し種類を出さない(tmp_path):
+    head = "一二三四五六七八九十" * 2 + "一二三四"
+    reason = head + "壱弐参肆伍陸"
+    assert (len(head), len(reason)) == (24, 30)
+    st = status()
+    st["tasks"][4]["escalations"] = [
+        escalation(kind="ask", reason=reason, question="空の入力は弾くか"),
+        escalation(id="task4#4", kind="stall", reason="二つ目の理由"),
+    ]
+    detail = row_of(run(tmp_path, columns=400, statuses=[st]), "task4").split("移行", 1)[1]
+    assert head in detail
+    assert not any(c in detail for c in "壱弐参肆伍陸")
+    assert "ask" not in detail and "stall" not in detail and "二つ目" not in detail

@@ -25,6 +25,10 @@ PHASE_LABEL = {
 #: statusline に出すのは、終えていないランのうち、最後のイベントからこの秒数の内のものと回答待ちのもの。
 #: 捨てたランが statusline に残り続けないための窓で、driver が生きているかの判定ではない
 RECENT = 3 * 3600
+#: 指摘の評価（`findings[].rating`）。重い順
+RATINGS = ("must-fix", "should-fix", "nit")
+#: 開いていない指摘の状態（`findings[].status`）。件数だけを出す
+SETTLED = ("closed", "rejected", "carried")
 #: 読める status の形の版（`format`）
 FORMAT = 2
 #: `status --json --name` の終了コードのうち、そのランが無いことを表すもの
@@ -99,8 +103,8 @@ def single(code: int | None, data: Any, message: str) -> Single:
     return Single(data)
 
 
-def age(stamp: Any, now: dt.datetime) -> float | None:
-    """ISO 8601 の時刻から `now` までの秒数。読めなければ None。
+def moment(stamp: Any) -> dt.datetime | None:
+    """ISO 8601 の時刻。読めなければ None。
 
     status の時刻は `Z` で終わる。Python 3.10 の `fromisoformat` は `Z` を読めないので置き換える。
     """
@@ -110,9 +114,13 @@ def age(stamp: Any, now: dt.datetime) -> float | None:
         at = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if at.tzinfo is None:
-        at = at.astimezone()
-    return (now - at).total_seconds()
+    return at if at.tzinfo is not None else at.astimezone()
+
+
+def age(stamp: Any, now: dt.datetime) -> float | None:
+    """ISO 8601 の時刻から `now` までの秒数。読めなければ None。"""
+    at = moment(stamp)
+    return None if at is None else (now - at).total_seconds()
 
 
 def name_of(st: dict) -> str:
@@ -181,6 +189,18 @@ def task_executions(task: dict) -> list[dict]:
 def escalations(owner: dict) -> list[dict]:
     """ラン（`escalations[]`）かタスク（`tasks[].escalations[]`）の、開いているエスカレーション。"""
     return owner["escalations"]
+
+
+def open_findings(findings: list[dict]) -> list[dict]:
+    """開いている指摘を評価の重い順に（同じ評価の中は台帳に立てた順）。"""
+    opened = [f for f in findings if f["status"] == "open"]
+    return sorted(opened, key=lambda f: RATINGS.index(f["rating"]))
+
+
+def settled_counts(findings: list[dict]) -> list[tuple[str, int]]:
+    """開いていない指摘の状態ごとの件数。0 件の状態は除く。"""
+    counts = [(state, sum(f["status"] == state for f in findings)) for state in SETTLED]
+    return [(state, n) for state, n in counts if n]
 
 
 def flow_of(task: dict) -> dict | None:

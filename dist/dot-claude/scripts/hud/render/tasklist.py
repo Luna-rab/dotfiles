@@ -12,13 +12,16 @@ from rich.text import Text
 
 from hud.core.headline import Headline, State
 from hud.core.pipeline import Mark, Step
-from hud.core.runs import escalations, short, task_label
+from hud.core.runs import RATINGS, escalations, open_findings, short, task_label
 from hud.core.tasklist import Summary
 from hud.render.parts import clip
 from hud.render.theme import ACCENT, ARROW, DIM, GREEN, RED, YELLOW, status_mark
 
 SUBJECT_WIDTH = 22
+#: エスカレーション中のタスクの行に出す理由の字数
 ESCALATION_WIDTH = 24
+#: statusline の指摘の件数に添える評価の短い名前
+RATING_SHORT = {"must-fix": "must", "should-fix": "should", "nit": "nit"}
 #: statusline に出すパニックの原因の幅。全文は autodev-watch の詳細に出す
 PANIC_CAUSE_WIDTH = 40
 #: 段の並びを出すタスクの状態。積む順番を待つ間も、フローの最後の段まで見せる
@@ -107,10 +110,11 @@ def task_row(task: dict, steps: list[Step]) -> Text:
     if status == "stacked" and task.get("pr"):
         detail = Text(f"#{task['pr']}", style=DIM)
     elif status == "escalated":
-        kinds = " ".join(str(e.get("kind")) for e in escalations(task))
-        detail = clip(Text(kinds or "エスカレーション中", style=YELLOW), ESCALATION_WIDTH)
+        detail = Text(escalation_head(escalations(task)), style=YELLOW)
     elif status in PIPELINE_STATUSES:
         detail = pipeline(steps)
+        if status == "running":
+            detail.append_text(findings_count(task["findings"]))
     subject = Text(task_label(task), style=body_style)
     # 右に何か続くときだけ件名の幅をそろえる（続かない行の末尾に空白を残さない）
     row.append_text(clip(subject, SUBJECT_WIDTH, pad=bool(detail.plain)))
@@ -118,6 +122,28 @@ def task_row(task: dict, steps: list[Step]) -> Text:
         row.append("  ")
         row.append_text(detail)
     return row
+
+
+def escalation_head(raised: list[dict]) -> str:
+    """最初のエスカレーションの理由の頭。理由が空なら種類の名前（ask など）。
+
+    文字数で切る。表示幅で切る `clip` だと、日本語の理由は半分の字数しか残らない。
+    """
+    if not raised:
+        return "エスカレーション中"
+    first = raised[0]
+    reason = " ".join(str(first.get("reason") or "").split())
+    if not reason:
+        return str(first.get("kind"))
+    return reason if len(reason) <= ESCALATION_WIDTH else reason[:ESCALATION_WIDTH] + "…"
+
+
+def findings_count(findings: list[dict]) -> Text:
+    """開いている指摘の評価ごとの件数（`  指摘 must 2 / should 3`）。開いていなければ空。"""
+    opened = open_findings(findings)
+    counts = [(r, sum(f["rating"] == r for f in opened)) for r in RATINGS]
+    shown = [f"{RATING_SHORT[r]} {n}" for r, n in counts if n]
+    return Text(f"  指摘 {' / '.join(shown)}", style=YELLOW) if shown else Text()
 
 
 def summary_row(summary: Summary) -> Text:

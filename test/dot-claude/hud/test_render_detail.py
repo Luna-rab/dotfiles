@@ -20,9 +20,9 @@ NOW = dt.datetime(2026, 10, 4, 10, 30, tzinfo=dt.timezone.utc)
 
 
 def text_of(renderable) -> str:
-    console = Console(file=io.StringIO(), width=300, color_system=None)
-    console.print(renderable)
-    return console.file.getvalue()
+    out = io.StringIO()
+    Console(file=out, width=300, color_system=None).print(renderable)
+    return out.getvalue()
 
 
 def task_text(task: dict) -> str:

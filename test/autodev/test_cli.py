@@ -430,10 +430,36 @@ def test_statusはnameがあればrun_statusを無ければall_statusesを呼ん
     assert (code, json.loads(out)) == (0, [{"name": "x"}])
 
 
-def test_statusは無いランを1で拒み一覧は空の配列を返す(world: World):
-    code, _, err = world.cli("status", "--json", "--name", NAME)
-    assert code == 1
+def test_statusは置き場にディレクトリもevents_dbも無いランを5で拒み標準出力に何も出さない(
+    world: World,
+):
+    assert not world.paths.root.exists()
+    code, out, err = world.cli("status", "--json", "--name", NAME)
+    assert (code, out) == (5, "")
     assert "そのランが無い" in err
+
+
+def test_statusはランのディレクトリがあってもevents_dbが無ければ5で拒む(world: World):
+    world.paths.root.mkdir(parents=True)
+    code, out, err = world.cli("status", "--json", "--name", NAME)
+    assert (code, out) == (5, "")
+    assert "そのランが無い" in err
+    assert not world.paths.events_db.exists()
+
+
+def test_statusはevents_dbのあるランを0でJSONにして返す(world: World):
+    seed_questions(world.paths, withdrawn=False)
+    code, out, _ = world.cli("status", "--json", "--name", NAME)
+    assert code == 0
+    assert json.loads(out)["name"] == NAME
+
+
+def test_statusはラン名の規則に合わない名前を5ではなく1で拒む(world: World):
+    code, out, _ = world.cli("status", "--json", "--name", "A B")
+    assert (code, out) == (1, "")
+
+
+def test_statusはnameが無ければランが1つも無くても0で空の配列を返す(world: World):
     code, out, _ = world.cli("status", "--json")
     assert (code, json.loads(out)) == (0, [])
 

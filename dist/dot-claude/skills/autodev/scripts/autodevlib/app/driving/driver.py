@@ -80,6 +80,8 @@ class ExitCode(IntEnum):
     PANICKED = 3
     #: 回答待ちで、進められるタスクが無い。回答を置いて同じラン名で呼び直す
     AWAITING_ANSWER = 4
+    #: そのランが無い（status --name で events.db が無い）。run は返さない
+    RUN_NOT_FOUND = 5
 
 
 def _run(aggregates: Mapping[StreamId, Aggregate]) -> Run:

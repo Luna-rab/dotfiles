@@ -11,6 +11,7 @@
 | 1 | 起動できなかった・頼んだことをしなかった。引数の誤りも 1 にする |
 | 3 | パニック（`run`）。原因を取り除いて同じラン名で呼び直す |
 | 4 | 回答待ちで、進められるタスクが無い（`run`）。回答を置いて同じラン名で呼び直す |
+| 5 | そのランが無い（`status --name`。events.db が無い）。ラン名の誤りは 1 |
 
 2 は使わない。argparse は引数の誤りを 2 で返すので、`_Parser` で 1 に替える。
 """
@@ -212,6 +213,10 @@ def cmd_status(args: argparse.Namespace) -> int:
         _emit(all_statuses())
         return OK
     paths = _paths(args.name)
+    if not paths.events_db.is_file():
+        # HUD は 5 を見て、ランが消えたと見分ける
+        _say(f"そのランが無い: {paths.events_db}")
+        return int(ExitCode.RUN_NOT_FOUND)
     try:
         _emit(run_status(paths))
     except FileNotFoundError as error:

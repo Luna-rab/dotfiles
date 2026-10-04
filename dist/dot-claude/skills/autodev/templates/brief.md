@@ -1,28 +1,23 @@
-# ブリーフ（${run_name}）
+# ブリーフ
 
-- 対象リポジトリ: `${repo}`
-- base ブランチ: `${base}`
-- 概要ブランチ: `${overview_branch}`
+## 起動時の指示
 
-## 検証コマンド一式
+<!-- autodev:instruction -->
 
-**driver が PR を作る前にこれを流す。落ちたら完了にならない。**
+## リポジトリごとの設定
 
-${verify}
+### 検証コマンド
 
-## テストとみなすパス
+<!-- autodev:verify -->
 
-**実装ステージはここに書き込めない**（フックが止める）。テストを書くのはテスト作成ステージだけで、
-実装ステージはテストが仕様と矛盾していると判断したら `testConflict` で報告する。
+### テストのパス
 
-${test_globs}
+<!-- autodev:test-paths -->
 
-${protected}## ブランチと PR の規約
+### 変更禁止パス
 
-- タスクのブランチ: `stack/${run_name}--task-<番号>`
-- **PR を作るのは driver だけ。** ステージは commit までで止める。`gh` を呼ばない。
-- マージは人間が `gh stack merge` で下から行う。
+<!-- autodev:protected-paths -->
 
-## 気をつけること
+### テストが要らないパス
 
-${notes}
+<!-- autodev:untested-paths -->

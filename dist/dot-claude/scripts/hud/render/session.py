@@ -4,8 +4,10 @@
     dotfiles   feature/x +2 ~1 ?3
     5h ━━━━━━━━━━━━━━━━━━━━━━━━┃━━━━╾─────────── 72% ▲12 1h47m
     7d ━━━━━━━━━━━━╾───────────────────┃─────── 31% ▼4 2d05h
+    mo ━━━━━━━━┃──────────────────────────────── 12% $96.00/$800 ▼8 27d03h
 
-1 行目は使っている量、2 行目はどこで、3・4 行目は利用枠。
+1 行目は使っている量、2 行目はどこで、3 行目からは利用枠。5h・7d は Pro / Max、
+mo（月次のクレジット）はクレジットが有効なアカウントでだけ出る。
 """
 
 from __future__ import annotations
@@ -66,6 +68,9 @@ def limit_gauge(limit: Limit) -> Text:
     text = Text(f"{limit.label} ", style=DIM)
     text.append_text(bar(limit.used, LIMIT_BAR_WIDTH, limit.elapsed_pct))
     text.append(f" {limit.used:.0f}%", style=pct_color(limit.used))
+    if limit.money is not None:
+        spent, cap = limit.money
+        text.append(f" ${spent:.2f}/${cap:.0f}", style=DIM)
     pace = limit.pace
     if pace is not None and pace >= 1:
         text.append(f" ▲{pace}", style=RED)

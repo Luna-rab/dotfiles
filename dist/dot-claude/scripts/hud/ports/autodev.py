@@ -1,82 +1,75 @@
-"""autodev のランディレクトリ（`~/.local/state/autodev/<ラン名>/`）を読む。**何も書き込まない。**
+"""autodev の `status --json` を呼ぶ。**ランディレクトリの中は読まない**。
 
-driver が書き換えている最中のファイルに当たることがあるので、読めないものは飛ばす。
+ここは呼んだ結果を返すだけで、終了コードの
+意味も JSON の中身も解釈しない（`core/runs.py` が読む）。
 """
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+from dataclasses import dataclass
 from typing import Any
 
+#: statusline は 2 秒ごとに描き直すので、それより長く待たない
+TIMEOUT = 2
+#: 入口の置き場を差し替える。検査と、手で偽の status を渡して確かめるときに使う
+ENTRY_ENV = "AUTODEV_ENTRY"
 
-def state_root() -> str:
-    """ランディレクトリの置き場。**出所は `autodevlib/config/paths.py` の `state_root()`** と同じ規則。"""
-    override = os.environ.get("AUTODEV_STATE_DIR")
+
+@dataclass(frozen=True)
+class Reply:
+    #: 終了コード。起動できなかった・時間切れなら None
+    code: int | None
+    #: 標準出力を JSON として読んだもの。読めなければ None
+    data: Any
+    #: 標準エラーの最後の行か、起動できなかった理由
+    message: str
+
+
+def entry() -> str:
+    """autodev の入口。`~/.claude/scripts` は `dist/dot-claude/scripts` への symlink なので、この
+    ファイルの実体から `dist/dot-claude` まで上り、同じ checkout のスキルの入口を引く。"""
+    override = os.environ.get(ENTRY_ENV)
     if override:
         return os.path.abspath(override)
-    xdg = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local/state")
-    return os.path.join(xdg, "autodev")
+    here = os.path.realpath(__file__)
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(here))))
+    return os.path.join(root, "skills", "autodev", "scripts", "autodev.py")
 
 
-def read_json(path: str) -> Any:
+def call(args: list[str]) -> Reply:
+    path = entry()
+    if not os.path.isfile(path):
+        return Reply(None, None, f"{path} が無い")
+    # 入口は標準ライブラリだけで動くので、今の Python で起こす（PATH の python3 を探さない）
     try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def read_text(path: str) -> str | None:
+        out = subprocess.run(
+            [sys.executable, path, *args],
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return Reply(None, None, f"{TIMEOUT} 秒で返らなかった")
+    except OSError as error:
+        return Reply(None, None, str(error))
     try:
-        with open(path, encoding="utf-8") as fh:
-            return fh.read()
-    except OSError:
-        return None
+        data = json.loads(out.stdout) if out.stdout.strip() else None
+    except json.JSONDecodeError:
+        data = None
+    lines = out.stderr.strip().splitlines()
+    return Reply(out.returncode, data, lines[-1] if lines else "")
 
 
-def read_lines(path: str) -> list[str]:
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return fh.readlines()
-    except OSError:
-        return []
+def statuses() -> Reply:
+    """全ランの status（配列）。statusline はこれを 1 回だけ呼んで描く。"""
+    return call(["status", "--json"])
 
 
-def read_states() -> list[dict]:
-    """全ランの `state.json`。ラン名の順。"""
-    root = state_root()
-    if not os.path.isdir(root):
-        return []
-    loaded = (
-        read_json(os.path.join(root, name, "state.json")) for name in sorted(os.listdir(root))
-    )
-    return [st for st in loaded if isinstance(st, dict)]
-
-
-def read_review(run_name: str, task: str) -> Any:
-    return read_json(os.path.join(state_root(), run_name, "tasks", task, "review.json"))
-
-
-def read_overview(run_name: str) -> str | None:
-    """まとめステージが書いた概要 PR の説明。計画の直後まで無い。"""
-    return read_text(os.path.join(state_root(), run_name, "prose", "overview.md"))
-
-
-def stage_file(run_name: str, task: str, stage: str, round_label: str, suffix: str) -> str:
-    """ステージのログ（`.jsonl`）と、渡した指示（`.prompt.md`）の置き場。
-
-    名前の付け方は `autodevlib/config/paths.py` の `Run.log()` / `Run.prompt()` と同じ。
-    """
-    name = f"{stage.replace(':', '-')}-{round_label}{suffix}"
-    return os.path.join(state_root(), run_name, "logs", task, name)
-
-
-def log_names(run_name: str, task: str) -> list[str]:
-    """そのタスクのログのファイル名。書かれた順（古いものが先）。"""
-    root = os.path.join(state_root(), run_name, "logs", task)
-    try:
-        names = [f for f in os.listdir(root) if f.endswith(".jsonl")]
-    except OSError:
-        return []
-    return sorted(names, key=lambda f: os.path.getmtime(os.path.join(root, f)))
+def status(name: str) -> Reply:
+    """1 つのランの status。ランが無ければ終了コード 1。"""
+    return call(["status", "--json", "--name", name])

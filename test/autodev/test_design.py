@@ -1,451 +1,489 @@
-"""設計の確かめ（`app/design.py`）と、計画を提案として持ってから写す流れ（`app/drive.py`・`app/planning.py`）。
-
-ステージは起動せず、`stage_call.call` を台本どおりに結果を返す偽物に差し替える。
-ここが狂うと、確かめていない割り方でタスクが動き出すか、設計の直しが止まらずに回り続ける。
-"""
+"""Design（`domain/aggregates/design.py`）。コマンドとイベントの列だけで確かめる。"""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+import itertools
 
 import pytest
-from autodevlib.app import design, drive, planning, stage_call
-from autodevlib.app.context import Ctx, Waiting
-from autodevlib.config import paths, stages
-from autodevlib.core import prompt, review_policy
-from autodevlib.ports import files, review_store, runner
+from autodevlib.domain.aggregates.base import Rejected
+from autodevlib.domain.aggregates.design import Design
+from autodevlib.domain.commands.base import Command
+from autodevlib.domain.commands.design import (
+    DiscardProposal,
+    MarkAmbiguous,
+    MarkReverted,
+    ProposeDesign,
+    ResumeDesign,
+    ReviseDesign,
+    SettleDesign,
+)
+from autodevlib.domain.events.base import Event
+from autodevlib.domain.events.design import (
+    DesignAmbiguous,
+    DesignProposalAbandoned,
+    DesignProposed,
+    DesignReverted,
+    DesignRevised,
+    DesignRevisionStarted,
+    DesignRoundsExhausted,
+    DesignRoundsReset,
+    DesignSettled,
+)
+from autodevlib.domain.events.review_ledger import ResultReceived, ResultRefused
+from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
+from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.command_id import CommandId
+from autodevlib.domain.value_objects.design_version import DesignVersion
+from autodevlib.domain.value_objects.escalation_kind import EscalationKind
+from autodevlib.domain.value_objects.event_id import EventId
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.finding_id import FindingId
+from autodevlib.domain.value_objects.finding_summary import FindingSummary
+from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.limits import MAX_DESIGN_ROUNDS
+from autodevlib.domain.value_objects.planned_task import PlannedTask
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.rating import Rating
+from autodevlib.domain.value_objects.stage_kind import StageKind
+from autodevlib.domain.value_objects.stream_id import StreamId
+from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_spec import TaskSpec
 
-#: ステージ 1 回ぶんの台本。review.json を書き換えて、ステージの結果を返す
-Step = Callable[[Ctx, str], dict[str, Any] | None]
+STREAM = StreamId.design()
+PLANNING = TaskId.planning()
+POLICY = Issuer.policy("design-loop", EventId("task/planning#4"))
+_ids = itertools.count(1)
 
-
-class Script:
-    """ステージの名前ごとに、呼ばれた順に台本を返す偽の `call`。台本が尽きたら空の結果を返す。"""
-
-    def __init__(self, steps: dict[str, list[Step]]) -> None:
-        self.steps = steps
-        self.calls: list[tuple[str, str, str, str | None]] = []
-
-    def __call__(
-        self, ctx, stage, task, round_label, *, extra="", resume_from=None, continue_from=None
-    ):
-        self.calls.append((stage.name, round_label, extra, continue_from))
-        queue = self.steps.get(stage.name) or []
-        result = queue.pop(0)(ctx, round_label) if queue else {}
-        if result is None:
-            return runner.Result(stage.name, 1, None, "", {}, "error", "", error="boom")
-        return runner.Result(stage.name, 0, f"s-{stage.name}", "", {}, "success", "", result=result)
-
-    def names(self) -> list[str]:
-        return [f"{name}@{label}" for name, label, _, _ in self.calls]
-
-
-@pytest.fixture
-def ctx(tmp_path, monkeypatch) -> Ctx:
-    monkeypatch.setenv("AUTODEV_STATE_DIR", str(tmp_path))
-    monkeypatch.setenv("AUTODEV_CONFIG_DIR", str(tmp_path / "config"))
-    run = paths.Run("demo")
-    run.ensure()
-    st: dict[str, Any] = {
-        "name": "demo",
-        "repo": "/src/demo",
-        "base": "main",
-        "overviewBranch": "stack/demo--task-0",
-        "testGlobs": [],
-        "verify": [],
-        "tasks": [],
-        "decisions": [],
-        "deferrals": [],
-    }
-    return Ctx(run=run, st=st)
-
-
-def use(monkeypatch, script: Script) -> Script:
-    monkeypatch.setattr(stage_call, "call", script)
-    monkeypatch.setattr(planning, "call", script)
-    return script
+EXHAUSTED = EscalationKind.DESIGN_ROUNDS_EXHAUSTED
+REVERTED = EscalationKind.DESIGN_REVERTED
+AMBIGUOUS = EscalationKind.DESIGN_AMBIGUOUS
 
 
-def plan_result(
-    tier: str = "standard", design_text: str = "## 公開インターフェース\n\n- f(x)"
-) -> dict:
-    return {
-        "fitsOnePr": True,
-        "tasks": [{"subject": "範囲指定", "tier": tier, "dod": "", "acceptance": "1-3 を渡す"}],
-        "design": design_text,
-        "verify": ["uv run pytest -q"],
-        "decisions": ["1 タスクで済ませた"],
-        "blocked": False,
-    }
+def execution(stage: StageKind, round: int = 0, task: TaskId = PLANNING) -> ExecutionId:
+    return ExecutionId(task, stage, round, 1)
 
 
-def proposal(ctx: Ctx) -> dict[str, Any]:
-    got = design.pending(ctx.st)
-    assert got is not None
-    return got
+PLAN = execution(StageKind.PLAN)
+REPLAN = execution(StageKind.REPLAN)
+JUDGE = execution(StageKind.DESIGN_JUDGE, 1)
 
 
-def review_path(ctx: Ctx) -> str:
-    return ctx.run.review(stage_call.DESIGN_ID)
+def proposal(version: int, decisions: tuple[str, ...] = (), deferrals: tuple[str, ...] = ()):
+    return Proposal(
+        DesignVersion(version),
+        (PlannedTask(TaskId("task1"), TaskSpec("キャッシュを足す")),),
+        decisions=decisions,
+        deferrals=deferrals,
+    )
 
 
-def finding(body: str = "失敗の返し方が無い", rating: str = "must-fix") -> Step:
-    """設計レビューの台本。指摘を 1 件立てて、走り終えたことを残す。"""
-
-    def step(ctx: Ctx, label: str) -> dict[str, Any]:
-        review_store.add(
-            review_path(ctx),
-            reviewer="design-review",
-            rating=rating,
-            location="設計 公開インターフェース",
-            body=body,
-            round_label=label,
-        )
-        review_store.done(review_path(ctx), "design-review", label, 1)
-        return {}
-
-    return step
+def cid() -> CommandId:
+    return CommandId(f"c{next(_ids)}")
 
 
-def clean(ctx: Ctx, label: str) -> dict[str, Any]:
-    review_store.done(review_path(ctx), "design-review", label, 0)
-    return {}
+def drive(design: Design, command: Command) -> list[Event]:
+    events = design.handle(command)
+    for event in events:
+        design.apply(event, command.command_id)
+    return events
 
 
-def judge(status: str, escalation: dict[str, Any] | None = None) -> Step:
-    """設計のジャッジの台本。未解決の指摘をすべて `status` にし、分類を返す。"""
-
-    def step(ctx: Ctx, label: str) -> dict[str, Any]:
-        with review_store.opened(review_path(ctx)) as data:
-            for item in data["items"].values():
-                if item["status"] == "open":
-                    item["status"] = status
-        return {"closed": 0, "rejected": 0, "escalation": escalation}
-
-    return step
+def refused(events: list[Event]) -> str:
+    """受けられなかった（中身の問題は拒否ではなくイベントで返る）。理由を返す。"""
+    (event,) = events
+    assert isinstance(event, ResultRefused)
+    return event.reason
 
 
-class Revisions:
-    """偽の `revise`。呼ばれるたびに設計の新しい版を提案する。"""
-
-    def __init__(self) -> None:
-        self.extras: list[str] = []
-
-    def __call__(self, ctx: Ctx, extra: str) -> None:
-        self.extras.append(extra)
-        design.propose(ctx, "plan", "s-plan", plan_result(design_text=f"v{len(self.extras) + 1}"))
+BRIEF = ArtifactRef(ArtifactKind.BRIEF, "brief.md")
+CODEMAP = ArtifactRef(ArtifactKind.CODEMAP, "codemap.md")
 
 
-# --- 提案と版 --------------------------------------------------------------------
-
-
-def test_提案すると設計ファイルの版を消さずに書き出す(ctx):
-    assert design.propose(ctx, "plan", "s1", plan_result(design_text="一つ目")) == 1
-    assert design.propose(ctx, "plan", "s1", plan_result(design_text="二つ目")) == 2
-    assert files.read_text(ctx.run.design).strip() == "二つ目"
-    assert files.read_text(ctx.run.design_version(1)).strip() == "一つ目"
-    assert proposal(ctx)["version"] == 2
-
-
-def test_設計が空なら空であることを書き出す(ctx):
-    design.propose(ctx, "plan", "s1", plan_result(design_text=""))
-    assert "設計を書かなかった" in files.read_text(ctx.run.design)
-
-
-def test_直した提案の設計が空なら前の版の設計を残す(ctx):
-    design.propose(ctx, "plan", "s1", plan_result(design_text="f(x) -> int"))
-    design.propose(ctx, "plan", "s1", plan_result(design_text=""))
-    assert files.read_text(ctx.run.design).strip() == "f(x) -> int"
-    assert files.read_text(ctx.run.design_version(2)).strip() == "f(x) -> int"
-
-
-def test_設計レビューを飛ばすかは直す前の提案で決める(ctx):
-    """直した版がたまたま light だけになっても、未解決の指摘を残したまま写さない。"""
-    design.propose(ctx, "plan", "s1", plan_result(tier="standard"))
-    design.propose(ctx, "plan", "s1", plan_result(tier="light"))
-    assert proposal(ctx)["skipReview"] is False
-    design.close(ctx)
-    design.propose(ctx, "plan", "s1", plan_result(tier="light"))
-    assert proposal(ctx)["skipReview"] is True
-
-
-# --- 設計レビューのループ ----------------------------------------------------------
-
-
-def test_タスクがすべてlightなら設計レビューを飛ばす(ctx, monkeypatch):
-    script = use(monkeypatch, Script({}))
-    design.propose(ctx, "plan", "s1", plan_result(tier="light"))
-    design.settle(ctx, Revisions())
-    assert script.calls == []
-    assert design.state(ctx.st)["step"] == "settled"
-    assert "設計レビューを飛ばした" in ctx.st["decisions"][-1]["body"]
-
-
-def test_指摘が残れば設計を書いたステージが直してレビューし直す(ctx, monkeypatch):
-    script = use(
-        monkeypatch,
-        Script(
-            {
-                "design-review": [finding(), clean],
-                "design-judge": [judge("open"), judge("closed")],
-            }
+def propose(
+    design: Design,
+    version: int,
+    by: ExecutionId = PLAN,
+    artifacts: tuple[ArtifactRef, ...] = (),
+    **kwargs,
+) -> list[Event]:
+    return drive(
+        design,
+        ProposeDesign(
+            command_id=cid(),
+            issuer=POLICY,
+            proposal=proposal(version, **kwargs),
+            execution=by,
+            artifacts=artifacts,
         ),
     )
-    revisions = Revisions()
-    design.propose(ctx, "plan", "s1", plan_result())
-    design.settle(ctx, revisions)
-    assert script.names() == [
-        "design-review@1",
-        "design-judge@1",
-        "design-review@2",
-        "design-judge@2",
+
+
+def revise(design: Design, by: ExecutionId = JUDGE) -> list[Event]:
+    return drive(design, ReviseDesign(command_id=cid(), issuer=POLICY, execution=by))
+
+
+def revised(design: Design, version: int) -> list[Event]:
+    return propose(design, version, by=execution(StageKind.REVISE, design.round))
+
+
+def current(design: Design) -> DesignVersion:
+    assert design.proposal is not None
+    return design.proposal.design
+
+
+def settle(
+    design: Design,
+    *open_findings: FindingSummary,
+    by: ExecutionId = JUDGE,
+    version: int | None = None,
+) -> list[Event]:
+    judged = DesignVersion(version) if version is not None else current(design)
+    return drive(
+        design,
+        SettleDesign(
+            command_id=cid(),
+            issuer=POLICY,
+            execution=by,
+            design=judged,
+            open_findings=open_findings,
+        ),
+    )
+
+
+def mark_reverted(design: Design, to: int, by: ExecutionId = JUDGE) -> list[Event]:
+    return drive(
+        design,
+        MarkReverted(command_id=cid(), issuer=POLICY, to_version=DesignVersion(to), execution=by),
+    )
+
+
+def mark_ambiguous(design: Design, by: ExecutionId = JUDGE) -> list[Event]:
+    return drive(design, MarkAmbiguous(command_id=cid(), issuer=POLICY, execution=by))
+
+
+def resume(design: Design, kind: EscalationKind, answer: str = "B の形でよい") -> list[Event]:
+    return drive(design, ResumeDesign(command_id=cid(), issuer=POLICY, kind=kind, answer=answer))
+
+
+def discard(design: Design) -> list[Event]:
+    return drive(design, DiscardProposal(command_id=cid(), issuer=POLICY, reason="再計画"))
+
+
+def must_fix(number: int) -> FindingSummary:
+    return FindingSummary(FindingId.design(number), Rating.MUST_FIX, "依存が輪になる")
+
+
+def nit(number: int) -> FindingSummary:
+    return FindingSummary(FindingId.design(number), Rating.NIT, "見出しの言い方")
+
+
+def use_all_rounds(design: Design) -> None:
+    """提案から、MAX_DESIGN_ROUNDS ラウンド目の判定までを回す。"""
+    for version in range(2, MAX_DESIGN_ROUNDS + 1):
+        revise(design)
+        revised(design, version)
+
+
+def revised_twice() -> Design:
+    design = Design(STREAM)
+    propose(design, 1)
+    revise(design)
+    revised(design, 2)
+    return design
+
+
+# --- 提案 ---
+
+
+def test_計画の提案はラウンド1から始まり受けたことを知らせる():
+    design = Design(STREAM)
+    assert propose(design, 1, artifacts=(BRIEF, CODEMAP)) == [
+        DesignProposed(proposal(1), (BRIEF, CODEMAP)),
+        ResultReceived(PLAN),
     ]
-    assert len(revisions.extras) == 1
-    assert "失敗の返し方が無い" in revisions.extras[0]
-    assert "--commenter plan" in revisions.extras[0]
-    assert design.state(ctx.st)["step"] == "settled"
+    assert (design.round, design.versions) == (1, [DesignVersion(1)])
 
 
-def test_mustfixが0件ならshouldfixを申し送って通す(ctx, monkeypatch):
-    script = use(
-        monkeypatch,
-        Script(
-            {
-                "design-review": [finding("空の範囲の扱いが無い", rating="should-fix")],
-                "design-judge": [judge("open")],
-            }
-        ),
+def test_確定していない提案があれば新しい提案を受けない():
+    design = Design(STREAM)
+    propose(design, 1)
+    assert "確定していない提案がすでにある" in refused(propose(design, 2))
+    assert design.versions == [DesignVersion(1)]
+
+
+def test_PlanとReplanは設計が確定したかで使い分ける():
+    design = Design(STREAM)
+    assert "Plan から" in refused(propose(design, 1, by=REPLAN))
+    propose(design, 1)
+    settle(design)
+    assert "Replan から" in refused(propose(design, 2))
+    assert propose(design, 2, by=REPLAN) == [DesignProposed(proposal(2)), ResultReceived(REPLAN)]
+
+
+@pytest.mark.parametrize("stage", [StageKind.DESIGN_REVIEW, StageKind.PREPARE])
+def test_提案を返さないステージの結果は受けない(stage: StageKind):
+    with pytest.raises(Rejected, match="設計の提案を返すステージではない"):
+        propose(Design(STREAM), 1, by=execution(stage))
+
+
+@pytest.mark.parametrize("stage", [StageKind.PLAN, StageKind.REVISE, StageKind.IMPL])
+def test_提案を出せるのは計画タスクのステージだけ(stage: StageKind):
+    with pytest.raises(Rejected, match="計画タスクのステージだけ"):
+        propose(Design(STREAM), 1, by=execution(stage, task=TaskId("task2")))
+
+
+def test_版の番号は使った番号と重ねず増えるだけ():
+    design = Design(STREAM)
+    propose(design, 3)
+    revise(design)
+    assert "使った番号以下" in refused(revised(design, 3))
+    assert "使った番号以下" in refused(revised(design, 2))
+    revised(design, 4)
+    discard(design)
+    assert "版は消さない" in refused(propose(design, 4))
+    assert design.versions == [DesignVersion(3), DesignVersion(4)]
+
+
+# --- Revise とラウンドの上限 ---
+
+
+def test_ReviseDesignはReviseの前にラウンドを1つ使い結果はProposeDesignで入る():
+    design = Design(STREAM)
+    propose(design, 1)
+    # 直すと決めた判定を載せる（計画タスクが今のラウンドの判定かを確かめる）
+    assert revise(design) == [DesignRevisionStarted(2, execution=JUDGE)]
+    revise_run = execution(StageKind.REVISE, 2)
+    assert revised(design, 2) == [DesignRevised(proposal(2)), ResultReceived(revise_run)]
+    assert (design.round, design.revising, design.proposal) == (2, False, proposal(2))
+
+
+def test_Reviseを始めていなければ直した版を受けない():
+    design = Design(STREAM)
+    propose(design, 1)
+    # 再計画で提案を捨てた後に、走っていた Revise の結果が届くことがある
+    assert "Revise を始めていない" in refused(revised(design, 2))
+
+
+def test_Reviseの結果を待つ間は次のReviseも判定もしない():
+    design = Design(STREAM)
+    propose(design, 1)
+    revise(design)
+    for attempt in (revise, settle, mark_ambiguous):
+        assert "Revise の結果を待っている" in refused(attempt(design))
+
+
+def test_提案が無ければReviseしない():
+    assert "確定していない提案が無い" in refused(revise(Design(STREAM)))
+
+
+def test_ReviseDesignは計画タスクのDesignJudgeの判定からだけ受ける():
+    design = Design(STREAM)
+    propose(design, 1)
+    with pytest.raises(Rejected, match="計画タスクの DesignJudge だけ"):
+        revise(design, by=execution(StageKind.JUDGE, 1, TaskId("task2")))
+
+
+def test_上限まで回ってもmust_fixが残ったら上げる():
+    design = Design(STREAM)
+    propose(design, 1)
+    use_all_rounds(design)
+    assert design.round == MAX_DESIGN_ROUNDS
+    assert revise(design) == [DesignRoundsExhausted(MAX_DESIGN_ROUNDS, JUDGE)]
+    assert design.awaiting is EXHAUSTED
+
+
+def test_回答が来たら数を0に戻して回答を持ってReviseから続けもう一度上限まで回せる():
+    design = Design(STREAM)
+    propose(design, 1)
+    use_all_rounds(design)
+    revise(design)
+    assert resume(design, EXHAUSTED) == [
+        DesignRoundsReset("B の形でよい"),
+        DesignRevisionStarted(1, answer="B の形でよい", execution=JUDGE),
+    ]
+    revised(design, MAX_DESIGN_ROUNDS + 1)
+    for version in range(MAX_DESIGN_ROUNDS + 2, 2 * MAX_DESIGN_ROUNDS + 1):
+        assert isinstance(revise(design)[0], DesignRevisionStarted)
+        revised(design, version)
+    assert revise(design) == [DesignRoundsExhausted(MAX_DESIGN_ROUNDS, JUDGE)]
+
+
+# --- 回答待ち（ラウンドの上限・前の版に戻った・曖昧）は 1 つの規則 ---
+
+
+def wait_on(kind: EscalationKind) -> Design:
+    design = revised_twice()
+    if kind is EXHAUSTED:
+        design = Design(STREAM)
+        propose(design, 1)
+        use_all_rounds(design)
+        revise(design)
+    elif kind is REVERTED:
+        mark_reverted(design, 1)
+    else:
+        mark_ambiguous(design)
+    assert design.awaiting is kind
+    return design
+
+
+@pytest.mark.parametrize("kind", [EXHAUSTED, REVERTED, AMBIGUOUS], ids=lambda k: k.value)
+def test_回答を待つ間はReviseも確定も判定もしない(kind: EscalationKind):
+    design = wait_on(kind)
+    for attempt in (revise, settle, mark_ambiguous, lambda d: mark_reverted(d, 1)):
+        assert "回答を待っている" in refused(attempt(design))
+
+
+@pytest.mark.parametrize("kind", [EXHAUSTED, REVERTED, AMBIGUOUS], ids=lambda k: k.value)
+def test_回答を持ったResumeDesignでだけ抜けReviseに回答を渡す(kind: EscalationKind):
+    design = wait_on(kind)
+    events = resume(design, kind, "A の形に戻してよい")
+    # 回答を待つことになった判定を、回答の後の Revise にも載せる
+    assert events[-1] == DesignRevisionStarted(1, answer="A の形に戻してよい", execution=JUDGE)
+    assert (design.awaiting, design.revising, design.round) == (None, True, 1)
+
+
+def test_待っている原因と違う回答では抜けない():
+    design = wait_on(REVERTED)
+    with pytest.raises(Rejected, match="待っているのは design-reverted への回答"):
+        resume(design, AMBIGUOUS)
+    with pytest.raises(Rejected, match="回答が空"):
+        resume(design, REVERTED, " ")
+
+
+def test_待っていなければ回答で続けない():
+    design = Design(STREAM)
+    propose(design, 1)
+    with pytest.raises(Rejected, match="回答を待っていない"):
+        resume(design, EXHAUSTED)
+
+
+def test_前の版に戻ったと曖昧はDesignJudgeの判定から受ける():
+    design = revised_twice()
+    assert mark_reverted(design, 1) == [DesignReverted(DesignVersion(1), JUDGE)]
+    design = revised_twice()
+    assert mark_ambiguous(design) == [DesignAmbiguous(JUDGE)]
+    for by in (
+        execution(StageKind.DESIGN_REVIEW, 1),
+        execution(StageKind.JUDGE, 1, TaskId("task2")),
+    ):
+        with pytest.raises(Rejected, match="計画タスクの DesignJudge だけ"):
+            mark_reverted(revised_twice(), 1, by)
+        with pytest.raises(Rejected, match="計画タスクの DesignJudge だけ"):
+            mark_ambiguous(revised_twice(), by)
+
+
+@pytest.mark.parametrize("version", [2, 5])
+def test_戻った先は今の提案より前の版(version: int):
+    # 戻った先の版は DesignJudge の結果から来るので、中身の問題として受けない
+    assert "今の提案より前の版" in refused(mark_reverted(revised_twice(), version))
+
+
+def test_提案が無ければ判定を受けない():
+    assert "確定していない提案が無い" in refused(mark_ambiguous(Design(STREAM)))
+
+
+# --- 確定 ---
+
+
+def test_must_fixが0件なら確定しmust_fix以外を設計ファイルの末尾に回す():
+    design = Design(STREAM)
+    propose(design, 1, artifacts=(BRIEF, CODEMAP))
+    # ラン共通の成果物（提案と一緒に受けた brief・codemap と、確定した design の版）を載せる
+    shared = (BRIEF, CODEMAP, ArtifactRef(ArtifactKind.DESIGN, "1"))
+    assert settle(design, nit(2), nit(3)) == [
+        DesignSettled(proposal(1), JUDGE, appendix=(nit(2), nit(3)), artifacts=shared)
+    ]
+    assert (design.proposal, design.settled, design.round) == (None, proposal(1), 0)
+
+
+def test_must_fixが残っていれば確定しない():
+    design = Design(STREAM)
+    propose(design, 1)
+    with pytest.raises(Rejected, match="must-fix が残っている: D1"):
+        settle(design, must_fix(1), nit(2))
+    assert design.settled is None
+
+
+def test_判定した版が今の提案の版でなければ確定しない():
+    design = revised_twice()
+    assert "判定した版 1 は今の提案の版 2 ではない" in refused(settle(design, version=1))
+    assert isinstance(settle(design, version=2)[0], DesignSettled)
+
+
+def test_確定を決められるのは設計のジャッジの判定だけ():
+    design = Design(STREAM)
+    propose(design, 1)
+    with pytest.raises(Rejected, match="計画タスクの DesignJudge だけ"):
+        settle(design, by=execution(StageKind.DESIGN_REVIEW, 1))
+    with pytest.raises(Rejected, match="計画タスクの DesignJudge だけ"):
+        settle(design, by=execution(StageKind.JUDGE, 1, TaskId("task2")))
+
+
+def test_提案が無ければ確定しない():
+    assert "確定していない提案が無い" in refused(settle(Design(STREAM), version=1))
+
+
+def test_確定した提案のdecisionsとdeferralsを重ねずに集める():
+    design = Design(STREAM)
+    propose(design, 1, decisions=("層ごとに割る",), deferrals=("CLI は後",))
+    settle(design)
+    propose(design, 2, by=REPLAN, decisions=("層ごとに割る", "task3 を足す"))
+    settle(design)
+    assert design.decisions == ("層ごとに割る", "task3 を足す")
+    assert design.deferrals == ("CLI は後",)
+
+
+# --- 捨てる ---
+
+
+def test_確定していない提案を捨てるとラウンドも待ちも消える():
+    design = Design(STREAM)
+    propose(design, 1)
+    use_all_rounds(design)
+    revise(design)
+    assert discard(design) == [DesignProposalAbandoned(DesignVersion(MAX_DESIGN_ROUNDS), "再計画")]
+    assert (design.proposal, design.round, design.awaiting) == (None, 0, None)
+    assert propose(design, MAX_DESIGN_ROUNDS + 1)
+
+
+def test_捨てる提案が無ければ何も出さない():
+    design = Design(STREAM)
+    assert discard(design) == []
+    propose(design, 1)
+    settle(design)
+    assert discard(design) == []
+    assert design.settled == proposal(1)
+
+
+# --- 再生 ---
+
+
+def test_イベントの列を再生すると同じ状態になる():
+    live = Design(STREAM)
+    history: list[tuple[Event, CommandId]] = []
+
+    def step(command: Command) -> None:
+        history.extend((event, command.command_id) for event in drive(live, command))
+
+    step(ProposeDesign(command_id=cid(), issuer=POLICY, proposal=proposal(1), execution=PLAN))
+    step(MarkAmbiguous(command_id=cid(), issuer=POLICY, execution=JUDGE))
+    step(ResumeDesign(command_id=cid(), issuer=POLICY, kind=AMBIGUOUS, answer="A"))
+    step(
+        ProposeDesign(
+            command_id=cid(),
+            issuer=POLICY,
+            proposal=proposal(2, decisions=("x",)),
+            execution=execution(StageKind.REVISE, 1),
+        )
     )
-    revisions = Revisions()
-    design.propose(ctx, "plan", "s1", plan_result(design_text="f(x) -> int"))
-    design.settle(ctx, revisions)
-    assert script.names() == ["design-review@1", "design-judge@1"]
-    assert revisions.extras == []
-    assert design.state(ctx.st)["step"] == "settled"
-    item = review_store.read(review_path(ctx))["items"]["r1"]
-    assert item["status"] == "rejected"
-    assert item["handedOff"] is True
-    # 設計のジャッジが判じた版のファイルは書き換えない
-    written = files.read_text(ctx.run.design)
-    assert written.startswith("f(x) -> int")
-    assert "## 設計で残った指摘" in written
-    assert "空の範囲の扱いが無い" in written
-    assert "設計で残った指摘" not in files.read_text(ctx.run.design_version(1))
-    assert "申し送った" in ctx.st["decisions"][-1]["body"]
-
-
-def keep_newest_open(ctx: Ctx, label: str) -> dict[str, Any]:
-    """設計のジャッジの台本。前のラウンドの指摘を却下し、このラウンドの指摘だけ未解決に残す。"""
-    with review_store.opened(review_path(ctx)) as data:
-        for item in data["items"].values():
-            if item["status"] == "open" and item["round"] != label:
-                item["status"] = "rejected"
-                item["comments"].append({"by": "judge", "at": "", "body": "内部の欄なので却下"})
-    return {"closed": 0, "rejected": 0, "escalation": None}
-
-
-def test_毎ラウンド新しいmustfixが立ち続けたら上限で人に聞く(ctx, monkeypatch):
-    """同じ指摘の停滞には掛からない、一段細かい所へ掘り進む往復を止める。"""
-    rounds = review_policy.DESIGN_ROUNDS
-    script = use(
-        monkeypatch,
-        Script(
-            {
-                "design-review": [finding(f"欄 {n} が無い") for n in range(1, rounds + 1)],
-                "design-judge": [keep_newest_open] * rounds,
-            }
-        ),
+    step(
+        SettleDesign(
+            command_id=cid(),
+            issuer=POLICY,
+            execution=JUDGE,
+            design=DesignVersion(2),
+            open_findings=(nit(1),),
+        )
     )
-    revisions = Revisions()
-    design.propose(ctx, "plan", "s1", plan_result())
-    with pytest.raises(Waiting) as raised:
-        design.settle(ctx, revisions)
-    assert len(revisions.extras) == rounds - 1
-    question = raised.value.questions[0]
-    assert question["id"] == f"design-r{rounds}-rounds"
-    assert f"欄 {rounds} が無い" in question["question"]
-    assert "欄 1 が無い" not in question["question"]
-    # 回答したら直しから続け、もう一度上限まで回せる
-    d = design.state(ctx.st)
-    assert (d["step"], d["proposalRounds"]) == ("fix", 0)
-    # 最初の却下は r2 のジャッジなので、却下済みの一覧が載るのは r3 の設計レビューから
-    third_review = script.calls[4]
-    assert third_review[:2] == ("design-review", "3")
-    assert "却下済みの指摘" in third_review[2]
-    assert "欄 1 が無い" in third_review[2]
-    assert "内部の欄なので却下" in third_review[2]
-
-
-def test_提案を写したらラウンドの数を戻す(ctx):
-    design.propose(ctx, "plan", "s1", plan_result())
-    design.state(ctx.st)["proposalRounds"] = 3
-    design.close(ctx)
-    assert design.state(ctx.st)["proposalRounds"] == 0
-
-
-def test_設計レビューには前の版を渡さず設計のジャッジにだけ渡す(ctx, monkeypatch):
-    script = use(monkeypatch, Script({"design-review": [clean], "design-judge": [judge("closed")]}))
-    design.propose(ctx, "plan", "s1", plan_result())
-    design.settle(ctx, Revisions())
-    review_extra, judge_extra = script.calls[0][2], script.calls[1][2]
-    assert "<設計の履歴>" not in review_extra
-    assert "範囲指定" in review_extra
-    assert "<設計の履歴>" in judge_extra
-
-
-def test_前の版に戻ったら人に聞く(ctx, monkeypatch):
-    escalation = {
-        "cause": "reverted",
-        "items": ["r1"],
-        "reason": "None に戻した",
-        "revertedTo": 1,
-        "questions": [],
-    }
-    use(
-        monkeypatch,
-        Script({"design-review": [finding()], "design-judge": [judge("open", escalation)]}),
-    )
-    design.propose(ctx, "plan", "s1", plan_result())
-    with pytest.raises(Waiting) as raised:
-        design.settle(ctx, Revisions())
-    assert raised.value.task_id == "design"
-    assert "v1" in raised.value.questions[0]["question"]
-    # 回答が置かれたら、人が決めたことを渡して直しから続ける
-    assert design.state(ctx.st)["step"] == "fix"
-
-
-def test_直しを2回受けても直らず分類も無ければ人に聞く(ctx, monkeypatch):
-    script = use(
-        monkeypatch,
-        Script(
-            {
-                "design-review": [finding(), clean, clean],
-                "design-judge": [judge("open"), judge("open"), judge("open")],
-            }
-        ),
-    )
-    revisions = Revisions()
-    design.propose(ctx, "plan", "s1", plan_result())
-    with pytest.raises(Waiting) as raised:
-        design.settle(ctx, revisions)
-    assert len(revisions.extras) == 2
-    assert "r1" in raised.value.questions[0]["question"]
-    assert "停滞している指摘" in script.calls[-1][2]
-
-
-def test_設計レビューがdoneを呼ばずに終わったら人に聞く(ctx, monkeypatch):
-    script = use(monkeypatch, Script({"design-review": [lambda c, label: {}]}))
-    design.propose(ctx, "plan", "s1", plan_result())
-    with pytest.raises(Waiting) as raised:
-        design.settle(ctx, Revisions())
-    assert raised.value.questions[0]["id"] == "design-r1-review"
-    assert script.names() == ["design-review@1"]
-
-
-def test_設計のジャッジが2回続けて落ちたらセッションを捨てて人に聞く(ctx, monkeypatch):
-    use(
-        monkeypatch,
-        Script({"design-review": [clean], "design-judge": [lambda c, label: None] * 2}),
-    )
-    design.state(ctx.st)["judgeSession"] = "s-broken"
-    design.propose(ctx, "plan", "s1", plan_result())
-    with pytest.raises(Waiting) as raised:
-        design.settle(ctx, Revisions())
-    assert raised.value.questions[0]["id"] == "design-design-judge-error"
-    assert design.state(ctx.st)["judgeSession"] is None
-
-
-def test_設計の直しの途中で計画ステージがblockedを返したら人に聞いて続ける(ctx, monkeypatch):
-    blocked = {**plan_result(), "blocked": True, "questions": ["None か Miss か"]}
-    use(monkeypatch, Script({"plan": [lambda c, label: blocked]}))
-    design.propose(ctx, "plan", "s1", plan_result())
-    with pytest.raises(Waiting) as raised:
-        planning.revise(ctx, "## 設計レビューの指摘を直す")
-    assert raised.value.task_id == "design"
-    assert raised.value.questions == [{"id": "design-plan-q1", "question": "None か Miss か"}]
-
-
-def test_設計のジャッジはランの間セッションを続ける(ctx):
-    judge_stage = stages.TABLE["design-judge"]
-    holder = stage_call.session_holder(ctx, judge_stage, None)
-    assert holder is ctx.st["design"]
-    holder["judgeSession"] = "s-judge"
-    assert stage_call.stage_session(holder, judge_stage) == ("s-judge", True)
-    assert stage_call.owner_id(judge_stage, None) == "design"
-    assert stage_call.owner_id(stages.TABLE["plan"], None) == "task0"
-
-
-# --- 計画を写す ------------------------------------------------------------------
-
-
-def test_計画は設計の指摘が0件になってから1回だけ写す(ctx, monkeypatch):
-    use(
-        monkeypatch,
-        Script(
-            {
-                # 2 回目は、設計の指摘を受けた直し
-                "plan": [lambda c, label: plan_result(), lambda c, label: plan_result()],
-                "design-review": [finding(), clean],
-                "design-judge": [judge("open"), judge("closed")],
-            }
-        ),
-    )
-    config = {"verify": [], "testGlobs": ["**/test_*.py"], "protected": []}
-    planning.plan(ctx, config)
-    assert ctx.st["tasks"] == []
-    drive.settle_proposal(ctx, config)
-    assert [t["subject"] for t in ctx.st["tasks"]] == ["範囲指定"]
-    assert ctx.st["verify"] == ["uv run pytest -q"]
-    assert design.pending(ctx.st) is None
-    # 直した計画の判断ログも、写すのは 1 回だけ
-    assert [d["body"] for d in ctx.st["decisions"]].count("1 タスクで済ませた") == 1
-
-
-def test_直しは計画ステージのセッションの続きで呼ぶ(ctx, monkeypatch):
-    script = use(monkeypatch, Script({"plan": [lambda c, label: plan_result(design_text="v2")]}))
-    design.propose(ctx, "plan", "s-first", plan_result())
-    planning.revise(ctx, "## 設計レビューの指摘を直す")
-    assert script.calls[0][3] == "s-first"
-    assert proposal(ctx)["version"] == 2
-
-
-def test_設計で聞いた回答は設計のステージに渡す(ctx):
-    question = {"id": "design-r1-q1", "question": "None か Miss か"}
-    with pytest.raises(SystemExit):
-        planning.ask_human(ctx, Waiting("design", [question]))
-    files.write_json(ctx.run.answer("design-r1-q1"), {"id": "design-r1-q1", "answer": "Miss"})
-    planning.take_answers(ctx)
-    assert design.state(ctx.st)["notes"] == ["None か Miss か → Miss"]
-    assert "人の判断（design）" in ctx.st["decisions"][-1]["body"]
-
-
-# --- ステージへ渡すもの ----------------------------------------------------------
-
-
-def test_敵対的レビューには設計を渡さない(ctx):
-    files.write_text(ctx.run.design, "設計")
-    task = {
-        "id": "task1",
-        "tier": "standard",
-        "subject": "",
-        "dod": "",
-        "acceptance": "",
-        "scope": "",
-        "entrypoints": "",
-        "contracts": "",
-        "branch": "b",
-    }
-    for name, expected in (("review:normal", True), ("review:adversarial", False)):
-        values = stage_call.stage_values(ctx, stages.TABLE[name], task, "1", "")
-        table = prompt._table(stages.TABLE[name], values, "/autodev.py")
-        assert ("<設計>" in table) is expected, name
-
-
-def test_設計のステージのレビュー記録は設計の置き場を指す(ctx):
-    values = stage_call.stage_values(ctx, stages.TABLE["design-judge"], None, "1", "")
-    assert values["review"] == ctx.run.review("design")
-    assert values["design_history"] == ctx.run.design_history
-    assert "design_history" not in stage_call.stage_values(
-        ctx, stages.TABLE["design-review"], None, "1", ""
-    )
+    replayed = Design.replay(STREAM, history)
+    assert vars(replayed) == vars(live)

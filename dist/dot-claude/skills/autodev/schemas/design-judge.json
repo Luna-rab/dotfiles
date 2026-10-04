@@ -1,38 +1,43 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["closed", "rejected", "escalation"],
+  "required": ["verdicts", "comments", "designCause"],
   "properties": {
-    "closed": { "type": "integer" },
-    "rejected": { "type": "integer" },
-    "checked": {
+    "verdicts": {
       "type": "array",
-      "description": "何で確かめたか（設計のどこ・コードのどこ）",
-      "items": { "type": "string" }
-    },
-    "notes": { "type": "string" },
-    "escalation": {
-      "type": ["object", "null"],
-      "description": "人に聞く理由。分類しないときは null",
-      "additionalProperties": false,
-      "required": ["cause", "items", "reason"],
-      "properties": {
-        "cause": { "type": "string", "enum": ["reverted", "ambiguous"] },
-        "items": {
-          "type": "array",
-          "description": "原因を分類した指摘の id（r3 など）",
-          "items": { "type": "string" }
-        },
-        "reason": { "type": "string" },
-        "revertedTo": {
-          "type": ["integer", "null"],
-          "description": "cause が reverted のとき、戻った先の版の番号"
-        },
-        "questions": {
-          "type": "array",
-          "description": "人に聞くこと（選択肢の形で）",
-          "items": { "type": "string" }
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "to", "comment"],
+        "properties": {
+          "finding": { "type": "string", "pattern": "^D[1-9][0-9]*$" },
+          "to": { "enum": ["open", "closed", "rejected"] },
+          "comment": { "type": "string", "minLength": 1 }
         }
+      }
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "body"],
+        "properties": {
+          "finding": { "type": "string", "pattern": "^D[1-9][0-9]*$" },
+          "body": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "designCause": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["kind", "revertedTo", "reason", "question"],
+      "properties": {
+        "kind": { "enum": ["reverted", "ambiguous"] },
+        "revertedTo": { "type": ["integer", "null"], "minimum": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "question": { "type": ["string", "null"], "minLength": 1 }
       }
     }
   }

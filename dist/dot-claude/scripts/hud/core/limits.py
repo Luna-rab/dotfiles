@@ -1,4 +1,4 @@
-"""利用枠（5 時間・7 日）の使い方が、窓の時間の進みに対して速すぎないか。"""
+"""利用枠（5 時間・7 日・月次のクレジット）の使い方が、窓の時間の進みに対して速すぎないか。"""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ class Limit:
     remaining: float | None
     #: 窓の長さ（秒）
     window: int
+    #: 金額で数える枠（月次のクレジット）なら、使った額と上限（ドル）
+    money: tuple[float, float] | None = None
 
     @property
     def elapsed_pct(self) -> float | None:

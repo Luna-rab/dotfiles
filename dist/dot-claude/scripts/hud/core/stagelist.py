@@ -1,89 +1,71 @@
-"""autodev-watch のステージのリスト。済んだ・失敗した・走っている・これからのステージを 1 行ずつ並べる。
+"""autodev-watch のステージのリスト。今のフローの段を 1 行ずつ並べ、それぞれに属する実行を持たせる。
 
-statusline の段の並び（`core/pipeline.py`）と違い、レビュー 2 つをまとめない。ステージを選んで
-指示と出力を見るので、ログのファイルと 1 対 1 に対応させる。
+**`flow_version` が `flow.version` と違う実行は、今のフローの段に重ねない。** その `step` は書き直す
+前のフローの段の添字で、今の段とは別物である。そうした実行と、`step` が今の段の
+どれにも当たらない実行は、段の後ろに 1 つずつ並べる。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from hud.core.pipeline import FULL, NEXT, Mark, short_name
-from hud.core.runs import Stage
+from hud.core.pipeline import Mark, full_name, step_of
+from hud.core.runs import executions, flow_of, items
 
-#: どのタスクにも属さないステージ（計画・まとめ）を並べる仮のタスク
-RUN_TASK = "task0"
+#: 実行の `status` から印へ。表に無いもの（completed・reported）は済んだもの。中断・捨てた・
+#: やり直したものは失敗ではないので、飛ばした段と同じ印にする
+EXECUTION_MARK = {
+    "running": Mark.CURRENT,
+    "requested": Mark.NEXT,
+    "deferred": Mark.NEXT,
+    "failed": Mark.FAILED,
+    "refused": Mark.FAILED,
+    "interrupted": Mark.SKIPPED,
+    "abandoned": Mark.SKIPPED,
+    "restarted": Mark.SKIPPED,
+}
 
 
 @dataclass(frozen=True)
 class StageItem:
-    #: ステージのコード名（`impl`・`review:normal`）。これからのステージは None
-    code: str | None
-    round: str
+    #: リストの中で項目を見分ける値。読み直してもカーソルを同じ項目に保つのに使う
+    key: str
+    #: 画面に出す名前（`実装`・`ジャッジ r2`）
+    label: str
     mark: Mark
-    #: 画面に出す名前（`実装`・`通常レビュー`）
-    name: str
-
-    @property
-    def key(self) -> str:
-        """リストの中で項目を見分ける値。読み直してもカーソルを同じ項目に保つのに使う。"""
-        return f"{self.code}@{self.round}" if self.code else f"next:{self.name}"
-
-    @property
-    def label(self) -> str:
-        return f"{self.name} r{self.round}" if self.round else self.name
+    #: この段の実行（始めた順）。段に入らない実行の項目なら、その実行 1 つ
+    runs: tuple[dict, ...]
+    #: 段に入らない実行の項目なら、その訳（`OLDER`・`OUTSIDE`）。段の項目は空
+    note: str = ""
 
 
-def for_task(task: dict, stages: list[Stage]) -> list[StageItem]:
-    """タスク 1 つのステージ。`task["stages"]`（driver が終わりに足す）と、走っているステージから組む。"""
-    items: list[StageItem] = []
-    done: set[tuple[str, str]] = set()
-    for entry in task.get("stages") or []:
-        code, round_label = str(entry.get("name")), str(entry.get("round") or "0")
-        mark = Mark.DONE if entry.get("ok", True) else Mark.FAILED
-        items.append(StageItem(code, round_label, mark, FULL.get(code, code)))
-        done.add((code, round_label))
-    for stage in stages:
-        if stage.task == task.get("id") and (stage.name, stage.round) not in done:
-            items.append(
-                StageItem(stage.name, stage.round, Mark.CURRENT, FULL.get(stage.name, stage.name))
-            )
-    last = short_name(items[-1].code or "") if items else None
-    items += [StageItem(None, "", Mark.NEXT, name) for name in NEXT.get(last, [])]
-    return items
+#: 書き直す前のフローの実行
+OLDER = "前の版"
+#: 今のフローの実行なのに、`step` が段の範囲の外か null。捨てると、走っている実行が画面から消える
+OUTSIDE = "段の外"
 
 
-def for_run(log_names: list[str], stages: list[Stage]) -> list[StageItem]:
-    """どのタスクにも属さないステージ（計画・まとめ）。driver は記録を残さないので、ログのファイル名から組む。"""
-    running = {(s.name, s.round) for s in stages if s.task == RUN_TASK}
-    items: list[StageItem] = []
-    for name in log_names:
-        parsed = parse_log_name(name)
-        if parsed is None:
+def for_task(task: dict) -> list[StageItem]:
+    flow = flow_of(task)
+    version = flow.get("version") if flow else None
+    mine = executions(task)
+    # 添字は flow.steps の元の位置で数える。崩れた要素を詰めると、`step` と食い違う
+    entries = items((flow or {}).get("steps"))
+    out: list[StageItem] = []
+    placed: set[int] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
             continue
-        code, round_label = parsed
-        mark = Mark.CURRENT if (code, round_label) in running else Mark.DONE
-        items.append(StageItem(code, round_label, mark, FULL.get(code, code)))
-    seen = {(i.code, i.round) for i in items}
-    items += [
-        StageItem(code, round_label, Mark.CURRENT, FULL.get(code, code))
-        for code, round_label in sorted(running)
-        if (code, round_label) not in seen
-    ]
-    return items
-
-
-def parse_log_name(filename: str) -> tuple[str, str] | None:
-    """`review-normal-1.jsonl` → (`review:normal`, `1`)。
-
-    ラウンドが `0-2` のようにハイフンを含むので、末尾のハイフンでは分けられない。既知のステージ名で
-    前から照らす（長い名前を先に試す。`review-normal` を `review` と読み違えないため）。
-    """
-    if not filename.endswith(".jsonl"):
-        return None
-    stem = filename[: -len(".jsonl")]
-    for code in sorted(FULL, key=len, reverse=True):
-        prefix = code.replace(":", "-") + "-"
-        if stem.startswith(prefix) and len(stem) > len(prefix):
-            return code, stem[len(prefix) :]
-    return None
+        step = step_of(entry)
+        runs = tuple(e for e in mine if e.get("flow_version") == version and e.get("step") == index)
+        placed.update(id(e) for e in runs)
+        out.append(StageItem(f"step:{index}", step.label, step.mark, runs))
+    loose = [e for e in mine if id(e) not in placed]
+    # 前の版の実行を先に、どの段にも入らない実行を最後に並べる
+    loose.sort(key=lambda e: e.get("flow_version") == version)
+    for e in loose:
+        note = OUTSIDE if e.get("flow_version") == version else OLDER
+        label = f"{full_name(str(e.get('stage') or '?'))} r{e.get('round')}"
+        mark = EXECUTION_MARK.get(str(e.get("status")), Mark.DONE)
+        out.append(StageItem(f"exec:{e.get('id')}", label, mark, (e,), note))
+    return out

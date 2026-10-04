@@ -137,6 +137,12 @@ SKILL_NAME_CHARS = r"A-Za-z0-9._\-"
 # 全文日本語であることと相まって `詳細はscripts/x.sh` を取りこぼしていた。
 NOT_BEFORE = r"A-Za-z0-9_/~.\-"
 
+# 参照の直前がこの形なら、git のコミットの中のパス（`56b72fa:scripts/x.py`）で、作業ツリーの
+# ファイルではない。消したファイルを、消す前のコミットで指すときに書く。検査はせず、件数だけ
+# `Counts.script_refs_at_revision` に数えて集計行に出す。ブランチ名（`main:`）は除外しない。
+# ブランチは動くので、マージの後に指す先が変わる
+AT_REVISION_RE = re.compile(r"(?<![A-Za-z0-9_])[0-9a-f]{7,40}:$")
+
 # `scripts/` 配下への参照。4 つの書き方を 1 本の正規表現で拾う。並び順に意味がある
 # （前の候補から順に試されるので、より長い書き方を先に置く）。
 #   1. skills ルートから書いた形（`~/.claude/skills/autodev/scripts/autodev.py`）
@@ -200,6 +206,8 @@ class Counts:
         self.script_refs = 0
         # `<スキル名>/scripts/x.sh` の形で、スキル名が実在しないので検査しなかった件数。
         self.script_refs_unknown_skill = 0
+        # `56b72fa:scripts/x.py` の形で、コミットの中のパスなので検査しなかった件数。
+        self.script_refs_at_revision = 0
 
     def links_skipped_total(self) -> int:
         return sum(self.links_skipped.values())
@@ -481,9 +489,13 @@ def iter_script_refs(text: str) -> Iterator[tuple[int, str | None, str, str, boo
     5 番目の値が True の書き方（`autodev/scripts/x.sh`）は、スキル名の位置に
     何が書かれていても形が同じなので、実在するスキル名のときだけ参照として扱う。
     そうしないと `docs/scripts/x.sh` を「スキル docs の参照」と誤って拾ってしまう。
+
+    コミットの中のパス（`56b72fa:scripts/x.py`）は返さない。件数は count_revision_refs() が数える。
     """
     for lineno, line in enumerate(text.split("\n"), start=1):
         for match in SCRIPT_REF_RE.finditer(line):
+            if AT_REVISION_RE.search(line, 0, match.start()):
+                continue
             if match.group("root_skill"):
                 skill, rel, base, verify_name = (
                     match.group("root_skill"),
@@ -516,6 +528,16 @@ def iter_script_refs(text: str) -> Iterator[tuple[int, str | None, str, str, boo
             if not rel:
                 continue
             yield lineno, skill, rel, base, verify_name
+
+
+def count_revision_refs(text: str) -> int:
+    """コミットの中のパスとして書いた `scripts/` 参照（検査しないもの）の件数。"""
+    return sum(
+        1
+        for line in text.split("\n")
+        for match in SCRIPT_REF_RE.finditer(line)
+        if AT_REVISION_RE.search(line, 0, match.start())
+    )
 
 
 def resolve_ref_base(
@@ -568,6 +590,7 @@ def check_script_refs(
       md をサブディレクトリに置いても指す先が変わらないようにするための決めごとである。
     """
     failures = []
+    counts.script_refs_at_revision += count_revision_refs(text)
     for lineno, skill, rel, ref_base, verify_name in iter_script_refs(text):
         if verify_name and skill not in known_skills:
             # スキル名が実在しない。`docs/scripts/x.sh` のようにスキルの参照ではない行と、
@@ -724,7 +747,8 @@ def main(argv: list[str] | None = None) -> int:
     summary = (
         f"check-skills: {counts.skills} スキル / {counts.files} ファイルを検査した"
         f"（リンク {counts.links_checked} 件・scripts 参照 {counts.script_refs} 件を確認、リンク {counts.links_skipped_total()} 件は対象外: {counts.links_skipped_detail()}、"
-        f"scripts 参照 {counts.script_refs_unknown_skill} 件はスキル名が実在せず対象外）。"
+        f"scripts 参照 {counts.script_refs_unknown_skill} 件はスキル名が実在せず対象外、"
+        f"{counts.script_refs_at_revision} 件はコミットの中のパスなので対象外）。"
     )
     if failures:
         print(summary + f"{len(failures)} 件が落ちた")

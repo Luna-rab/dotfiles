@@ -1,57 +1,46 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fitsOnePr", "tasks", "design", "verify", "blocked"],
+  "required": ["design", "codemap", "tasks", "verify", "decisions", "deferrals"],
   "properties": {
-    "fitsOnePr": {
-      "type": "boolean",
-      "description": "1 つの PR に収まるか"
-    },
+    "design": { "type": "string", "minLength": 1 },
+    "codemap": { "type": "string", "minLength": 1 },
     "tasks": {
       "type": "array",
-      "description": "下から順（tasks[0] が task1 になり、stacked PR の一番下にスタックに追加される）",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["subject", "tier", "dod", "acceptance"],
+        "required": [
+          "id",
+          "title",
+          "dod",
+          "acceptance",
+          "scope",
+          "entryPoints",
+          "boundary",
+          "verify",
+          "blockedBy"
+        ],
         "properties": {
-          "subject": { "type": "string" },
-          "tier": { "type": "string", "enum": ["light", "standard"] },
+          "id": { "type": "string", "pattern": "^task[1-9][0-9]*$" },
+          "title": { "type": "string", "minLength": 1 },
           "dod": { "type": "string" },
-          "acceptance": { "type": "string" },
-          "scope": { "type": "string" },
-          "entrypoints": { "type": "string" },
-          "contracts": { "type": "string" },
-          "verify": {
+          "acceptance": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "scope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "entryPoints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "boundary": { "type": "string" },
+          "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "blockedBy": {
             "type": "array",
-            "description": "このタスクから流す検証コマンド。ラン共通の verify に足して、このタスクと後ろのタスクの完了チェックで流す",
-            "items": { "type": "string" }
-          },
-          "blockedBy": { "type": "array", "items": { "type": "string" } }
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^task[1-9][0-9]*$" }
+          }
         }
       }
     },
-    "design": {
-      "type": "string",
-      "description": "設計ファイルの全文（Markdown）。テストから呼ぶ公開インターフェース、どのタスクが作りどのタスクが使うか、層をまたぐならデータの流れ"
-    },
-    "verify": {
-      "type": "array",
-      "description": "マージしてよいと言える全チェックのうち、どのタスクの時点でも通るもの。空で返してはいけない",
-      "items": { "type": "string" }
-    },
-    "testGlobs": { "type": "array", "items": { "type": "string" } },
-    "protected": { "type": "array", "items": { "type": "string" } },
-    "briefNotes": {
-      "type": "string",
-      "description": "次のステージが知らないと間違えること。brief.md の「気をつけること」に入る"
-    },
-    "decisions": { "type": "array", "items": { "type": "string" } },
-    "deferrals": { "type": "array", "items": { "type": "string" } },
-    "blocked": {
-      "type": "boolean",
-      "description": "受入条件が一意に定まらないなら true"
-    },
-    "questions": { "type": "array", "items": { "type": "string" } }
+    "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "decisions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "deferrals": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }
 }

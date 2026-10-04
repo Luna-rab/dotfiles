@@ -1,2 +1,39 @@
-autodev が作成（ラン名 `${run_name}`、更新 ${updated_at}）。マージは人間が `gh stack merge` で
-下から行う。
+> stacked PR の概要 PR。この PR が draft のあいだは、上に積んだタスク PR もマージできない。下から順にレビューし、下から順にマージする。
+
+## 何が変わるか
+
+（ラン全体で何が変わるか。挙動の変化と、PR をどの単位で分けたか）
+
+## どう確かめるか
+
+（レビュアーが手元で確かめる操作と、期待する結果）
+
+---
+
+## autodev の記録
+
+### タスク
+
+<!-- autodev:tasks -->
+
+### 回答を待っていること
+
+<!-- autodev:waiting -->
+
+### 判断ログ
+
+<!-- autodev:decisions -->
+
+### スコープの外にしたこと
+
+<!-- autodev:deferrals -->
+
+<details><summary>起動時の指示</summary>
+
+<!-- autodev:instruction -->
+
+</details>
+
+autodev が作成した。マージは人が `gh stack merge` で下から行う。
+
+<!-- autodev:signature -->

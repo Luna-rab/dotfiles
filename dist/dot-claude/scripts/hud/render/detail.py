@@ -12,14 +12,12 @@ from hud.core.headline import Headline
 from hud.core.pipeline import Mark, Step, full_name
 from hud.core.runs import (
     age,
-    dicts,
     escalations,
-    executions,
     flow_of,
-    items,
     questions,
     run_of,
     short,
+    task_executions,
     task_label,
     tasks,
 )
@@ -95,7 +93,7 @@ def run_detail(head: Headline, st: dict, now: dt.datetime) -> Group:
         parts += [Text("エスカレーション", style=BOLD), *map(run_escalation, raised), Text()]
     parts += [Text("スタック", style=BOLD), stack_text(st.get("stack")), Text()]
     parts += [Text("計画", style=BOLD), plan_text(st.get("plan")), Text()]
-    rejected = dicts(st.get("rejections"))
+    rejected = st["rejections"]
     if rejected:
         parts.append(Text(f"拒んだコマンド {len(rejected)} 件", style=BOLD))
         for r in rejected[-REJECTIONS_SHOWN:]:
@@ -146,12 +144,12 @@ def stack_text(stack: Any) -> Text:
     overview = stack.get("overview")
     if isinstance(overview, dict):
         out.append(f"概要 PR #{overview.get('pr')} {overview.get('branch')}\n")
-    for entry in dicts(stack.get("entries")):
+    for entry in stack["entries"]:
         out.append(f"  #{entry.get('pr')} {entry.get('task')} ", style="")
         out.append(f"{entry.get('branch')}\n", style=DIM)
     if stack.get("current"):
         out.append(f"処理中: {job_text(stack['current'])}\n", style=ACCENT)
-    queue = [job_text(j) for j in dicts(stack.get("queue"))]
+    queue = [job_text(j) for j in stack["queue"]]
     if queue:
         out.append(f"順番待ち: {' / '.join(queue)}\n", style=DIM)
     if stack.get("parked"):
@@ -172,7 +170,7 @@ def plan_text(plan: Any) -> Text:
     elif not plan.get("planned"):
         out.append("まだ計画を反映していない\n", style=DIM)
     design = plan.get("design") if isinstance(plan.get("design"), dict) else {}
-    versions = items(design.get("versions"))
+    versions = design.get("versions") or []
     if versions:
         out.append(
             f"設計の版 {', '.join(map(str, versions))} · 確定 {design.get('settled')}"
@@ -226,7 +224,7 @@ def task_detail(task: dict, steps: list[Step], now: dt.datetime) -> Group:
             parts.append(Text(f"仕事: {job_text(flow['job'])}", style=ACCENT))
     parts.append(Text())
 
-    parts += [Text("実行", style=BOLD), executions_text(executions(task), now)]
+    parts += [Text("実行", style=BOLD), executions_text(task_executions(task), now)]
     raised = escalations(task)
     if raised:
         parts.append(Text("エスカレーション", style=BOLD))
@@ -241,7 +239,7 @@ def task_detail(task: dict, steps: list[Step], now: dt.datetime) -> Group:
 def relations(task: dict) -> list[Text]:
     """ほかのタスクとの関係と、知らないと読み違える印。"""
     out = []
-    blocked = items(task.get("blocked_by"))
+    blocked = task["blocked_by"]
     if blocked:
         out.append(Text(f"待っているタスク: {' '.join(map(str, blocked))}", style=DIM))
     if task.get("takes_over"):

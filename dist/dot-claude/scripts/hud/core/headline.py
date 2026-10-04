@@ -8,11 +8,9 @@ from enum import Enum
 
 from hud.core.pipeline import short_name
 from hud.core.runs import (
-    NOT_COUNTED,
     Running,
     awaiting,
     driver_stopped,
-    implementation,
     live_children,
     name_of,
     overview_pr,
@@ -20,6 +18,7 @@ from hud.core.runs import (
     phase,
     phase_label,
     questions,
+    run_of,
     running,
     tasks,
 )
@@ -54,7 +53,7 @@ class Headline:
     total: int = 0
     #: エスカレーション中のタスクの数
     escalated: int = 0
-    #: driver が走っているはずのフェーズなのに走っていない（`runs.driver_stopped`）
+    #: driver が走っているはずのフェーズなのに走っていない（`run.driver_stopped`）
     stopped: bool = False
     #: 前の driver が残した、まだ生きている子の pid
     leftovers: tuple[int, ...] = ()
@@ -62,7 +61,7 @@ class Headline:
 
 
 def build(st: dict, now: dt.datetime) -> Headline:
-    counted = [t for t in implementation(st) if t.get("status") not in NOT_COUNTED]
+    run = run_of(st)
     waiting = tuple(str(q.get("id") or "?") for q in questions(st)) if awaiting(st) else ()
     base = Headline(
         run_name=name_of(st),
@@ -71,8 +70,8 @@ def build(st: dict, now: dt.datetime) -> Headline:
         phase=phase_label(st),
         waiting=waiting,
         overview_pr=overview_pr(st),
-        stacked=sum(1 for t in counted if t.get("status") == "stacked"),
-        total=len(counted),
+        stacked=run["stacked_tasks"],
+        total=run["stack_target_tasks"],
         escalated=sum(1 for t in tasks(st) if t.get("status") == "escalated"),
         stopped=driver_stopped(st),
         leftovers=live_children(st),

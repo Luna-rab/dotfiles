@@ -166,10 +166,16 @@ def questions(st: dict) -> list[dict]:
 
 
 def task_executions(task: dict) -> list[dict]:
-    """タスクの実行すべて。今のフローの段の下・前のフローの版・段の外の順。"""
+    """タスクの実行すべて（始めた順。始めていない実行は後ろ）。
+
+    今のフローの段の下・前のフローの版・段の外に分かれて届くので、`started_at` で並べ直す。
+    段の順につなぐだけだと、直しのラウンドを回したタスクで実装 r0 / 実装 r1 / レビュー r0 と並ぶ。
+    """
     flow = flow_of(task)
     placed = [e for step in flow["steps"] for e in step["executions"]] if flow else []
-    return [*placed, *task["earlier_executions"], *task["unplaced_executions"]]
+    every = [*placed, *task["earlier_executions"], *task["unplaced_executions"]]
+    # started_at は同じ書式（UTC の `...Z`）なので、文字列のまま比べられる
+    return sorted(every, key=lambda e: (e["started_at"] is None, e["started_at"] or ""))
 
 
 def escalations(owner: dict) -> list[dict]:
@@ -195,7 +201,7 @@ def task_label(task: dict) -> str:
 
 
 def running(st: dict, now: dt.datetime) -> list[Running]:
-    """走っている実行（タスクの順）。前のフローの版の実行と、段の外の実行も含む。"""
+    """走っている実行（タスクの順、タスクの中は始めた順）。前のフローの版の実行と、段の外の実行も含む。"""
     out: list[Running] = []
     for task in tasks(st):
         for execution in task_executions(task):

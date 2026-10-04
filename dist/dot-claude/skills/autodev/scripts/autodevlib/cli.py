@@ -54,6 +54,7 @@ from .domain.value_objects.run_name import RunName
 from .infra.lock import DriverBusy, DriverLock
 from .infra.paths import RunPaths
 from .infra.repo_config import RepoConfigError, config_path, load_repo_config
+from .infra.store.db import EventsDbMissing
 from .infra.store.eventstore import EventReader
 from .infra.store.requests import RequestBox
 
@@ -215,13 +216,13 @@ def cmd_status(args: argparse.Namespace) -> int:
     paths = _paths(args.name)
     try:
         _emit(run_status(paths))
-    except FileNotFoundError as error:
-        if paths.events_db.is_file():
-            # events.db はあるので、ランが無いのではなく status を組めなかった
-            raise Failed(f"ランを読めない: {error}") from error
+    except EventsDbMissing as error:
+        # 開いた時点の事実で決める。後で見直すと、その間に driver が events.db を作ったときに取り違える。
         # HUD は 5 を見て、ランが消えたと見分ける
-        _say(f"そのランが無い: {paths.events_db}")
+        _say(f"そのランが無い: {error}")
         return int(ExitCode.RUN_NOT_FOUND)
+    except FileNotFoundError as error:
+        raise Failed(f"ランを読めない: {error}") from error
     return OK
 
 

@@ -51,6 +51,10 @@ class StoreError(Exception):
     """`events.db` を開けない・使えない。"""
 
 
+class EventsDbMissing(FileNotFoundError):
+    """開こうとした時点で `events.db` が無い。ランが無いことを、ほかの FileNotFoundError と分ける。"""
+
+
 def connect(path: Path, *, create: bool = True) -> sqlite3.Connection:
     """書く接続を開く。`create` なら、無ければファイルとテーブルを作る。
 
@@ -59,7 +63,7 @@ def connect(path: Path, *, create: bool = True) -> sqlite3.Connection:
     """
     path = path.absolute()
     if not create and not path.is_file():
-        raise FileNotFoundError(f"events.db が無い: {path}")
+        raise EventsDbMissing(f"events.db が無い: {path}")
     # シンボリックリンクの先が Windows 側のこともあるので、たどった先で見る
     refuse_windows_disk(path.resolve())
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +91,7 @@ def connect_readonly(path: Path) -> sqlite3.Connection:
     """
     path = path.absolute()
     if not path.is_file():
-        raise FileNotFoundError(f"events.db が無い: {path}")
+        raise EventsDbMissing(f"events.db が無い: {path}")
     return sqlite3.connect(
         f"{path.as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT, isolation_level=None
     )

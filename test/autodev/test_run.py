@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 from autodev_harness import CLI, DRIVER, POLICY, RUN_SUPERVISOR, Loop, names, new_id, of_type
 from autodevlib.domain.aggregates.base import Rejected
-from autodevlib.domain.aggregates.run import Run
+from autodevlib.domain.aggregates.run import Run, RunPhase
 from autodevlib.domain.commands.run import (
     AnswerEscalation,
     ApplyPlan,
@@ -41,12 +41,14 @@ from autodevlib.domain.events.run import (
     IntegrationFailureRecorded,
     ReplanRequested,
     RunResumed,
+    RunStarted,
     TaskInserted,
     TaskMarkedStacked,
     TasksDiscarded,
     TasksPlanned,
     TasksReturnedToQueue,
     TaskStarted,
+    TaskStatusChanged,
     TaskSuperseded,
 )
 from autodevlib.domain.events.task import EscalationClosed
@@ -55,6 +57,7 @@ from autodevlib.domain.supervision import wake_for
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.design_version import DesignVersion
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind
 from autodevlib.domain.value_objects.event_id import EventId
@@ -74,6 +77,7 @@ from autodevlib.domain.value_objects.repository import Repository
 from autodevlib.domain.value_objects.run_name import RunName
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
+from autodevlib.domain.value_objects.task_kind import TaskKind
 from autodevlib.domain.value_objects.task_spec import TaskSpec
 from autodevlib.domain.value_objects.task_status import TaskStatus
 
@@ -1387,6 +1391,45 @@ def test_タスクの側で閉じたエスカレーションの中継を閉じ�
 
 
 # --- 再生 ---
+
+
+@pytest.mark.parametrize(
+    ("phase", "expected"),
+    [
+        (RunPhase.NOT_STARTED, False),
+        (RunPhase.PLANNING, True),
+        (RunPhase.RUNNING, True),
+        (RunPhase.PANICKED, False),
+        (RunPhase.FINISHING, True),
+        (RunPhase.FINISHED, False),
+    ],
+)
+def test_driverが走っているはずのフェーズは計画中と走っているときと仕上げ中(
+    phase: RunPhase, expected: bool
+):
+    assert phase.expects_driver is expected
+
+
+def test_積んだ数と積む数の分母は実装タスクだけを数え外れたタスクを分母から外す():
+    numbered = [t(n) for n in range(1, 8)]
+    statuses = (S.STACKED, S.STACKED, S.RUNNING, S.DROPPED, S.SUPERSEDED, S.DISCARDED, S.GATED)
+    events = [
+        RunStarted(
+            NAME, Instruction("足す"), Repository("/repo"), BranchName("main"), ParallelLimit(3)
+        ),
+        TaskStarted(PLANNING, TaskKind.PLANNING),
+        TaskStarted(GIT, TaskKind.GIT),
+        TasksPlanned(
+            DesignVersion(1), tuple(planned(n) for n in range(1, 8)), (), ARTIFACTS, replan=False
+        ),
+        *(
+            TaskStatusChanged(task, S.PENDING, status, "x")
+            for task, status in zip(numbered, statuses, strict=True)
+        ),
+        TaskStatusChanged(PLANNING, S.RUNNING, S.FINISHED, "x"),
+    ]
+    run = Run.replay(StreamId.run(), [(e, CommandId(f"c{i}")) for i, e in enumerate(events)])
+    assert (run.stacked_count, run.stack_target_count) == (2, 4)
 
 
 def test_イベントの列を再生すると同じ状態になる(planned_run: RunLoop):

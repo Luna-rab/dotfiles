@@ -145,6 +145,11 @@ class RunPhase(Enum):
     #: 仕上げも終えた（driver が終了コード 0 で終える）
     FINISHED = "finished"
 
+    @property
+    def expects_driver(self) -> bool:
+        """driver が走っているはずのフェーズ（running・planning・finishing）。"""
+        raise NotImplementedError
+
 
 @dataclass(frozen=True)
 class TaskEntry:
@@ -336,6 +341,16 @@ class Run(Aggregate):
             if artifact.kind is ArtifactKind.DESIGN:
                 return DesignVersion(int(artifact.at))
         return None
+
+    @property
+    def stacked_count(self) -> int:
+        """実装タスクのうち、status が stacked の数。"""
+        raise NotImplementedError
+
+    @property
+    def stack_target_count(self) -> int:
+        """実装タスクのうち、dropped・superseded・discarded を除いた数（積む数の分母）。"""
+        raise NotImplementedError
 
     @property
     def implementation_tasks(self) -> tuple[TaskEntry, ...]:

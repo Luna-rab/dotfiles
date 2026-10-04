@@ -38,6 +38,7 @@ from autodevlib.domain.events.task import (
     EscalationResolved,
     ExecutionRestarted,
     FlowAbandoned,
+    FlowAccepted,
     FlowFinished,
     FlowRejected,
     GateFailed,
@@ -53,9 +54,10 @@ from autodevlib.domain.events.task import (
     StageRequested,
     StageStarted,
     TaskGated,
+    TaskOpened,
     WorktreeReady,
 )
-from autodevlib.domain.flow.flow import Cursor, FlowStep, Reviewers
+from autodevlib.domain.flow.flow import Cursor, Flow, FlowStep, Reviewers
 from autodevlib.domain.flow.standard import git_job_flow
 from autodevlib.domain.services.escalation_router import EscalationRouter
 from autodevlib.domain.stages.catalog import STAGE_SPECS
@@ -63,6 +65,7 @@ from autodevlib.domain.stages.kinds import Handoff, InnerRole, StageMode
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.commit_sha import CommitSha
 from autodevlib.domain.value_objects.decision import Decision
 from autodevlib.domain.value_objects.decision_origin import DecisionOrigin
@@ -917,6 +920,37 @@ def test_runningの実行をドメインに聞ける(task: TaskLoop):
     assert task.aggregate.running_executions() == []
     task.begin(ex(S.IMPL))
     assert task.aggregate.running_executions() == [ex(S.IMPL)]
+
+
+def test_実行を今の版の段ごとと前の版で走っているものと段の外に分けて聞ける():
+    done = ex(S.TEST_GEN)
+    old = ex(S.IMPL)
+    again = ex(S.TEST_GEN, attempt=2)
+    placed = ex(S.IMPL, attempt=2)
+    stray = ex(S.GATE)
+    steps = (FlowStep(S.TEST_GEN), FlowStep(S.IMPL))
+    events = [
+        TaskOpened(TaskKind.IMPLEMENTATION, TaskSpec("x")),
+        FlowAccepted(Flow(steps, 1)),
+        StageRequested(done, 0),
+        StageStarted(done, HEAD),
+        StageCompleted(done, cursor=Cursor(1)),
+        StageRequested(old, 1),
+        StageStarted(old, HEAD),
+        FlowAccepted(Flow(steps, 2)),
+        StageRequested(again, 0),
+        StageStarted(again, HEAD),
+        StageCompleted(again, cursor=Cursor(1)),
+        StageRequested(placed, 1),
+        StageRequested(stray, 2),
+    ]
+    aggregate = Task.replay(
+        StreamId.task(T1), [(e, CommandId(f"c{i}")) for i, e in enumerate(events)]
+    )
+    assert [e.id for e in aggregate.executions_at(0)] == [again]
+    assert [e.id for e in aggregate.executions_at(1)] == [placed]
+    assert [e.id for e in aggregate.earlier_executions()] == [old]
+    assert [e.id for e in aggregate.unplaced_executions()] == [stray]
 
 
 def interrupt(task: TaskLoop, execution: ExecutionId, cause: InterruptCause) -> list:

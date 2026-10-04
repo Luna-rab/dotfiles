@@ -410,6 +410,18 @@ class Task(Aggregate):
             if not self._is_obsolete(e) or e.status is _X.RUNNING
         ]
 
+    def executions_at(self, step: int) -> list[Execution]:
+        """今のフローの版で、その段の実行（始めた順）。"""
+        raise NotImplementedError
+
+    def earlier_executions(self) -> list[Execution]:
+        """書き直す前のフローの版で、まだ走っている実行（始めた順）。"""
+        raise NotImplementedError
+
+    def unplaced_executions(self) -> list[Execution]:
+        """今のフローの版の実行で、step が flow.steps のどの添字にも当たらないもの（始めた順）。"""
+        raise NotImplementedError
+
     def running_executions(self) -> list[ExecutionId]:
         """running のまま残っている実行（メインループが起動時とパニックのときに聞く）。"""
         return sorted((e.id for e in self.executions.values() if e.status is _X.RUNNING), key=str)

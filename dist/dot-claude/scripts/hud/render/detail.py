@@ -91,8 +91,8 @@ def run_detail(head: Headline, st: dict, now: dt.datetime) -> Group:
     raised = escalations(st)
     if raised:
         parts += [Text("エスカレーション", style=BOLD), *map(run_escalation, raised), Text()]
-    parts += [Text("スタック", style=BOLD), stack_text(st.get("stack")), Text()]
-    parts += [Text("計画", style=BOLD), plan_text(st.get("plan")), Text()]
+    parts += [Text("スタック", style=BOLD), stack_text(st["stack"]), Text()]
+    parts += [Text("計画", style=BOLD), plan_text(st["plan"]), Text()]
     rejected = st["rejections"]
     if rejected:
         parts.append(Text(f"拒んだコマンド {len(rejected)} 件", style=BOLD))
@@ -129,20 +129,18 @@ def run_escalation(e: dict) -> Text:
     return line
 
 
-def job_text(job: Any) -> str:
-    if not isinstance(job, dict):
+def job_text(job: dict | None) -> str:
+    if job is None:
         return ""
     kind = str(job.get("kind"))
     target = job.get("task") or job.get("branch") or ""
     return f"{JOB_LABEL.get(kind, kind)} {target}".rstrip()
 
 
-def stack_text(stack: Any) -> Text:
-    if not isinstance(stack, dict):
-        return Text("（無い）\n", style=DIM)
+def stack_text(stack: dict) -> Text:
     out = Text()
-    overview = stack.get("overview")
-    if isinstance(overview, dict):
+    overview = stack["overview"]
+    if overview is not None:
         out.append(f"概要 PR #{overview.get('pr')} {overview.get('branch')}\n")
     for entry in stack["entries"]:
         out.append(f"  #{entry.get('pr')} {entry.get('task')} ", style="")
@@ -161,24 +159,22 @@ def stack_text(stack: Any) -> Text:
     return out if out.plain else Text("（まだ積んでいない）\n", style=DIM)
 
 
-def plan_text(plan: Any) -> Text:
-    if not isinstance(plan, dict):
-        return Text("（無い）\n", style=DIM)
+def plan_text(plan: dict) -> Text:
     out = Text()
     if plan.get("planning"):
         out.append("計画が進んでいる\n", style=ACCENT)
     elif not plan.get("planned"):
         out.append("まだ計画を反映していない\n", style=DIM)
-    design = plan.get("design") if isinstance(plan.get("design"), dict) else {}
-    versions = design.get("versions") or []
+    design = plan["design"]
+    versions = design["versions"]
     if versions:
         out.append(
             f"設計の版 {', '.join(map(str, versions))} · 確定 {design.get('settled')}"
             f" · 反映 {plan.get('applied_design')}\n",
             style=DIM,
         )
-    proposal = design.get("proposal")
-    if isinstance(proposal, dict):
+    proposal = design["proposal"]
+    if proposal is not None:
         state = str(proposal.get("state"))
         out.append(f"提案 v{proposal.get('version')} {PROPOSAL_LABEL.get(state, state)}")
         out.append(f" r{proposal.get('round')}", style=DIM)

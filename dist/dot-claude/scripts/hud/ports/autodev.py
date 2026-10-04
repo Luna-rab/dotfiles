@@ -71,5 +71,5 @@ def statuses() -> Reply:
 
 
 def status(name: str) -> Reply:
-    """1 つのランの status。ランが無ければ終了コード 1。"""
+    """1 つのランの status。ランが無ければ終了コード 5。"""
     return call(["status", "--json", "--name", name])

@@ -87,7 +87,7 @@ def detail_lines(st: dict, now: dt.datetime) -> list[str]:
 def test_ランの詳細とリストの行にdriverの止まり方とパニックの原因を出す():
     now = dt.datetime.now().astimezone()
     stopped = quiet()
-    stopped["run"].update(driver_running=False, live_children=[4242])
+    stopped["run"].update(driver_stopped=True, live_children=[4242])
     head = headline.build(stopped, now)
     lines = detail_lines(stopped, now)
     assert lines[2] == (

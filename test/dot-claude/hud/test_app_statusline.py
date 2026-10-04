@@ -13,7 +13,17 @@ import time
 from conftest import CLAUDE_SCRIPTS
 from hud.app import statusline
 from hud.ports import autodev
-from hud_samples import calls, quiet, session, stamp, status, write_fake_entry, write_usage
+from hud_samples import (
+    calls,
+    execution,
+    judge,
+    quiet,
+    session,
+    stamp,
+    status,
+    write_fake_entry,
+    write_usage,
+)
 
 SCRIPT = CLAUDE_SCRIPTS / "statusline.py"
 
@@ -166,24 +176,80 @@ def test_パニックの原因を幅を切って添える(tmp_path):
 
 def test_driverが止まっていれば回答待ちとエスカレーションの後ろに短く出す(tmp_path):
     st = quiet()
-    st["run"].update(driver_running=False, live_children=[4242, 4343])
+    st["run"].update(driver_stopped=True, live_children=[4242, 4343])
     assert run(tmp_path, columns=120, statuses=[st])[4] == (
         "autodev add-cache ▸ 実行中 · スタック済み 1/4 · エスカレーション 1"
         " · driver 停止 · 残った子 pid 4242 4343 · 概要 PR #4"
     )
 
 
-def test_型の違う欄があってもtracebackを出さずに描く(tmp_path):
+def head_of(tmp_path, st: dict) -> str:
+    """ラン `add-cache` の見出しの行。タスクリストを右に置いても下に置いても、見出しから先だけを返す。"""
+    lines = run(tmp_path, columns=200, statuses=[st])
+    found = [line for line in lines if "autodev add-cache ▸ " in line]
+    assert len(found) == 1, lines
+    return found[0][found[0].index("autodev add-cache ▸ ") :]
+
+
+def test_driver停止はrunのdriver_stoppedだけで決めphaseやdriver_runningを見ない(tmp_path):
+    stopped = quiet()
+    # HUD が自分で決めていたなら止まっていないとした組み合わせ（driver は走っている）
+    stopped["run"].update(driver_stopped=True, driver_running=True)
+    assert "driver 停止" in head_of(tmp_path, stopped)
+    running = quiet()
+    # HUD が自分で決めていたなら止まっているとした組み合わせ
+    running["run"].update(driver_stopped=False, driver_running=False, phase="planning")
+    assert "driver 停止" not in head_of(tmp_path, running)
+
+
+def test_積んだ数はrunの欄を読みタスクの状態を数え直さない(tmp_path):
+    st = quiet()
+    st["run"].update(stacked_tasks=1, stack_target_tasks=4)
+    # タスクの状態から数え直すと 0/3 になる
+    st["tasks"][2]["status"] = "pending"
+    st["tasks"][4]["status"] = "dropped"
+    st["tasks"][4]["escalations"] = []
+    assert head_of(tmp_path, st).startswith("autodev add-cache ▸ 実行中 · スタック済み 1/4")
+
+
+def test_段の下で走っている実装を見出しに出す(tmp_path):
+    st = quiet()
+    st["tasks"][1]["flow"]["steps"] = [
+        {"stage": "TestGen", "state": "done", "executions": []},
+        {"stage": "ConfirmRed", "state": "done", "executions": []},
+        {
+            "stage": "Impl",
+            "state": "current",
+            "executions": [execution(id="task1-Impl-r0-a1", stage="Impl", round=0, step=2)],
+        },
+    ]
+    assert head_of(tmp_path, st).startswith("autodev add-cache ▸ task1 実装 r0")
+
+
+def test_前の版で走っている実行も見出しに出す(tmp_path):
+    st = quiet()
+    st["tasks"][1]["earlier_executions"] = [
+        execution(id="task1-Impl-r0-a1", stage="Impl", round=0, flow_version=0, step=2)
+    ]
+    assert head_of(tmp_path, st).startswith("autodev add-cache ▸ task1 実装 r0")
+
+
+def test_形の版が2でないstatusなら形の版が違うと出して0で終わる(tmp_path):
+    lines = run(tmp_path, statuses=[status(format=1)])
+    assert len(lines) == 5
+    assert "形の版が違う" in lines[4]
+    assert not any(line.startswith("autodev add-cache ▸ ") for line in lines)
+
+
+def test_崩れたprogressがあってもtracebackを出さずに描く(tmp_path):
     """`progress` は実行器が書いたファイルの中身そのままなので、崩れていることがある。"""
     st = status()
-    execution = st["tasks"][1]["executions"][0]
-    execution["round"] = "x"
-    execution["progress"]["turns"] = "many"
-    st["tasks"][4]["escalations"] = 5
-    st["tasks"][1]["flow"]["steps"] = "broken"
-    lines = run(tmp_path, columns=120, statuses=[st, status(name="other", tasks=5)])
-    assert lines[4].startswith("autodev add-cache ▸ task1 ジャッジ r0")
-    assert any(line.startswith("autodev other ▸ ") for line in lines)
+    judge(st)["progress"]["turns"] = "many"
+    other = status(name="other")
+    judge(other)["progress"] = "broken"
+    lines = run(tmp_path, columns=120, statuses=[st, other])
+    assert lines[4].startswith("autodev add-cache ▸ task1 ジャッジ r2")
+    assert any(line.startswith("autodev other ▸ task1 ジャッジ r2") for line in lines)
 
 
 def test_組み立ての途中で落ちても理由を1行で出す(monkeypatch):

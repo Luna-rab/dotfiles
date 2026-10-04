@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import copy
 
-import pytest
 from hud.core import stagelist
 from hud.core.pipeline import Mark
-from hud_samples import SAMPLE_TASK
+from hud_samples import SAMPLE_TASK, execution
 
 
 def rows(items: list[stagelist.StageItem]) -> list[tuple[str, str, int, str]]:
@@ -24,34 +23,41 @@ def test_今のフローの段ごとに実行を持たせる():
     assert got[1].runs[0]["id"] == "task1-Judge-r2-a1"
 
 
-def test_前の版のフローの実行は今の段に重ねず後ろに並べる():
-    """`step` が 2 でも、書き直す前のフローの添字なので、今の Gate の段ではない。"""
+def test_段の実行はflow_versionとstepを見ずに段の下の欄のまま持たせる():
+    """段に入れるかは status が決める。HUD は `flow_version` と `step` で振り分け直さない。"""
     task = copy.deepcopy(SAMPLE_TASK)
     task["flow"]["version"] = 2
-    task["executions"][0]["step"] = 2
+    task["flow"]["steps"][0]["executions"] = [
+        execution(id="a", stage="TestGen", round=0, flow_version=0, step=7, status="completed")
+    ]
     got = stagelist.for_task(task)
-    assert [len(i.runs) for i in got[:3]] == [0, 0, 0]
-    assert rows(got[3:]) == [("ジャッジ r2", "current", 1, stagelist.OLDER)]
-    assert got[3].key == "exec:task1-Judge-r2-a1"
+    assert [[r["id"] for r in i.runs] for i in got] == [["a"], ["task1-Judge-r2-a1"], []]
+    assert all(i.note == "" for i in got)
 
 
-@pytest.mark.parametrize("step", [9, None, "1"])
-def test_stepがどの段にも当たらない実行は捨てずに最後に並べる(step):
+def test_前の版と段の外の実行は段の後ろに1つずつ並べる():
     task = copy.deepcopy(SAMPLE_TASK)
-    older = {**task["executions"][0], "id": "old", "flow_version": 0}
-    task["executions"][0]["step"] = step
-    task["executions"].append(older)
+    # 前の版の実行の flow_version と step が今の段に当たっても、段に重ねない
+    task["earlier_executions"] = [execution(id="old", stage="Impl", round=0, step=1)]
+    task["unplaced_executions"] = [
+        execution(id="loose", stage="Fix", round=1, step=None, status="failed")
+    ]
     got = stagelist.for_task(task)
-    assert [i.note for i in got[3:]] == [stagelist.OLDER, stagelist.OUTSIDE]
-    assert got[4].runs[0]["id"] == "task1-Judge-r2-a1"
+    assert [len(i.runs) for i in got[:3]] == [0, 1, 0]
+    assert rows(got[3:]) == [
+        ("実装 r0", "current", 1, stagelist.OLDER),
+        ("修正 r1", "failed", 1, stagelist.OUTSIDE),
+    ]
+    assert [i.key for i in got[3:]] == ["exec:old", "exec:loose"]
+    assert got[3].runs[0]["id"] == "old" and got[4].runs[0]["id"] == "loose"
 
 
-def test_フローが無くても実行は見せる():
+def test_フローが無くても前の版の実行は見せる():
     task = copy.deepcopy(SAMPLE_TASK)
     task["flow"] = None
-    task["executions"][0]["status"] = "failed"
+    task["earlier_executions"] = [execution(status="interrupted")]
     got = stagelist.for_task(task)
-    assert [(i.note, i.mark) for i in got] == [(stagelist.OLDER, Mark.FAILED)]
+    assert [(i.note, i.mark) for i in got] == [(stagelist.OLDER, Mark.SKIPPED)]
 
 
 def test_段のキーは添字で決まり読み直しても変わらない():

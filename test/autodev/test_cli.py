@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 from autodevlib import cli
+from autodevlib.app.driving import assembly
 from autodevlib.domain.commands.questions import AnswerQuestion
 from autodevlib.domain.events.questions import QuestionAnswered, QuestionPosted, QuestionWithdrawn
 from autodevlib.domain.events.run import RunStarted
@@ -25,10 +26,18 @@ from autodevlib.domain.value_objects.branch_name import BranchName
 from autodevlib.domain.value_objects.command_id import CommandId
 from autodevlib.domain.value_objects.event_id import EventId
 from autodevlib.domain.value_objects.instruction import Instruction
+from autodevlib.domain.value_objects.model_class import (
+    Effort,
+    ModelChoice,
+    ModelClass,
+    ModelClasses,
+    ModelName,
+)
 from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
 from autodevlib.domain.value_objects.question_id import QuestionId
 from autodevlib.domain.value_objects.repository import Repository
 from autodevlib.domain.value_objects.run_name import RunName
+from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.infra.lock import DriverLock
 from autodevlib.infra.paths import RunPaths
@@ -37,9 +46,10 @@ from autodevlib.infra.status import status as status_module
 from autodevlib.infra.store.eventstore import EventStore
 from autodevlib.infra.store.requests import RequestBox
 from conftest import SCRIPTS_ROOT, SKILL_ROOT
-from executor_fakes import commit, make_repo, sh
+from executor_fakes import commit, make_env, make_repo, sh
 from fake_claude_run import ASK_ID, QUESTION
 from test_adapter_forge import FakeGh
+from test_model_classes import flags, stage_argv
 
 FAKE_CLAUDE = Path(__file__).with_name("fake_claude_run.py")
 NAME = "add-ttl"
@@ -220,7 +230,7 @@ def test_道具が足りなければ走らずに1で止める(world: World):
 def test_崩れたリポジトリの設定では走らず直し方を出して1で止める(world: World):
     path = config_path(Repository(str(world.repo)))
     path.parent.mkdir(parents=True)
-    path.write_text('{"verify": ["uv run pytest"], "testGlob": []}', "utf-8")
+    path.write_text('{"quickChecks": ["uv run ruff check ."], "testGlob": []}', "utf-8")
     code, _, err = start(world)
     assert code == 1
     assert str(path) in err
@@ -234,7 +244,8 @@ def test_リポジトリの設定は実行器に渡りブリーフに載る(worl
     path.write_text(
         json.dumps(
             {
-                "verify": ["uv run pytest -q"],
+                "quickChecks": ["uv run ruff check ."],
+                "regressionTests": ["uv run pytest -q"],
                 "testGlobs": ["spec/**"],
                 "protected": ["uv.lock"],
                 "untested": ["docs/**"],
@@ -246,7 +257,13 @@ def test_リポジトリの設定は実行器に渡りブリーフに載る(worl
     assert code == 4
     assert "リポジトリの設定が無い" not in err
     brief = world.paths.brief.read_text("utf-8")
-    for written in ("`uv run pytest -q`", "`spec/**`", "`uv.lock`", "`docs/**`"):
+    for written in (
+        "`uv run ruff check .`",
+        "`uv run pytest -q`",
+        "`spec/**`",
+        "`uv.lock`",
+        "`docs/**`",
+    ):
         assert written in brief
     # testGlobs は既定に足さず置き換える
     assert "`**/test_*.py`" not in brief
@@ -452,6 +469,102 @@ def test_statusはevents_dbのあるランを0でJSONにして返す(world: Worl
     code, out, _ = world.cli("status", "--json", "--name", NAME)
     assert code == 0
     assert json.loads(out)["name"] == NAME
+
+
+def test_設定を何も渡さずに始めたランのstatusはrunのmodelsに既定のモデルとeffortを出す(
+    world: World,
+):
+    assert start(world)[0] == 4
+    code, out, err = world.cli("status", "--json", "--name", NAME)
+    assert code == 0, err
+    assert json.loads(out)["run"]["models"] == {
+        "lead": {"model": "opus", "effort": "high"},
+        "review": {"model": "opus", "effort": "medium"},
+        "implement": {"model": "sonnet", "effort": "medium"},
+        "write": {"model": "sonnet", "effort": "medium"},
+    }
+
+
+def write_models(world: World, body: object) -> Path:
+    path = world.tmp / "config" / "autodev" / "models.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body if isinstance(body, str) else json.dumps(body), encoding="utf-8")
+    return path
+
+
+def recorded_models(world: World) -> ModelClasses:
+    started = assembly.run_started(world.paths)
+    assert started is not None
+    assert started.models is not None
+    return started.models
+
+
+def impl_flags(
+    world: World, monkeypatch: pytest.MonkeyPatch, models: ModelClasses
+) -> tuple[str | None, str | None]:
+    """記録した値で本物の実行器を組み、Impl の claude の argv に付く `--model` と `--effort`。"""
+    exec_dir = world.tmp / "exec"
+    exec_dir.mkdir(exist_ok=True)
+    env = make_env(exec_dir, monkeypatch, models=models)
+    return flags(stage_argv(env, StageKind.IMPL))
+
+
+def test_models_jsonでsuperを替えて始めたランはRunStartedに記録しImplのargvに付ける(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    write_models(world, {"implement": {"model": "claude-opus-5-5", "effort": "xhigh"}})
+    code, _, err = start(world)
+    assert code == 4, err
+    models = recorded_models(world)
+    assert models.of(ModelClass.IMPLEMENT) == ModelChoice(
+        ModelName("claude-opus-5-5"), Effort.XHIGH
+    )
+    assert models.of(ModelClass.LEAD) == ModelClasses.default().of(ModelClass.LEAD)
+    code, out, _ = world.cli("status", "--json", "--name", NAME)
+    assert json.loads(out)["run"]["models"]["implement"] == {
+        "model": "claude-opus-5-5",
+        "effort": "xhigh",
+    }
+    assert impl_flags(world, monkeypatch, models) == ("claude-opus-5-5", "xhigh")
+
+
+def test_走り出したランはmodels_jsonを書き換えて呼び直しても記録した値を使う(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    write_models(world, {"implement": {"model": "claude-opus-5-5", "effort": "xhigh"}})
+    assert start(world)[0] == 4
+    write_models(world, {"implement": {"model": "haiku"}})
+    code, _, err = world.cli("run", "--name", NAME)
+    assert code == 4, err
+    models = recorded_models(world)
+    assert models.of(ModelClass.IMPLEMENT) == ModelChoice(
+        ModelName("claude-opus-5-5"), Effort.XHIGH
+    )
+    assert impl_flags(world, monkeypatch, models) == ("claude-opus-5-5", "xhigh")
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["{", {"ultra": {}}, {"implement": {"effort": "huge"}}],
+    ids=["壊れたJSON", "知らないクラス", "不正なeffort"],
+)
+def test_models_jsonが崩れていれば新しいランは始めずにパスを出して1で止まる(
+    world: World, body: object
+):
+    path = write_models(world, body)
+    code, _, err = start(world)
+    assert code == 1
+    assert str(path) in err
+    assert not world.paths.events_db.exists()
+    assert world.claude_calls() == []
+
+
+def test_既にあるランの呼び直しはmodels_jsonを読まないので崩れていても進む(world: World):
+    assert start(world)[0] == 4
+    write_models(world, "{")
+    code, _, err = world.cli("run", "--name", NAME)
+    assert code == 4, err
+    assert recorded_models(world) == ModelClasses.default()
 
 
 def test_statusはラン名の規則に合わない名前を5ではなく1で拒む(world: World):

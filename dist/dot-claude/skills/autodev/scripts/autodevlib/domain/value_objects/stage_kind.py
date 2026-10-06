@@ -32,7 +32,7 @@ class StageKind(Enum):
     CUT_BRANCH = "CutBranch"
     REBASE = "Rebase"
     CHECK_UNION = "CheckUnion"
-    VERIFY = "Verify"
+    INTEGRATION_CHECK = "IntegrationCheck"
     PUSH = "Push"
     CREATE_PR = "CreatePR"
     STACK_LINK = "StackLink"
@@ -43,3 +43,10 @@ class StageKind(Enum):
     CLOSE_PRS = "ClosePRs"
     UNSTACK = "Unstack"
     RELINK = "Relink"
+
+    @classmethod
+    def _missing_(cls, value: object) -> StageKind | None:
+        # 改名前の記録（events.db・フローの JSON）を読む
+        if value == "Verify":
+            return cls.INTEGRATION_CHECK
+        return None

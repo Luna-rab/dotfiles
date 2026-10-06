@@ -80,6 +80,7 @@ from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_kind import TaskKind
 from autodevlib.domain.value_objects.task_spec import TaskSpec
 from autodevlib.domain.value_objects.task_status import TaskStatus
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 
 S = TaskStatus
 E = EscalationKind
@@ -820,12 +821,35 @@ def test_破棄の後閉じる前に積み終えたタスクも閉じる所よ�
     assert run.return_to_queue()[0].tasks == (t(2),)
 
 
+def test_計画の軽い検査と回帰テストはTasksPlannedとRunに同じ値で載る(run: RunLoop):
+    ruff, pytest_ = VerifyCommand("ruff"), VerifyCommand("pytest")
+    run.settle(proposal(planned(1), quick_checks=(ruff,), regression_tests=(pytest_,)))
+    events = run(ApplyPlan(command_id=new_id(), issuer=POLICY, design=DesignVersion(1)))
+    plan = events[0]
+    assert isinstance(plan, TasksPlanned)
+    assert (plan.quick_checks, plan.regression_tests) == ((ruff,), (pytest_,))
+    assert (run.aggregate.quick_checks, run.aggregate.regression_tests) == ((ruff,), (pytest_,))
+
+
+def test_再計画で値を変えたら最後のTasksPlannedの値がランの値になる(run: RunLoop):
+    ruff, ty, pytest_ = VerifyCommand("ruff"), VerifyCommand("ty"), VerifyCommand("pytest")
+    run.settle(proposal(planned(1), quick_checks=(ruff,), regression_tests=(pytest_,)))
+    run(ApplyPlan(command_id=new_id(), issuer=POLICY, design=DesignVersion(1)))
+    run.replan()
+    run.settle(proposal(planned(1), version=2, quick_checks=(ruff, ty), regression_tests=()))
+    plan = run.apply_replan()[0]
+    assert isinstance(plan, TasksPlanned)
+    assert (plan.quick_checks, plan.regression_tests) == ((ruff, ty), ())
+    assert (run.aggregate.quick_checks, run.aggregate.regression_tests) == ((ruff, ty), ())
+
+
 def test_実装タスクが0件の計画も反映したら終端になったとみなす(run: RunLoop):
     assert run.plan() == [
         TasksPlanned(
             design=DesignVersion(1),
             tasks=(),
-            verify=(),
+            quick_checks=(),
+            regression_tests=(),
             artifacts=ARTIFACTS,
             replan=False,
         ),

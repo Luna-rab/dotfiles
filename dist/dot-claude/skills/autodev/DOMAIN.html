@@ -492,9 +492,12 @@ table.tr td:nth-child(4) { overflow-wrap: anywhere; }
 <tr><td>ジャッジ（Judge・DesignJudge）</td><td>ジャッジは、指摘ごとに、指摘が直ったか（closed）と、指摘が妥当でないか（rejected）を判定するステージである。ReviewLedger は、その指摘を判定すると決まっているステージの結果を受け取ったときに限り、指摘の状態を変える（4 章）。</td></tr>
 <tr><td>合成ステージ・ラウンド</td><td>合成ステージは、複数のステージを組み合わせたステージで、ReviewLoop と DesignLoop の 2 つがある。合成ステージの 1 ラウンドでは、まずレビューするステージ（Review や DesignReview）を並列に実行し、次にジャッジが指摘を判定し、最後に修正するステージ（Fix や Revise）を実行する。指摘が残っている間、Task は次のラウンドを始める。</td></tr>
 <tr><td>統括（Supervisor）</td><td>統括は、規則で決められないことを判断する。統括には 2 種類ある。ラン統括は LLM で、1 つのランに 1 つある。タスク統括はタスクごとに 1 つある。実装タスクのタスク統括は LLM である。計画タスクと git 管理タスクのタスク統括は、決まった並びのフローを組むプログラムである。</td></tr>
+<tr><td>モデルのクラス（ModelClass）</td><td>モデルのクラスは、LLM のステージと統括が claude に渡すモデルと effort を決める区分で、役割ごとに lead、review、implement、write の 4 つがある。レビューを別のクラスに分けているので、レビューにだけ別のモデルを当てられる。どのステージと統括がどのクラスかはドメインが固定する（lead はラン統括・タスク統括と Plan・Replan・Revise・DesignJudge・Judge、review は DesignReview・Review・AdversarialReview、implement は TestGen・Impl・Fix・Expect・ResolveConflict、write は WritePrBody・WriteOverview）。ジャッジはレビューの指摘を裁くので、review ではなく lead に置く。クラスごとのモデルと effort の既定は lead が opus/high、review が opus/medium、implement と write が sonnet/medium で、利用者は <code>~/.config/autodev/models.json</code> で変えられる。autodev は新しいランを始めるときに 1 回だけ設定を読み、<code>RunStarted</code> に記録する。呼び直したランは記録した値を使い続ける。</td></tr>
 <tr><td>エスカレーション</td><td>エスカレーションは、ステージや統括が解決できない問題を、受け手に送って判断を求めることである。受け手は、タスク統括、ラン統括、/autodev、ユーザーの順に並ぶ（6 章）。ステージで起きた問題は Task が送る。エスカレーションは種類（EscalationKind）を持つ。種類の例は、stall（指摘の停滞）、design-gap（設計の穴）、gate-unfixable（完了チェックで、コードを直しても解決しない不合格）である。</td></tr>
 <tr><td>停滞（Stall）</td><td>停滞は、修正するステージ（Fix）が 2 回完了した後も open のまま残っている指摘を指す。Task は、停滞した指摘を stall という種類のエスカレーションとして送る。</td></tr>
-<tr><td>完了チェック（Gate）</td><td>完了チェックは、実装タスクをスタックに追加する前に行う検査である。検査する項目の例は、コミットがあること、open の指摘が無いこと、テストを書き換えていないこと、検証コマンドが成功することである。</td></tr>
+<tr><td>完了チェック（Gate）</td><td>完了チェックは、実装タスクをスタックに追加する前に行う検査である。検査する項目の例は、コミットがあること、open の指摘が無いこと、テストを書き換えていないこと、タスクのテストと軽い検査が成功することである。</td></tr>
+<tr><td>検証コマンドの種類</td><td>検証コマンドは 3 種類に分かれ、種類ごとに流す時点が違う。タスクのテスト（<code>taskTests</code>）はそのタスクのテストで、ConfirmRed と Gate が流す。軽い検査（<code>quickChecks</code>）は lint や型検査のように速く、どのタスクを積んだ時点でも通るもので、Gate と統合検査が流す。回帰テスト（<code>regressionTests</code>）はテスト全体のように遅く、ほかの場所を壊していないかを確かめるもので、統合検査だけが流す。</td></tr>
+<tr><td>統合検査（IntegrationCheck）</td><td>統合検査は、タスクをスタックに積む前に、スタックの一番上で軽い検査と回帰テストを流すステージである。</td></tr>
 <tr><td>提案・設計・設計の改訂番号</td><td>提案は、計画のステージ（Plan、Replan、Revise）が返す、確定する前の設計の案である。DesignLoop で Design 集約が提案を確定すると、その提案は設計になる。設計の本文は <code>design/v&lt;改訂番号&gt;.md</code> に保存する。改訂番号（DesignVersion）は設計ファイルの番号で、新しい設計ファイルは前のファイルより大きい改訂番号を持つ。古い改訂番号のファイルは削除しない。</td></tr>
 <tr><td>計画の反映・再計画</td><td>計画の反映は、確定した設計にあるタスクの一覧を Run に登録することである。再計画は、ランの途中で計画を書き直すことである。再計画のステージ（Replan）は、止めるタスクと破棄するタスクも提案する。</td></tr>
 <tr><td>スタック（Stack）</td><td>スタックは、下から順に重ねた PR の列である。一番下の PR は概要 PR である。git 管理タスクは、新しい PR を必ず一番上に追加する。</td></tr>
@@ -1065,7 +1068,7 @@ table.tr td:nth-child(4) { overflow-wrap: anywhere; }
 <tr><td>StallPolicy</td><td>StallPolicy は、指摘が停滞したか（修正するステージが 2 回完了した後も open のままか）を決める。</td></tr>
 <tr><td>FlowValidator</td><td>FlowValidator は、統括が返したフローを、実行する前に検査する。フローが検査に通らない場合、FlowValidator は、通らなかった理由をすべて集めて返す。</td></tr>
 <tr><td>UnionChecker</td><td>UnionChecker は、rebase の衝突を解決した結果に、両方のブランチの変更が残っているかを判定する。</td></tr>
-<tr><td>VerifySelector</td><td>VerifySelector は、実行する検証コマンドを選ぶ。ConfirmRed と Gate では、そのタスクの検証コマンドを選ぶ。スタックに追加する直前の Verify では、ラン全体で共通の検証コマンドを選ぶ。</td></tr>
+<tr><td>VerifySelector</td><td>VerifySelector は、ステージごとに実行する検証コマンドを選ぶ。ConfirmRed はタスクのテストだけ、Gate はタスクのテストと軽い検査、IntegrationCheck は軽い検査と回帰テストを選ぶ。</td></tr>
 <tr><td>ガードの規則（<code>guard.py</code>）</td><td>ガードの規則は、LLM のステージに何を書き込ませ、何をさせないかを決める。</td></tr>
 <tr><td>wake_for（<code>supervision.py</code>）</td><td>wake_for は、イベントを受け取り、起動する LLM の統括と、起動の理由（Notice）を返す。wake_for の分岐に無いイベントでは、wake_for は統括を返さない。そのため、ステージが予定どおり進んでいる間は、どの統括も起動しない。</td></tr>
 <tr><td>housekeeping</td><td>housekeeping は、clean、purge、driver の再実行を今行ってよいかを判定し、行えない場合は理由を返す。clean は、ランの worktree を外し、ランの記録は残す。purge は、worktree と手元のブランチとランの記録を消す。どちらも、GitHub の PR とリモートのブランチは消さない。行えない理由の例は、前の driver が起動した子プロセスがまだ動いていることである。</td></tr>
@@ -1098,7 +1101,7 @@ table.tr td:nth-child(4) { overflow-wrap: anywhere; }
 <tbody>
 <tr><td>識別子</td><td><code>ExecutionId</code> は、タスク、ステージ、ラウンド、試行の回数を組み合わせた id である。1 つのタスクができてから終わるまでの間に、2 つの実行が同じ <code>ExecutionId</code> を持つことはない。<code>CommandId</code> は、ポリシーと反応がコマンドを送るときに、受け取ったイベントの id と、ポリシーまたは反応の名前から決まる。</td></tr>
 <tr><td>列挙</td><td>列挙は、決まった値のどれか 1 つを取る値オブジェクトである。<code>EscalationKind</code> は、エスカレーションを送る理由の種類を表す（stall、design-gap、needs-replan、supervisor-failed など）。<code>Rating</code> は、指摘の重み（must-fix、should-fix、nit）を表す。</td></tr>
-<tr><td>複数の値の組</td><td><code>TaskSpec</code> はタスクの中身を表し、件名、完了の定義、受入条件、範囲、入口、境界の形、検証コマンドを持つ。<code>Decision</code> は回答を表し、回答の文面と、回答した者（ユーザーかラン統括か）を持つ。<code>Issuer</code> は、コマンドを送った者を表す。<code>Issuer</code> は driver が記録するので、ステージや統括は <code>Issuer</code> を自分で指定できない。</td></tr>
+<tr><td>複数の値の組</td><td><code>TaskSpec</code> はタスクの中身を表し、件名、完了の定義、受入条件、範囲、入口、境界の形、タスクのテスト（<code>taskTests</code>）を持つ。<code>Decision</code> は回答を表し、回答の文面と、回答した者（ユーザーかラン統括か）を持つ。<code>Issuer</code> は、コマンドを送った者を表す。<code>Issuer</code> は driver が記録するので、ステージや統括は <code>Issuer</code> を自分で指定できない。</td></tr>
 <tr><td>上限</td><td><code>ParallelLimit</code> は、running と escalated の実装タスクの数の合計の上限を表す値オブジェクトで、既定は 3 である。ほかの上限は値オブジェクトではなく、<code>limits.py</code> の int の定数である。<code>limits.py</code> は次の上限を定める。タスクを 1 本もスタックに追加しない再計画は、2 回までである。指摘は、修正するステージが 2 回完了した後も open のままなら停滞になる。設計のラウンドは 5 回までである。GitJob をキューへ戻すのは 2 回までである。同じイベントをきっかけに起動したタスク統括が続けて判断を返さなかった場合、ラン統括が自分の判断だけで回答してよいのは 2 回までである。2 回を超えると、ラン統括はユーザーの回答を添えて回答する。</td></tr>
 </tbody>
 </table>

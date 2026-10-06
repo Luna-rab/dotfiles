@@ -35,6 +35,7 @@ from ...domain.events.task import (
 )
 from ...domain.value_objects.decision import Decision
 from ...domain.value_objects.git_job import GitJob
+from ...domain.value_objects.model_class import ModelClass, ModelClasses
 from ...domain.value_objects.stack_entry import StackEntry
 from ...domain.value_objects.stream_id import StreamId
 from ...domain.value_objects.task_id import TaskId
@@ -157,6 +158,14 @@ def run_section(view: Replayed) -> dict[str, Any]:
         "driver_stopped": run.driver_stopped(view.driver.running, awaiting),
         "stacked_tasks": run.stacked_count,
         "stack_target_tasks": run.stack_target_count,
+        "models": _models(run.models),
+    }
+
+
+def _models(models: ModelClasses) -> dict[str, dict[str, str]]:
+    return {
+        cls.value: {"model": models.of(cls).model.value, "effort": models.of(cls).effort.value}
+        for cls in ModelClass
     }
 
 

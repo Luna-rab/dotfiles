@@ -44,6 +44,8 @@ from autodevlib.domain.value_objects.stall_cause import StallCause
 from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_kind import TaskKind
 from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.verify_kind import VerifyKind
+from autodevlib.infra.repo_config import FIELDS as REPO_CONFIG_FIELDS
 from conftest import SKILL_ROOT
 
 CONTRACTS = SKILL_ROOT / "contracts"
@@ -385,7 +387,8 @@ def test_提案の欄はProposalとTaskSpecの欄に合う():
     proposal_fields = {
         ResultField.DESIGN,
         ResultField.TASKS,
-        ResultField.VERIFY,
+        ResultField.QUICK_CHECKS,
+        ResultField.REGRESSION_TESTS,
         ResultField.STOP,
         ResultField.DISCARD,
         ResultField.CARRY,
@@ -402,7 +405,7 @@ def test_提案の欄はProposalとTaskSpecの欄に合う():
         assert_task_ids(prop(item, "id"))
         assert_task_ids(prop(item, "blockedBy", "[]"))
         assert prop(root, "design")["minLength"] == 1
-        for name in ("verify", "decisions", "deferrals"):
+        for name in ("quickChecks", "regressionTests", "decisions", "deferrals"):
             assert prop(root, name, "[]")["type"] == "string"
     for spec in _specs_reading(ResultField.STOP) + _specs_reading(ResultField.DISCARD):
         root = schema(asset_name(spec.kind))
@@ -720,3 +723,21 @@ def test_概要PRの雛形のマーカーはRefreshOverviewが埋めるものと
 
 def test_タスクPRの雛形のマーカーはPRを作るときに埋めるものと合う():
     assert markers_of(TEMPLATES / "task-pr-body.md") == TASK_PR_MARKERS
+
+
+def test_READMEのリポジトリの設定の表はリポジトリの設定の鍵を全部載せ古い鍵verifyを読まないと書く():
+    row = next(
+        line
+        for line in (SKILL_ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `~/.config/autodev/repos/")
+    )
+    for key in REPO_CONFIG_FIELDS:
+        assert key in row, key
+    assert "`verify`" in row
+
+
+@pytest.mark.parametrize("path", ["SKILL.md", "DOMAIN.html"])
+def test_検証コマンドの種類の名前は入口の文書に載る(path: str):
+    text = (SKILL_ROOT / path).read_text(encoding="utf-8")
+    for kind in VerifyKind:
+        assert kind.value in text, kind

@@ -12,7 +12,7 @@
 | --- | --- |
 | `<通知>` | 起こした理由と中身（下の「起こされるとき」） |
 | `<ランディレクトリ>` | 調べる先のパスの起点 |
-| `<タスク>` | このタスクの id・件名・受入条件・DoD・範囲・入口・境界の形・検証コマンド |
+| `<タスク>` | このタスクの id・件名・受入条件・DoD・範囲・入口・境界の形・タスクのテスト |
 | `<ブリーフ>` | 起動時の指示と、リポジトリごとの設定（テストのパス・テストが要らないパス など） |
 | `<設計>` | いまの設計ファイル |
 | `<決めたこと>` | このタスクへの回答。出どころ（ユーザーかラン統括か）が付いている |
@@ -68,7 +68,7 @@
 | ステージ | 要る | 作る | 決まり |
 | --- | --- | --- | --- |
 | `TestGen` | `design` | `tests`・`awaiting-expectations`（期待値を空けたテストがあるときだけ） | `Impl` より前に置く |
-| `ConfirmRed` | `tests` | `red-tests` | `Impl` より前に置く。タスクの検証コマンドのどれかが落ちれば通る |
+| `ConfirmRed` | `tests` | `red-tests` | `Impl` より前に置く。タスクのテスト（`taskTests`）のどれかが落ちれば通る |
 | `Impl` | `design`・`red-tests`（あれば使う） | `impl` | |
 | `ReviewLoop` | `impl` | `reviewed` | `reviewers` を書く |
 | `Gate` | `reviewed` | `gated` | それより前に `ReviewLoop` を置く |
@@ -107,7 +107,7 @@
 | `reviewers-ran` | 最後の `ReviewLoop` のその回の `reviewers` が走り終えている | `gate-unfixable` で上がる |
 | `tests-unchanged` | `TestGen`（期待値を書いたなら期待値を決めるステージ）のコミットの後で、テストのファイルが変わっていない | `gate-unfixable` で上がる |
 | `untested-paths` | `TestGen` が無いフローで、変わったファイルがすべてテストの要らないパスに収まっている | `untested-change` で上がる |
-| `verify` | タスクの検証コマンドがすべて通る | 指摘を開き、直前の `ReviewLoop` の修正へ戻る |
+| `verify` | タスクのテストと軽い検査（`quickChecks`）がすべて通る | 指摘を開き、直前の `ReviewLoop` の修正へ戻る |
 
 ### Impl のセッション
 

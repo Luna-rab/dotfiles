@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 import sys
@@ -63,6 +64,12 @@ from autodevlib.domain.value_objects.gate_item_result import GateItemResult
 from autodevlib.domain.value_objects.instruction import Instruction
 from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
 from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.model_class import (
+    Effort,
+    ModelClass,
+    ModelClasses,
+    ModelName,
+)
 from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
 from autodevlib.domain.value_objects.planned_task import PlannedTask
 from autodevlib.domain.value_objects.pointers import Pointers
@@ -368,6 +375,8 @@ def test_走っているランのタスクと実行と回答待ちを見せる(p
         "driver_stopped": False,
         "stacked_tasks": 0,
         "stack_target_tasks": 2,
+        # models の欄の無い RunStarted（この変更より前のラン）は既定値で動くので、既定値を見せる
+        "models": DEFAULT_MODELS,
     }
     assert [(t["id"], t["kind"], t["status"]) for t in status["tasks"]] == [
         ("planning", "planning", "escalated"),
@@ -480,6 +489,33 @@ def test_積んだタスクと止めたタスクとランの終わりを見分�
 
     seed(RUN, TaskStatusChanged(GIT, TaskStatus.RUNNING, TaskStatus.FINISHED, "FlowFinished"))
     assert run_status(paths)["run"]["phase"] == "finished"
+
+
+DEFAULT_MODELS = {
+    "lead": {"model": "opus", "effort": "high"},
+    "review": {"model": "opus", "effort": "medium"},
+    "implement": {"model": "sonnet", "effort": "medium"},
+    "write": {"model": "sonnet", "effort": "medium"},
+}
+
+
+def test_既定で始めたランはrunのmodelsにクラスごとの既定のモデルとeffortを見せる(paths: RunPaths):
+    Seed(paths)(RUN, dataclasses.replace(started(), models=ModelClasses.default()))
+    assert run_status(paths)["run"]["models"] == DEFAULT_MODELS
+
+
+def test_modelsを替えて始めたランはrunのmodelsに替えた値を見せる(paths: RunPaths):
+    models = (
+        ModelClasses.default()
+        .with_choice(ModelClass.IMPLEMENT, model=ModelName("claude-opus-5-5"), effort=Effort.XHIGH)
+        .with_choice(ModelClass.WRITE, effort=Effort.LOW)
+    )
+    Seed(paths)(RUN, dataclasses.replace(started(), models=models))
+    assert run_status(paths)["run"]["models"] == {
+        **DEFAULT_MODELS,
+        "implement": {"model": "claude-opus-5-5", "effort": "xhigh"},
+        "write": {"model": "sonnet", "effort": "low"},
+    }
 
 
 def test_パニックしたランは終えた後でもパニックと見せる(paths: RunPaths):

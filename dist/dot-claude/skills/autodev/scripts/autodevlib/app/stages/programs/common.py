@@ -22,6 +22,7 @@ from ....domain.services.gate import ChangedFile
 from ....domain.services.verify import VerifySelector
 from ....domain.value_objects.artifact_ref import ArtifactRef
 from ....domain.value_objects.branch_name import BranchName
+from ....domain.value_objects.cut_point import CutPoint
 from ....domain.value_objects.gate_report import GateReport
 from ....domain.value_objects.git_job import GitJob
 from ....domain.value_objects.pr_number import PrNumber
@@ -87,8 +88,13 @@ def changes_since(tools: Tools, tree: Path, since: str) -> tuple[ChangedFile, ..
 
 
 def verify_tree(ctx: StageContext, tools: Tools, tree: Path) -> tuple[VerifyResult, ...]:
-    task_verify = ctx.task_spec.verify if ctx.task_spec is not None else ()
-    commands = VerifySelector.select(ctx.execution.stage, task_verify, ctx.run_verify)
+    task_tests = ctx.task_spec.task_tests if ctx.task_spec is not None else ()
+    commands = VerifySelector.select(
+        ctx.execution.stage,
+        task_tests=task_tests,
+        quick_checks=ctx.run_quick_checks,
+        regression_tests=ctx.run_regression_tests,
+    )
     return tuple(tools.runner.run(command, tree) for command in commands)
 
 
@@ -96,11 +102,11 @@ def head_of(tools: Tools, tree: Path) -> str:
     return str(tools.git.head(tree))
 
 
-def start_commit_of(tools: Tools, rev: str) -> str:
-    """origin にあればそちら（手元の base は古いことがある）。無ければ手元の名前。"""
+def resolve_cut_point(tools: Tools, point: CutPoint) -> str:
+    """ドメインが並べた候補（`CutPoint.refs`）のうち、実在する最初の参照。"""
     git = tools.git
-    remote = f"origin/{rev}"
-    return remote if git.rev_parse(git.repo, remote) is not None else rev
+    *preferred, last = point.refs()
+    return next((ref for ref in preferred if git.rev_parse(git.repo, ref) is not None), last)
 
 
 def job_of(ctx: StageContext) -> GitJob:

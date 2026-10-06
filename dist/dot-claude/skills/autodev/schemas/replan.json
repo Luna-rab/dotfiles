@@ -5,7 +5,8 @@
   "required": [
     "design",
     "tasks",
-    "verify",
+    "quickChecks",
+    "regressionTests",
     "stop",
     "discard",
     "carry",
@@ -27,7 +28,7 @@
           "scope",
           "entryPoints",
           "boundary",
-          "verify",
+          "taskTests",
           "blockedBy"
         ],
         "properties": {
@@ -38,7 +39,7 @@
           "scope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "entryPoints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "boundary": { "type": "string" },
-          "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "taskTests": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "blockedBy": {
             "type": "array",
             "uniqueItems": true,
@@ -47,7 +48,8 @@
         }
       }
     },
-    "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "quickChecks": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "regressionTests": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "stop": {
       "type": "array",
       "uniqueItems": true,

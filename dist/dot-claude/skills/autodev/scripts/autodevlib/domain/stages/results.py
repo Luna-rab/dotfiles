@@ -248,7 +248,7 @@ def _planned(raw: Any) -> PlannedTask:
         scope=_strings(item["scope"]),
         entry_points=_strings(item["entryPoints"]),
         boundary=_str(item["boundary"]),
-        verify=tuple(VerifyCommand(c) for c in _strings(item["verify"])),
+        task_tests=tuple(VerifyCommand(c) for c in _strings(item["taskTests"])),
     )
     blocked = [TaskId(_str(t)) for t in _items("blockedBy", lambda v: v, item["blockedBy"])]
     return PlannedTask(TaskId(_str(item["id"])), spec, frozenset(blocked))
@@ -280,7 +280,10 @@ def _proposal(read: _Reader, evidence: Evidence) -> Proposal:
     return Proposal(
         design=version,
         tasks=read.list(_F.TASKS, _planned),
-        verify=tuple(VerifyCommand(c) for c in read.value(_F.VERIFY, _strings, ())),
+        quick_checks=tuple(VerifyCommand(c) for c in read.value(_F.QUICK_CHECKS, _strings, ())),
+        regression_tests=tuple(
+            VerifyCommand(c) for c in read.value(_F.REGRESSION_TESTS, _strings, ())
+        ),
         stop=read.value(_F.STOP, _tasks, frozenset()),
         discard=read.value(_F.DISCARD, _tasks, frozenset()),
         carry=read.list(_F.CARRY, _transfer),

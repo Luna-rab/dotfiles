@@ -51,7 +51,7 @@
 終わりに StructuredOutput ツールで 1 回だけ返す。形はそのツールの入力スキーマにある（外れると
 差し戻されるので、言い直して合わせる）。
 
-- `design`・`tasks`・`verify`・`stop`・`discard`・`carry`・`decisions`・`deferrals`: [_proposal.md](_proposal.md) のとおり。
+- `design`・`tasks`・`quickChecks`・`regressionTests`・`stop`・`discard`・`carry`・`decisions`・`deferrals`: [_proposal.md](_proposal.md) のとおり。
   初回の計画を直すときは、`stop`・`discard`・`carry` を空にする（止める・破棄するタスクがまだ無い）
 - `comments`: 指摘への返事。`finding` は指摘の id（`D<番号>`）、`body` は何をどう直したか、直さない理由
 

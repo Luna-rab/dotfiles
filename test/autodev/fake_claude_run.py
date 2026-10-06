@@ -114,7 +114,8 @@ def plan(resumed: bool) -> None:
             "design": "# 設計\n\n変えるものは無い。\n",
             "codemap": "# コードマップ\n\n- a.txt\n",
             "tasks": [],
-            "verify": [],
+            "quickChecks": [],
+            "regressionTests": [],
             "decisions": [f"TTL: {answer}"],
             "deferrals": [],
         }

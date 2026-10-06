@@ -74,6 +74,7 @@ from ..value_objects.design_version import DesignVersion
 from ..value_objects.escalation_kind import EscalationKind
 from ..value_objects.event_id import EventId
 from ..value_objects.limits import MAX_REPLANS_WITHOUT_STACK, MAX_SUPERVISOR_FAILURES
+from ..value_objects.model_class import ModelClasses
 from ..value_objects.parallel_limit import ParallelLimit
 from ..value_objects.planned_task import PlannedTask
 from ..value_objects.pointers import Pointers
@@ -236,6 +237,8 @@ class Run(Aggregate):
         super().__init__(stream)
         self.name: RunName | None = None
         self.limit = ParallelLimit(ParallelLimit.DEFAULT)
+        #: クラスごとのモデルと effort。記録の無い古いランと、RunStarted の前は既定値
+        self.models = ModelClasses.default()
         self.tasks: dict[TaskId, TaskEntry] = {}
         #: 使ったことのある実装タスクの番号（捨てたタスクのブランチが残るので、使い回さない）
         self.used_numbers: set[int] = set()
@@ -266,9 +269,10 @@ class Run(Aggregate):
         self.settled_once = False
         #: 計画を一度でも反映したか
         self.planned_once = False
-        #: ラン共通の成果物（brief・codemap・design）と検証コマンド
+        #: ラン共通の成果物（brief・codemap・design）と、軽い検査・回帰テスト
         self.artifacts: tuple[ArtifactRef, ...] = ()
-        self.verify: tuple[VerifyCommand, ...] = ()
+        self.quick_checks: tuple[VerifyCommand, ...] = ()
+        self.regression_tests: tuple[VerifyCommand, ...] = ()
         #: パニックした原因（RunPanicked の cause）。呼び直したら None に戻す
         self.panic_cause: str | None = None
         self.finished = False
@@ -527,7 +531,12 @@ class Run(Aggregate):
             raise Rejected(f"ラン {self.name} はもう始まっている")
         return [
             RunStarted(
-                command.name, command.instruction, command.repository, command.base, command.limit
+                command.name,
+                command.instruction,
+                command.repository,
+                command.base,
+                command.limit,
+                command.models,
             )
         ]
 
@@ -652,7 +661,8 @@ class Run(Aggregate):
             TasksPlanned(
                 design=proposal.design,
                 tasks=(*planned, *kept),
-                verify=proposal.verify,
+                quick_checks=proposal.quick_checks,
+                regression_tests=proposal.regression_tests,
                 artifacts=self.settled.artifacts if self.settled else (),
                 replan=self.planned_once,
                 triggers=tuple(trigger.id for trigger in triggers),
@@ -1108,6 +1118,7 @@ class Run(Aggregate):
     def _on_run_started(self, event: RunStarted) -> None:
         self.name = event.name
         self.limit = event.limit
+        self.models = event.models or ModelClasses.default()
         self.planning = True
 
     @applies(TaskStarted)
@@ -1142,7 +1153,8 @@ class Run(Aggregate):
         self.settled = None
         self.inserted_while_planning = set()
         self.artifacts = event.artifacts
-        self.verify = event.verify
+        self.quick_checks = event.quick_checks
+        self.regression_tests = event.regression_tests
 
     @applies(ReplanRequested)
     def _on_replan(self, event: ReplanRequested) -> None:

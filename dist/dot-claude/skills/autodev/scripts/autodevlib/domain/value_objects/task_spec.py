@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from ..codec import RENAMED_FROM
 from .base import non_blank
 from .verify_command import VerifyCommand
 
@@ -18,8 +19,8 @@ class TaskSpec:
     entry_points: tuple[str, ...] = ()
     #: 境界の形（公開する型・関数の形）
     boundary: str = ""
-    #: このタスクで足す検証コマンド。実装タスクの ConfirmRed と Gate で流す
-    verify: tuple[VerifyCommand, ...] = ()
+    #: このタスクのテストを流す検証コマンド。実装タスクの ConfirmRed と Gate で流す
+    task_tests: tuple[VerifyCommand, ...] = field(default=(), metadata={RENAMED_FROM: ("verify",)})
 
     def __post_init__(self) -> None:
         non_blank("タスクの件名", self.title)

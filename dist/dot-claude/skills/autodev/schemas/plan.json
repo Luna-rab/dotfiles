@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["design", "codemap", "tasks", "verify", "decisions", "deferrals"],
+  "required": ["design", "codemap", "tasks", "quickChecks", "regressionTests", "decisions", "deferrals"],
   "properties": {
     "design": { "type": "string", "minLength": 1 },
     "codemap": { "type": "string", "minLength": 1 },
@@ -19,7 +19,7 @@
           "scope",
           "entryPoints",
           "boundary",
-          "verify",
+          "taskTests",
           "blockedBy"
         ],
         "properties": {
@@ -30,7 +30,7 @@
           "scope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "entryPoints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "boundary": { "type": "string" },
-          "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "taskTests": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "blockedBy": {
             "type": "array",
             "uniqueItems": true,
@@ -39,7 +39,8 @@
         }
       }
     },
-    "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "quickChecks": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "regressionTests": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "decisions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "deferrals": { "type": "array", "items": { "type": "string", "minLength": 1 } }
   }

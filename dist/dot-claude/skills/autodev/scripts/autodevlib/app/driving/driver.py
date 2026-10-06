@@ -160,6 +160,7 @@ class Driver:
                     paths,
                     repository=self._repository,
                     resumes=lambda: _run(self.loop.aggregates).resumes,
+                    models=lambda: _run(self.loop.aggregates).models,
                 )
             ),
         )

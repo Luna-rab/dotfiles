@@ -13,6 +13,7 @@ from ..value_objects.event_id import EventId
 from ..value_objects.hint import Hint
 from ..value_objects.instruction import Instruction
 from ..value_objects.issuer_kind import IssuerKind
+from ..value_objects.model_class import ModelClasses
 from ..value_objects.parallel_limit import ParallelLimit
 from ..value_objects.pointers import Pointers
 from ..value_objects.pr_number import PrNumber
@@ -46,6 +47,8 @@ class StartRun(RunCommand):
     repository: Repository
     base: BranchName
     limit: ParallelLimit = field(default_factory=lambda: ParallelLimit(ParallelLimit.DEFAULT))
+    #: クラスごとのモデルと effort。ランの間変わらない（RunStarted に記録する）
+    models: ModelClasses = field(default_factory=ModelClasses.default)
 
 
 @dataclass(frozen=True, kw_only=True)

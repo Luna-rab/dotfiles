@@ -5,7 +5,8 @@
 
 ```json
 {
-  "verify": ["uv run pytest -q"],
+  "quickChecks": ["uv run ruff check ."],
+  "regressionTests": ["uv run pytest -q"],
   "testGlobs": ["**/test_*.py", "**/tests/**"],
   "protected": [".github/workflows/**", "uv.lock"],
   "untested": ["docs/**", "**/*.md"]
@@ -36,7 +37,8 @@ from ..domain.value_objects.verify_command import VerifyCommand
 
 #: JSON の欄 → `RepoConfig` の欄
 FIELDS = {
-    "verify": "verify",
+    "quickChecks": "quick_checks",
+    "regressionTests": "regression_tests",
     "testGlobs": "test_globs",
     "protected": "protected_globs",
     "untested": "untested_globs",
@@ -49,8 +51,10 @@ class RepoConfigError(ValueError):
 
 @dataclass(frozen=True)
 class RepoConfig:
-    #: 検証コマンド（ブリーフに載せる。ラン共通の verify は計画が決める）
-    verify: tuple[VerifyCommand, ...] = ()
+    #: 軽い検査（lint・型検査など速いもの。ブリーフに載せる。ランの値は計画が決める）
+    quick_checks: tuple[VerifyCommand, ...] = ()
+    #: 回帰テスト（テスト全体など遅いもの。ブリーフに載せる）
+    regression_tests: tuple[VerifyCommand, ...] = ()
     test_globs: tuple[GlobPattern, ...] = DEFAULT_TEST_GLOBS
     #: 変更禁止のパス
     protected_globs: tuple[GlobPattern, ...] = ()
@@ -62,7 +66,8 @@ class RepoConfig:
     def executor_arguments(self) -> dict[str, Any]:
         """`from_parts` に渡す欄（`RunSetting` の欄の名前）。"""
         return {
-            "verify": self.verify,
+            "quick_checks": self.quick_checks,
+            "regression_tests": self.regression_tests,
             "test_globs": self.test_globs,
             "protected_globs": self.protected_globs,
             "untested_globs": self.untested_globs,
@@ -99,13 +104,18 @@ def load_repo_config(repository: Repository, env: Mapping[str, str] | None = Non
         raise RepoConfigError(_broken(path, f"JSON として読めない（{error}）")) from error
     if not isinstance(loaded, dict):
         raise RepoConfigError(_broken(path, "JSON の object でない"))
+    if "verify" in loaded:
+        raise RepoConfigError(
+            f"リポジトリの設定 {path} に古い鍵 `verify` がある。"
+            "`verify` は `regressionTests` に改名した。速いものは `quickChecks` に分ける"
+        )
     if unknown := sorted(set(loaded) - set(FIELDS)):
         raise RepoConfigError(_broken(path, f"知らない欄がある: {', '.join(unknown)}"))
     fields: dict[str, Any] = {}
     for key, name in FIELDS.items():
         if key not in loaded:
             continue
-        kind = VerifyCommand if key == "verify" else GlobPattern
+        kind = VerifyCommand if key in ("quickChecks", "regressionTests") else GlobPattern
         fields[name] = _strings(path, key, loaded[key], kind)
     return RepoConfig(**fields, source=path)
 

@@ -6,9 +6,13 @@
 
 ## リポジトリごとの設定
 
-### 検証コマンド
+### 軽い検査
 
-<!-- autodev:verify -->
+<!-- autodev:quick-checks -->
+
+### 回帰テスト
+
+<!-- autodev:regression-tests -->
 
 ### テストのパス
 

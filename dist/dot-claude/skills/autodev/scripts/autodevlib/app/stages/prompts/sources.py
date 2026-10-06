@@ -346,7 +346,9 @@ SOURCES: Mapping[str, Callable[[Sources], Value]] = {
     # ランとスタック
     "タスクの一覧": _task_list,
     "タスク PR の本文": _pr_bodies,
-    "ランの base": lambda s: s.stack.run_base.value if s.stack.run_base is not None else "",
+    "概要ブランチ": lambda s: (
+        s.stack.overview_branch.value if s.stack.overview_branch is not None else ""
+    ),
     "スタックの一番上": _stack_top,
     "概要 PR の雛形": lambda s: str(skill_root() / "templates" / "overview-pr-body.md"),
     # 統括

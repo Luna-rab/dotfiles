@@ -24,7 +24,14 @@ from autodevlib.domain.value_objects.instruction import Instruction
 from autodevlib.domain.value_objects.issuer import Issuer
 from autodevlib.domain.value_objects.issuer_kind import IssuerKind
 from autodevlib.domain.value_objects.location import Location
-from autodevlib.domain.value_objects.overview_pr_title import overview_pr_title
+from autodevlib.domain.value_objects.model_class import (
+    Effort,
+    ModelChoice,
+    ModelClass,
+    ModelClasses,
+    ModelName,
+)
+from autodevlib.domain.value_objects.overview_pr_title import OverviewPrTitle
 from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
 from autodevlib.domain.value_objects.planned_task import PlannedTask
 from autodevlib.domain.value_objects.pr_number import PrNumber
@@ -37,6 +44,7 @@ from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.task_pr_title import TaskPrTitle
 from autodevlib.domain.value_objects.task_spec import TaskSpec
 from autodevlib.domain.value_objects.task_status import TaskStatus
 from autodevlib.domain.value_objects.verify_command import VerifyCommand
@@ -111,11 +119,28 @@ def test_autodevが切るブランチの名前の規約():
 
 
 def test_概要PRのタイトルにはautodevの印を1つだけ付ける():
-    assert overview_pr_title("キャッシュを足す\n") == "[autodev] キャッシュを足す"
-    assert overview_pr_title("[autodev] キャッシュを足す") == "[autodev] キャッシュを足す"
+    expected = OverviewPrTitle("[autodev] キャッシュを足す")
+    assert OverviewPrTitle.for_run("キャッシュを足す\n") == expected
+    assert OverviewPrTitle.for_run("[autodev] キャッシュを足す") == expected
     for bad in (" ", "[autodev]"):
         with pytest.raises(InvalidValue):
-            overview_pr_title(bad)
+            OverviewPrTitle.for_run(bad)
+    for bad in ("キャッシュを足す", "[autodev #4] キャッシュを足す"):
+        with pytest.raises(InvalidValue):
+            OverviewPrTitle(bad)
+
+
+def test_タスクPRのタイトルには概要PRの番号の印を1つだけ付ける():
+    expected = TaskPrTitle("[autodev #4] キャッシュを足す")
+    assert TaskPrTitle.for_task("キャッシュを足す\n", PrNumber(4)) == expected
+    for already in ("[autodev #4] キャッシュを足す", "[autodev] キャッシュを足す"):
+        assert TaskPrTitle.for_task(already, PrNumber(4)) == expected
+    for bad in (" ", "[autodev #4]"):
+        with pytest.raises(InvalidValue):
+            TaskPrTitle.for_task(bad, PrNumber(4))
+    for bad in ("キャッシュを足す", "[autodev] キャッシュを足す", "[autodev #0] キャッシュを足す"):
+        with pytest.raises(InvalidValue):
+            TaskPrTitle(bad)
 
 
 @pytest.mark.parametrize("name", ["main", "release/1.2", "feature/x-y"])
@@ -299,3 +324,51 @@ def test_CutBranchが切る元は仕事が決める():
     # 積み直すタスクは前に積んだブランチから切るが、その先端はタスクのブランチの根元ではない
     assert restack.cut_point == CutPoint(old, roots_branch=False)
     assert GitJob(5, J.DISCARD).cut_point is None
+
+
+def test_切る元の候補はランのbaseならoriginを先に並べautodevが切ったブランチは手元だけ():
+    main, top = BranchName("main"), BranchName("stack/r--task-0")
+    assert CutPoint.for_overview(main).refs() == ("origin/main", "main")
+    assert CutPoint(top).refs() == ("stack/r--task-0",)
+    assert CutPoint(top, detached=True).refs() == ("stack/r--task-0",)
+
+
+@pytest.mark.parametrize("name", ["opus", "sonnet", "claude-opus-5-5"])
+def test_モデルの名前は空でない文字列なら何でも通す(name: str):
+    assert ModelName(name).value == name
+
+
+@pytest.mark.parametrize("name", ["", "  "])
+def test_モデルの名前は空と空白だけを拒む(name: str):
+    with pytest.raises(InvalidValue):
+        ModelName(name)
+
+
+def test_effortはclaudeのeffortが受ける5つの値だけ():
+    assert [Effort(v) for v in ("low", "medium", "high", "xhigh", "max")] == list(Effort)
+    with pytest.raises(ValueError):
+        Effort("huge")
+
+
+def test_既定のモデルのクラスはleadとreviewがopusでimplementとwriteがsonnet():
+    default = ModelClasses.default()
+    assert {c: default.of(c) for c in ModelClass} == {
+        ModelClass.LEAD: ModelChoice(ModelName("opus"), Effort.HIGH),
+        ModelClass.REVIEW: ModelChoice(ModelName("opus"), Effort.MEDIUM),
+        ModelClass.IMPLEMENT: ModelChoice(ModelName("sonnet"), Effort.MEDIUM),
+        ModelClass.WRITE: ModelChoice(ModelName("sonnet"), Effort.MEDIUM),
+    }
+
+
+def test_モデルのクラスの値は渡した欄だけを替えた新しい値を返す():
+    default = ModelClasses.default()
+    changed = default.with_choice(ModelClass.IMPLEMENT, effort=Effort.XHIGH)
+    assert changed.of(ModelClass.IMPLEMENT) == ModelChoice(ModelName("sonnet"), Effort.XHIGH)
+    renamed = changed.with_choice(ModelClass.IMPLEMENT, model=ModelName("claude-opus-5-5"))
+    assert renamed.of(ModelClass.IMPLEMENT) == ModelChoice(
+        ModelName("claude-opus-5-5"), Effort.XHIGH
+    )
+    others = [c for c in ModelClass if c is not ModelClass.IMPLEMENT]
+    assert [renamed.of(c) for c in others] == [default.of(c) for c in others]
+    # 元の値は変わらない
+    assert default.of(ModelClass.IMPLEMENT) == ModelChoice(ModelName("sonnet"), Effort.MEDIUM)

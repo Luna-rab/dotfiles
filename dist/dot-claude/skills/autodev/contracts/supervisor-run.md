@@ -152,7 +152,7 @@ draft から外すこと）はランを終えた後に走るからである。
 | `answer` | `answer` | `escalation`: 答えるエスカレーションの id。`answer`: 自分で答えるときの回答（ユーザーの回答を渡すなら `null`）。`question`: ユーザーの回答を渡すときの質問の id（自分で答えるなら `null`）。`answer` と `question` はどちらか一方だけを書く |
 | `ask-user` | `askUser` | `question`: 質問の id。`body`: 質問の本文。`escalation`: 聞くきっかけのエスカレーションの id（無ければ `null`） |
 | `replan` | `replan` | `reason`: 何を、なぜ直すか。再計画のステージがこれを読む。`trigger`: きっかけのエスカレーションの id（無ければ `null`）。`answer`: 上限に達した後だけ、ユーザーの回答の質問の id（ほかは `null`） |
-| `insert-task` | `insertTask` | `spec`: タスクの中身（`title`・`dod`・`acceptance`・`scope`・`entryPoints`・`boundary`・`verify`）。`blockedBy`: 積まれるのを待つタスク。`takesOver`: 引き継ぐタスク（無ければ `null`）。`respondsTo`: 応えるエスカレーションの id（無ければ `null`） |
+| `insert-task` | `insertTask` | `spec`: タスクの中身（`title`・`dod`・`acceptance`・`scope`・`entryPoints`・`boundary`・`taskTests`）。`blockedBy`: 積まれるのを待つタスク。`takesOver`: 引き継ぐタスク（無ければ `null`）。`respondsTo`: 応えるエスカレーションの id（無ければ `null`） |
 | `stop-tasks` | `stopTasks` | `tasks`: 止める実装タスク。積んだタスクは止められない（外すなら再計画で破棄する）。止めるタスクを待つタスクがあれば、一緒に止める。`respondsTo`: 応えるエスカレーションの id（無ければ `null`） |
 | `apply-plan` | `applyPlan` | `design`: 確定した設計の版。`stop`: 止めるタスク。`discard`: 破棄する積んだタスク。`respondsTo`: きっかけのほかに、反映したら閉じるエスカレーションの id（無ければ `null`） |
 | `finish` | `finish` | `readyOverview`: 概要 PR を draft から外すか |

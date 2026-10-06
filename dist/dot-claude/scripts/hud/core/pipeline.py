@@ -34,6 +34,7 @@ FULL = {
     "CutBranch": "ブランチを切る",
     "Rebase": "リベース",
     "CheckUnion": "両側の確認",
+    "IntegrationCheck": "統合検査",
     "Verify": "検証",
     "Push": "push",
     "CreatePR": "PR 作成",

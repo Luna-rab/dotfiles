@@ -11,7 +11,15 @@ from .discard import close_prs, relink, unstack
 from .implementation import confirm_red, gate
 from .overview import create_overview_pr, ready_overview, refresh_overview
 from .planning import prepare
-from .stacking import check_union, create_pr, cut_branch, push, rebase, stack_link, verify
+from .stacking import (
+    check_union,
+    create_pr,
+    cut_branch,
+    integration_check,
+    push,
+    rebase,
+    stack_link,
+)
 
 _S = StageKind
 
@@ -42,7 +50,7 @@ PROGRAMS: Mapping[StageKind, Program] = {
     _S.CUT_BRANCH: cut_branch,
     _S.REBASE: rebase,
     _S.CHECK_UNION: check_union,
-    _S.VERIFY: verify,
+    _S.INTEGRATION_CHECK: integration_check,
     _S.PUSH: push,
     _S.CREATE_PR: create_pr,
     _S.STACK_LINK: stack_link,

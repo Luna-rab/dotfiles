@@ -511,7 +511,7 @@ def insert_responding(escalation: str) -> dict[str, Any]:
         "scope": [],
         "entryPoints": [],
         "boundary": "",
-        "verify": [],
+        "taskTests": [],
     }
     return {
         "decision": "insert-task",

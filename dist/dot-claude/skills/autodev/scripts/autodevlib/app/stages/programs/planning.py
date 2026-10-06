@@ -19,7 +19,8 @@ def prepare(ctx: StageContext, tools: Tools) -> ProgramOutcome:
         markers.template("brief"),
         {
             "instruction": setting.instruction,
-            "verify": bullets([f"`{c}`" for c in setting.verify]),
+            "quick-checks": bullets([f"`{c}`" for c in setting.quick_checks]),
+            "regression-tests": bullets([f"`{c}`" for c in setting.regression_tests]),
             "test-paths": bullets([f"`{g}`" for g in setting.test_globs]),
             "protected-paths": bullets([f"`{g}`" for g in setting.protected_globs]),
             "untested-paths": bullets([f"`{g}`" for g in setting.untested_globs]),

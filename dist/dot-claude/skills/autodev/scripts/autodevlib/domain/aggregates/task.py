@@ -1616,8 +1616,8 @@ def _check(check: EvidenceCheck, evidence: Evidence) -> _Verdict:
     if check is EvidenceCheck.VERIFY_FAILS:
         holds = any(not outcome.passed for outcome in evidence.verify)
     elif check is EvidenceCheck.VERIFY_PASSES:
-        # 0 件なら通す。計画はラン共通の verify を空にしてよい（schemas の verify に
-        # minItems は無い）。空で落とすと、どのタスクも積めなくなる
+        # 0 件なら通す。計画はラン共通の軽い検査・回帰テストを空にしてよい（schemas の
+        # quickChecks・regressionTests に minItems は無い）。空で落とすと、どのタスクも積めなくなる
         holds = all(outcome.passed for outcome in evidence.verify)
     elif check is EvidenceCheck.UNION_KEPT:
         if evidence.union is None:

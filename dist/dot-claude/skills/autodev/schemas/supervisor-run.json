@@ -28,7 +28,7 @@
         "spec": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["title", "dod", "acceptance", "scope", "entryPoints", "boundary", "verify"],
+          "required": ["title", "dod", "acceptance", "scope", "entryPoints", "boundary", "taskTests"],
           "properties": {
             "title": { "type": "string", "minLength": 1 },
             "dod": { "type": "string" },
@@ -36,7 +36,7 @@
             "scope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
             "entryPoints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
             "boundary": { "type": "string" },
-            "verify": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            "taskTests": { "type": "array", "items": { "type": "string", "minLength": 1 } }
           }
         },
         "blockedBy": {

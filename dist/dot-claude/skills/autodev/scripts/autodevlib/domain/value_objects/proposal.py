@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from ..codec import RENAMED_FROM
 from .base import InvalidValue
 from .design_version import DesignVersion
 from .finding_transfer import FindingTransfer
@@ -20,8 +21,12 @@ class Proposal:
 
     design: DesignVersion
     tasks: tuple[PlannedTask, ...]
-    #: ラン共通の検証コマンド。git 管理タスクの Verify で流す
-    verify: tuple[VerifyCommand, ...] = ()
+    #: ラン共通の軽い検査。Gate と、git 管理タスクの統合検査で流す
+    quick_checks: tuple[VerifyCommand, ...] = ()
+    #: ラン共通の回帰テスト。git 管理タスクの統合検査でだけ流す
+    regression_tests: tuple[VerifyCommand, ...] = field(
+        default=(), metadata={RENAMED_FROM: ("verify",)}
+    )
     #: 止める候補（走っている実装タスク）
     stop: frozenset[TaskId] = frozenset()
     #: 破棄する候補（積んだタスク）。再利用できない理由は設計の本文に書く

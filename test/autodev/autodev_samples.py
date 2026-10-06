@@ -27,6 +27,7 @@ from autodevlib.domain.value_objects.finding_id import FindingId
 from autodevlib.domain.value_objects.glob_pattern import GlobPattern
 from autodevlib.domain.value_objects.instruction import Instruction
 from autodevlib.domain.value_objects.location import Location
+from autodevlib.domain.value_objects.model_class import ModelName
 from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
 from autodevlib.domain.value_objects.pr_number import PrNumber
 from autodevlib.domain.value_objects.question_id import QuestionId
@@ -55,7 +56,8 @@ RESULT_DEFAULTS: dict[ResultField, Any] = {
     _F.DESIGN_CAUSE: None,
     _F.DESIGN: "設計の本文",
     _F.TASKS: [],
-    _F.VERIFY: [],
+    _F.QUICK_CHECKS: [],
+    _F.REGRESSION_TESTS: [],
     _F.STOP: [],
     _F.DISCARD: [],
     _F.CARRY: [],
@@ -104,6 +106,7 @@ FIXED: dict[Any, Any] = {
     Location: Location("src/cache.py:42"),
     DesignVersion: DesignVersion(2),
     ParallelLimit: ParallelLimit(3),
+    ModelName: ModelName("claude-opus-5-5"),
     Decision: Decision("A にする", DecisionOrigin.USER, QuestionId("q-scope")),
     str: "本文",
     int: 2,

@@ -30,6 +30,9 @@ T = TypeVar("T")
 #: JSON にできる値
 Json = Any
 
+#: dataclass の欄の metadata の鍵。値は、その欄の古いキー名の tuple
+RENAMED_FROM = "renamedFrom"
+
 
 class DecodeError(ValueError):
     """JSON の形が、読もうとした型に合わない。"""
@@ -116,6 +119,7 @@ def _decode(tp: Any, data: Json, where: str) -> Any:  # noqa: PLR0911, PLR0912  
 def _decode_dataclass(cls: type, data: dict[str, Json], where: str) -> Any:
     fields = _fields(cls)
     names = {field.name for field in fields}
+    data = _rename_keys(fields, data, where)
     if unknown := sorted(set(data) - names):
         raise DecodeError(f"{where}: 知らないキー: {', '.join(unknown)}")
     hints = _hints(cls)
@@ -128,6 +132,19 @@ def _decode_dataclass(cls: type, data: dict[str, Json], where: str) -> Any:
         elif field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING:
             raise DecodeError(f"{where}: {field.name} が無い")
     return _construct(cls, where, **kwargs)
+
+
+def _rename_keys(fields: Any, data: dict[str, Json], where: str) -> dict[str, Json]:
+    """古いキー名で書かれた欄を、新しい欄の名前に付け替える。両方あれば拒む。"""
+    renamed = dict(data)
+    for field in fields:
+        for old in field.metadata.get(RENAMED_FROM, ()):
+            if old not in renamed:
+                continue
+            if field.name in renamed:
+                raise DecodeError(f"{where}: {old} と {field.name} が両方ある")
+            renamed[field.name] = renamed.pop(old)
+    return renamed
 
 
 def _construct(cls: Any, where: str, *args: Any, **kwargs: Any) -> Any:

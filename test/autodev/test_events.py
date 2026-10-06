@@ -6,6 +6,7 @@ import importlib
 import inspect
 import json
 import pkgutil
+from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
@@ -22,12 +23,22 @@ from autodevlib.domain.commands.task import TaskCommand
 from autodevlib.domain.events.base import Event
 from autodevlib.domain.events.record import EventRecord, UnknownEventType, from_record, to_record
 from autodevlib.domain.events.registry import EVENT_TYPES, EVENTS_BY_AGGREGATE
-from autodevlib.domain.events.run import AllTasksSettled, RunPanicked, TaskStarted
+from autodevlib.domain.events.review_ledger import FixCounted
+from autodevlib.domain.events.run import (
+    AllTasksSettled,
+    RunPanicked,
+    SettledPlanRecorded,
+    TasksPlanned,
+    TaskStarted,
+)
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
+from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
 from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_kind import TaskKind
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 
 #: 宛先の集約ごとの土台。表には入れない
 COMMAND_BASES = {
@@ -212,3 +223,83 @@ def test_輪になった読み替えで止まらなくならない():
     }
     with pytest.raises(UnknownEventType):
         from_record(EventRecord("Old", 1, {}), upcasters)
+
+
+# --- 統合検査への改名と、古い名前を読む codec ---
+
+
+def test_ステージ名Verifyで記録された実行は統合検査として読める():
+    stored = {"execution": {"task": "task1", "stage": "Verify", "round": 0, "attempt": 1}}
+    event = from_record(EventRecord("FixCounted", 1, {**stored, "findings": []}))
+    assert event == FixCounted(ExecutionId(TaskId("task1"), StageKind.INTEGRATION_CHECK, 0, 1), ())
+
+
+def test_統合検査の実行はIntegrationCheckと書きVerifyとは書かない():
+    execution = ExecutionId(TaskId("task1"), StageKind.INTEGRATION_CHECK, 0, 1)
+    data = to_record(FixCounted(execution, ())).data
+    assert data["execution"]["stage"] == "IntegrationCheck"
+    assert "Verify" not in json.dumps(data)
+
+
+@dataclass(frozen=True)
+class _Renamed:
+    # 古いキー名を metadata に書くと、読むときだけ新しい欄として受ける
+    new: int = field(metadata={codec.RENAMED_FROM: ("old",)})
+
+
+def test_古いキー名の欄を新しい欄として読み書きは新しい名前だけにする():
+    assert codec.from_json(_Renamed, {"old": 1}) == _Renamed(new=1)
+    assert codec.from_json(_Renamed, {"new": 1}) == _Renamed(new=1)
+    assert codec.to_json(_Renamed(new=1)) == {"new": 1}
+
+
+def test_古いキーと新しいキーが両方あれば拒む():
+    with pytest.raises(codec.DecodeError):
+        codec.from_json(_Renamed, {"old": 1, "new": 2})
+
+
+# --- 改名前の欄名 verify の読み替え ---
+
+
+def stored(event: Event) -> dict[str, Any]:
+    return json.loads(json.dumps(to_record(event).data, ensure_ascii=False))
+
+
+def test_TasksPlannedの古いverifyは回帰テストとして読み軽い検査は空になる():
+    data = stored(sample(TasksPlanned))
+    for name in ("quick_checks", "regression_tests"):
+        del data[name]
+    data["verify"] = ["pytest"]
+    event = from_record(EventRecord("TasksPlanned", 1, data))
+    assert isinstance(event, TasksPlanned)
+    assert event.regression_tests == (VerifyCommand("pytest"),)
+    assert event.quick_checks == ()
+
+
+def test_TasksPlannedは新しい欄名で書き古いverifyは書かない():
+    event = from_record(EventRecord("TasksPlanned", 1, stored(sample(TasksPlanned))))
+    assert isinstance(event, TasksPlanned)
+    written = stored(event)
+    assert "verify" not in json.dumps(written)
+    assert {"quick_checks", "regression_tests"} <= set(written)
+
+
+def test_TaskSpecを含むイベントの古いverifyはタスクのテストとして読める():
+    data = stored(sample(TaskStarted))
+    del data["spec"]["task_tests"]
+    data["spec"]["verify"] = ["pytest a"]
+    event = from_record(EventRecord("TaskStarted", 1, data))
+    assert isinstance(event, TaskStarted)
+    assert event.spec is not None
+    assert event.spec.task_tests == (VerifyCommand("pytest a"),)
+
+
+def test_Proposalを含むイベントの古いverifyは回帰テストとして読める():
+    data = stored(sample(SettledPlanRecorded))
+    for name in ("quick_checks", "regression_tests"):
+        del data["proposal"][name]
+    data["proposal"]["verify"] = ["pytest"]
+    event = from_record(EventRecord("SettledPlanRecorded", 1, data))
+    assert isinstance(event, SettledPlanRecorded)
+    assert event.proposal.regression_tests == (VerifyCommand("pytest"),)
+    assert event.proposal.quick_checks == ()

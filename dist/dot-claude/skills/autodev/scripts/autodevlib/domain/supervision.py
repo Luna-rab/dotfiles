@@ -26,6 +26,7 @@ from .services.escalation_router import EscalationRouter, SupervisorLevel, task_
 from .value_objects.event_id import EventId
 from .value_objects.git_job_kind import GitJobKind
 from .value_objects.guard import Guard
+from .value_objects.model_class import ModelClass
 from .value_objects.stream_id import StreamId
 from .value_objects.task_id import TaskId
 from .value_objects.task_kind import TaskKind
@@ -85,6 +86,11 @@ class Supervisor:
     def name(self) -> str:
         """セッションとログの置き場の名前。"""
         return "run" if self.task is None else f"task-{self.task}"
+
+    @property
+    def model_class(self) -> ModelClass:
+        """claude に渡すモデルと effort のクラス。ラン統括もタスク統括も lead。"""
+        return ModelClass.LEAD
 
 
 @dataclass(frozen=True)

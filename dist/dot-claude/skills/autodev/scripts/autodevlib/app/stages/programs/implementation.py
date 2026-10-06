@@ -12,7 +12,7 @@ _A = ArtifactKind
 
 
 def confirm_red(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    """テストが実装の前に落ちるかを、そのタスクの verify で確かめる。"""
+    """テストが実装の前に落ちるかを、そのタスクのテストで確かめる。"""
     head = head_of(tools, ctx.tree)
     return ProgramOutcome(
         products=(ArtifactRef(_A.RED_TESTS, head),), verify=verify_tree(ctx, tools, ctx.tree)

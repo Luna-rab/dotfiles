@@ -97,7 +97,32 @@ driver が走っていれば、置いた回答をそのまま受け取る。回�
 `clean` も `purge` も、worktree の未コミットの変更や、切り離した HEAD にしか無いコミットがあると止まる。
 squash マージや rebase マージを済ませたランの `purge` は `--force` が要る。PR がマージ済みなら `--force` で消してよい。
 
-## 5. しないこと
+## 5. モデルと effort を変える
+
+ユーザーにモデルや effort の設定を頼まれたら、`~/.config/autodev/models.json` を手で書かずに次で設定する。
+クラスは `lead`（統括・計画・ジャッジ）・`review`（レビュー）・`implement`（テスト・実装・修正）・
+`write`（PR 本文）。effort は `low`・`medium`・`high`・`xhigh`・`max`。今の値は `autodev.py config show` で見る。
+
+```bash
+~/.claude/skills/autodev/scripts/autodev.py config set --class <クラス> [--model <モデル>] [--effort <effort>]
+```
+
+設定は次に始めるランから効く。走っているランと呼び直したランは、始めたときの値を使い続けるので、そうユーザーに伝える。
+
+## 6. 検証コマンドの種類
+
+ランが流す検証コマンドは 3 種類で、流す時点が違う。リポジトリの設定（`~/.config/autodev/repos/<スラッグ>.json`）には
+`quickChecks` と `regressionTests` を書く。`taskTests` は計画がタスクごとに選ぶ。古い鍵 `verify` は読まれず、起動が失敗する（終了コード 1）。
+
+| 種類 | 鍵 | 中身 | 流す時点 |
+| --- | --- | --- | --- |
+| タスクのテスト | `taskTests` | そのタスクのテスト | `ConfirmRed`・`Gate` |
+| 軽い検査 | `quickChecks` | lint・型検査のように速く、どのタスクを積んだ時点でも通るもの | `Gate`・`IntegrationCheck` |
+| 回帰テスト | `regressionTests` | テスト全体のように遅く、ほかの場所を壊していないかを確かめるもの | `IntegrationCheck` |
+
+統合検査（`IntegrationCheck`）は、積む前にスタックの一番上で軽い検査と回帰テストを流す。
+
+## 7. しないこと
 
 - ステージ（計画・テスト作成・実装・レビュー・ジャッジなど）を自分で務める
 - 合否を判断する・積まれていないタスクの PR を自分で作る

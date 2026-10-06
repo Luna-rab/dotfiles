@@ -1472,7 +1472,7 @@ def planned(number: int, *deps: int, title: str | None = None) -> dict[str, Any]
         "scope": [],
         "entryPoints": [],
         "boundary": "",
-        "verify": [],
+        "taskTests": [],
         "blockedBy": [f"task{d}" for d in deps],
     }
 

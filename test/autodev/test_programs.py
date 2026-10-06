@@ -15,7 +15,7 @@ from autodev_harness import POLICY, new_id, of_type
 from autodevlib.adapters.process.command import CommandFailed
 from autodevlib.app.stages.programs.common import ProgramOutcome, Tools, own_commits
 from autodevlib.app.stages.programs.discard import close_prs, relink, unstack
-from autodevlib.app.stages.programs.implementation import gate
+from autodevlib.app.stages.programs.implementation import confirm_red, gate
 from autodevlib.app.stages.programs.overview import (
     create_overview_pr,
     ready_overview,
@@ -23,7 +23,13 @@ from autodevlib.app.stages.programs.overview import (
 )
 from autodevlib.app.stages.programs.planning import prepare
 from autodevlib.app.stages.programs.registry import run_program
-from autodevlib.app.stages.programs.stacking import check_union, create_pr, push, stack_link, verify
+from autodevlib.app.stages.programs.stacking import (
+    check_union,
+    create_pr,
+    integration_check,
+    push,
+    stack_link,
+)
 from autodevlib.app.stages.stage_context import (
     GateFacts,
     OverviewFacts,
@@ -31,6 +37,7 @@ from autodevlib.app.stages.stage_context import (
     StageContext,
     TargetFacts,
     TaskRow,
+    WaitingRow,
 )
 from autodevlib.domain.commands.task import AcceptFlow, BeginStage, OpenTask
 from autodevlib.domain.events.task import StageCompleted, StageStarted, WorktreeReady
@@ -78,7 +85,8 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
     return make_env(
         tmp_path,
         monkeypatch,
-        verify=(VerifyCommand("pytest -q"),),
+        quick_checks=(VerifyCommand("ruff check ."),),
+        regression_tests=(VerifyCommand("pytest -q"),),
         untested_globs=(GlobPattern("docs/**"),),
     )
 
@@ -497,13 +505,22 @@ def test_衝突しないrebaseは衝突したファイルを返さない(env: En
     assert (tree / "c.txt").is_file()
 
 
-def test_Verifyはラン共通のverifyを流す(env: Env):
+def test_IntegrationCheckはラン共通の軽い検査と回帰テストを両方流す(env: Env):
     overview(env)
     task_tree(env)
     job = GitJob(6, J.STACK, task=T1, branch=B1, base=OVERVIEW)
-    ctx = context(env, S.VERIFY, job=job, run_verify=(VerifyCommand("test -f a.txt"),))
-    outcome = verify(ctx, tools(env))
-    assert [(str(v.command), v.passed) for v in outcome.verify] == [("test -f a.txt", True)]
+    ctx = context(
+        env,
+        S.INTEGRATION_CHECK,
+        job=job,
+        run_quick_checks=(VerifyCommand("test -f a.txt"),),
+        run_regression_tests=(VerifyCommand("test -d ."),),
+    )
+    outcome = integration_check(ctx, tools(env))
+    assert [(str(v.command), v.passed) for v in outcome.verify] == [
+        ("test -f a.txt", True),
+        ("test -d .", True),
+    ]
 
 
 def test_Pushはタスクのブランチをoriginへ送る(env: Env, tmp_path: Path):
@@ -523,7 +540,7 @@ def body_ref(env: Env, text: str) -> ArtifactRef:
     return ArtifactRef(A.PR_BODY, env.paths.relative(path))
 
 
-def test_CreatePRは実装タスクが書いた本文と概要PRへの案内で作る(env: Env):
+def test_CreatePRは実装タスクが書いた本文と概要PRへの案内で作り題に概要PRの番号を付ける(env: Env):
     overview(env)
     task_tree(env)
     pr_list(env, B1, "[]")
@@ -544,7 +561,7 @@ def test_CreatePRは実装タスクが書いた本文と概要PRへの案内で�
         "--head",
         str(B1),
         "--title",
-        "キャッシュを足す",
+        "[autodev #5] キャッシュを足す",
     ]
     assert "概要 PR: #5" in created["stdin"]
     assert "本文 ${x} $$ \\1" in created["stdin"]
@@ -594,7 +611,7 @@ OVERVIEW_FACTS = OverviewFacts(
         TaskRow(T1, "キャッシュ", TaskStatus.STACKED, PrNumber(11)),
         TaskRow(T2, "掃除", TaskStatus.RUNNING),
     ),
-    waiting=((T2, "stall"),),
+    waiting=(WaitingRow(T2, "stall", "指摘 f1 が直らない\nA | B のどちらにするか"),),
     decisions=("TTL は 60 秒",),
     notes=(Decision("A にする", DecisionOrigin.USER, QuestionId("q1")),),
     deferrals=("多段のキャッシュ",),
@@ -621,7 +638,7 @@ def test_CreateOverviewPRは空のコミットを載せてpushしdraftで作る(
     created = next(c for c in env.gh.calls() if c["args"][:2] == ["pr", "create"])
     assert "--draft" in created["args"]
     assert created["args"][created["args"].index("--title") + 1] == "[autodev] キャッシュを足す"
-    assert "- task1 キャッシュ — 積んだ（#11）" in created["stdin"]
+    assert "| task1 | キャッシュ | ✅ 積んだ | #11 |" in created["stdin"]
     # 呼び直しても空のコミットを重ねない
     env.gh.replies.clear()
     pr_list(env, OVERVIEW, pr_json(5, str(OVERVIEW), draft=True))
@@ -663,17 +680,51 @@ def test_RefreshOverviewは保存した本文のマーカーを状態から埋�
     ]
     body = edit["stdin"]
     assert body.startswith(
-        "上の区画 ${tasks} $$ \\1\n- task1 キャッシュ — 積んだ（#11）\n- task2 掃除 — 作業中\n"
+        "上の区画 ${tasks} $$ \\1\n"
+        "| タスク | 件名 | 状態 | PR |\n"
+        "| --- | --- | --- | --- |\n"
+        "| task1 | キャッシュ | ✅ 積んだ | #11 |\n"
+        "| task2 | 掃除 | 🔄 作業中 | — |\n"
     )
     assert "文の中の `<!-- autodev:tasks -->` は埋めない" in body
-    assert "- task2: stall" in body
-    assert "- TTL は 60 秒（計画）\n- A にする（ユーザーの回答）" in body
+    # 理由の改行と `|` で表が崩れない
+    assert (
+        "## 回答を待っていること\n\n"
+        "| 対象 | 種類 | 理由 |\n"
+        "| --- | --- | --- |\n"
+        "| task2 | `stall` | 指摘 f1 が直らない <br> A \\| B のどちらにするか |\n"
+    ) in body
+    assert (
+        "| 決めたこと | 出どころ |\n"
+        "| --- | --- |\n"
+        "| TTL は 60 秒 | 計画 |\n"
+        "| A にする | ユーザーの回答 |\n"
+    ) in body
     assert "- 多段のキャッシュ" in body
-    assert "キャッシュを足す" in body
-    assert "autodev のラン `r` が 2026-10-02T00:00:00Z に更新した" in body
+    assert "> キャッシュを足す" in body
+    assert "<sub>autodev のラン `r` が 2026-10-02 00:00 UTC に更新した</sub>" in body
     assert "<!-- autodev:unknown -->" in body
     # 保存した本文はマーカー入りのまま残す
     assert env.paths.overview_body.read_text(encoding="utf-8") == saved
+
+
+def test_回答待ちが無ければRefreshOverviewは回答待ちの節ごと出さない(env: Env):
+    overview(env)
+    env.paths.overview_body.parent.mkdir(parents=True, exist_ok=True)
+    env.paths.overview_body.write_text(
+        "上の区画\n\n<!-- autodev:waiting -->\n\n---\n", encoding="utf-8"
+    )
+    env.paths.overview_title.write_text("キャッシュを足す", encoding="utf-8")
+    ctx = context(
+        env,
+        S.REFRESH_OVERVIEW,
+        job=overview_job(J.REWRITE_OVERVIEW),
+        stack=StackFacts(OVERVIEW_ENTRY),
+        overview=OverviewFacts(tasks=OVERVIEW_FACTS.tasks),
+    )
+    refresh_overview(ctx, tools(env))
+    (edit,) = [c for c in env.gh.calls() if c["args"][:2] == ["pr", "edit"]]
+    assert edit["stdin"] == "上の区画\n\n\n\n---\n"
 
 
 def test_ReadyOverviewは概要PRをdraftから外す(env: Env):
@@ -734,7 +785,7 @@ def test_Gateは証拠を集めて項目ごとの合否をGateEvaluatorに任せ
         task=T1,
         gate=facts,
         artifacts={A.TESTS: ArtifactRef(A.TESTS, tests_at)},
-        task_spec=TaskSpec("x", verify=(VerifyCommand("exit 3"),)),
+        task_spec=TaskSpec("x", task_tests=(VerifyCommand("exit 3"),)),
     )
     outcome = gate(ctx, tools(env))
     assert outcome.commits == 3
@@ -743,6 +794,41 @@ def test_Gateは証拠を集めて項目ごとの合否をGateEvaluatorに任せ
     assert set(failed) == {GateItem.TESTS_UNCHANGED, GateItem.VERIFY}
     assert "tests/test_cache.py" in failed[GateItem.TESTS_UNCHANGED]
     assert [v.exit_code for v in outcome.verify] == [3]
+
+
+def test_Gateはタスクのテストが全部通っても軽い検査が落ちればVERIFYの項目が落ちる(env: Env):
+    overview(env)
+    tree = task_tree(env)
+    commit(tree, "src/cache.py", "x\n")
+    ctx = context(
+        env,
+        S.GATE,
+        task=T1,
+        gate=GateFacts((), (S.REVIEW,), (S.REVIEW,), has_test_gen=False),
+        task_spec=TaskSpec("x", task_tests=(VerifyCommand("true"),)),
+        run_quick_checks=(VerifyCommand("exit 1"),),
+        run_regression_tests=(VerifyCommand("exit 2"),),
+    )
+    outcome = gate(ctx, tools(env))
+    assert outcome.gate is not None
+    assert GateItem.VERIFY in {r.item for r in outcome.gate.failed}
+    # 回帰テストは Gate では流れない
+    assert [(str(v.command), v.exit_code) for v in outcome.verify] == [("true", 0), ("exit 1", 1)]
+
+
+def test_ConfirmRedはタスクのテストだけを流し軽い検査は流さない(env: Env):
+    overview(env)
+    task_tree(env)
+    ctx = context(
+        env,
+        S.CONFIRM_RED,
+        task=T1,
+        task_spec=TaskSpec("x", task_tests=(VerifyCommand("exit 4"),)),
+        run_quick_checks=(VerifyCommand("true"),),
+        run_regression_tests=(VerifyCommand("true"),),
+    )
+    outcome = confirm_red(ctx, tools(env))
+    assert [(str(v.command), v.exit_code) for v in outcome.verify] == [("exit 4", 4)]
 
 
 def test_TestGenが無ければ変わったファイルがテストの要らないパスに収まるかを見る(env: Env):
@@ -765,5 +851,20 @@ def test_Prepareは指示とリポジトリごとの設定からブリーフを�
     outcome = prepare(context(env, S.PREPARE, task=PLANNING), tools(env))
     assert outcome.products == (ArtifactRef(A.BRIEF, "brief.md"),)
     brief = env.paths.brief.read_text(encoding="utf-8")
-    assert "キャッシュを足す" in brief and "- `pytest -q`" in brief and "- `docs/**`" in brief
+    assert "キャッシュを足す" in brief and "- `docs/**`" in brief
     assert "<!-- autodev:" not in brief
+    quick = brief.split("### 軽い検査")[1].split("###")[0]
+    regression = brief.split("### 回帰テスト")[1].split("###")[0]
+    assert "- `ruff check .`" in quick and "pytest" not in quick
+    assert "- `pytest -q`" in regression and "ruff" not in regression
+
+
+def test_Prepareは軽い検査も回帰テストも無ければ両方の節をなしにする(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    bare = make_env(tmp_path, monkeypatch)
+    overview(bare)
+    prepare(context(bare, S.PREPARE, task=PLANNING), tools(bare))
+    brief = bare.paths.brief.read_text(encoding="utf-8")
+    assert brief.split("### 軽い検査")[1].split("###")[0].strip() == "（なし）"
+    assert brief.split("### 回帰テスト")[1].split("###")[0].strip() == "（なし）"

@@ -62,8 +62,8 @@
 終わりに StructuredOutput ツールで 1 回だけ返す。形はそのツールの入力スキーマにある（外れると
 差し戻されるので、言い直して合わせる）。
 
-- `design`・`tasks`・`verify`・`stop`・`discard`・`carry`・`decisions`・`deferrals`: [_proposal.md](_proposal.md) のとおり。
-  `design` は書き直した後の全文を返す。`verify` はラン共通の検証コマンドを全部書く（返した一覧で置き換わる）
+- `design`・`tasks`・`quickChecks`・`regressionTests`・`stop`・`discard`・`carry`・`decisions`・`deferrals`: [_proposal.md](_proposal.md) のとおり。
+  `design` は書き直した後の全文を返す。`quickChecks`・`regressionTests` はラン共通の検査を全部書く（返した一覧で置き換わる）
 
 ## してはいけないこと
 

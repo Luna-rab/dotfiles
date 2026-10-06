@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..codec import RENAMED_FROM
 from ..value_objects.artifact_ref import ArtifactRef
 from ..value_objects.branch_name import BranchName
 from ..value_objects.design_version import DesignVersion
@@ -13,6 +14,7 @@ from ..value_objects.execution_id import ExecutionId
 from ..value_objects.finding_transfer import FindingTransfer
 from ..value_objects.hint import Hint
 from ..value_objects.instruction import Instruction
+from ..value_objects.model_class import ModelClasses
 from ..value_objects.parallel_limit import ParallelLimit
 from ..value_objects.planned_task import PlannedTask
 from ..value_objects.pointers import Pointers
@@ -36,6 +38,8 @@ class RunStarted(Event):
     repository: Repository
     base: BranchName
     limit: ParallelLimit
+    #: クラスごとのモデルと effort。None は、この欄を記録する前に始めたラン（既定値で動かす）
+    models: ModelClasses | None = None
 
 
 @dataclass(frozen=True)
@@ -65,10 +69,13 @@ class TasksPlanned(Event):
     #: 反映した後の、終端でない実装タスク（提案に書かれていないタスクは今の中身のまま）と、
     #: 提案に書かれた積み済みのタスク
     tasks: tuple[PlannedTask, ...]
-    verify: tuple[VerifyCommand, ...]
+    #: ラン共通の回帰テスト（改名前の記録の `verify` はこれとして読む）
+    regression_tests: tuple[VerifyCommand, ...] = field(metadata={RENAMED_FROM: ("verify",)})
     artifacts: tuple[ArtifactRef, ...]
     #: 再計画の反映か（初回なら概要 PR を作り、再計画なら本文を差し替える）
     replan: bool
+    #: ラン共通の軽い検査。記録に無ければ空
+    quick_checks: tuple[VerifyCommand, ...] = ()
     #: 再計画のきっかけになったエスカレーション（確定した提案を退けて頼み直したなら、前のきっかけも）。
     #: 一緒に出る EscalationClosed で閉じる
     triggers: tuple[EventId, ...] = ()

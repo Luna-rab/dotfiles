@@ -51,7 +51,7 @@ class GitJob:
         if self.kind is GitJobKind.CUT_STACK_TOP:
             return CutPoint(self.base, detached=True) if self.base is not None else None
         if self.kind is GitJobKind.CUT_OVERVIEW:
-            return CutPoint(self.base, run_base=True) if self.base is not None else None
+            return CutPoint.for_overview(self.base) if self.base is not None else None
         if self.previous is not None:
             return CutPoint(self.previous, roots_branch=False)
         return CutPoint(self.base) if self.base is not None else None

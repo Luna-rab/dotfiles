@@ -48,7 +48,8 @@ autodev.py answer --name <ラン名> --question <質問 ID> --answer-file -     
 | 置き場 | 中身 |
 | --- | --- |
 | `~/.local/state/autodev/<ラン名>/` | ランの記録（`events.db`・質問・ログ・worktree） |
-| `~/.config/autodev/repos/<スラッグ>.json` | リポジトリごとの設定（検証コマンド・テストのパス・変更禁止のパス）。人が書く。無くても走る |
+| `~/.config/autodev/repos/<スラッグ>.json` | リポジトリごとの設定（`quickChecks`（軽い検査）・`regressionTests`（回帰テスト）・`testGlobs`（テストのパス）・`protected`（変更禁止のパス）・`untested`（テストの要らないパス））。人が書く。無くても走る。古い鍵 `verify` は読まれず、起動が失敗する。`regressionTests` に改名し、速いものは `quickChecks` に分ける |
+| `~/.config/autodev/models.json` | クラス（lead・review・implement・write）ごとのモデルと effort。`autodev.py config set` で書く。書いた欄だけが既定を上書きし、次に始めるランから効く。無くても走る |
 
 ## 片付け
 

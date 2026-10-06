@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 from autodevlib.domain.services.gate import ChangedFile, GateEvaluator, GateEvidence
-from autodevlib.domain.services.verify import VerifyScope, VerifySelector
+from autodevlib.domain.services.verify import VerifySelector
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind
 from autodevlib.domain.value_objects.finding_id import FindingId
 from autodevlib.domain.value_objects.finding_summary import FindingSummary
@@ -164,27 +164,51 @@ def test_GateFailedの項目から開く指摘の中身():
 # --- VerifySelector ---
 
 
+TY = VerifyCommand("uv run ty check")
+
+
+def test_ConfirmRedはタスクのテストだけを流す():
+    selected = VerifySelector.select(
+        StageKind.CONFIRM_RED,
+        task_tests=(PYTEST, RUFF),
+        quick_checks=(RUFF, TY),
+        regression_tests=(PYTEST,),
+    )
+    assert selected == (PYTEST, RUFF)
+
+
+def test_Gateはタスクのテストと軽い検査を重なりを除いて初めに出た順に流す():
+    selected = VerifySelector.select(
+        StageKind.GATE,
+        task_tests=(PYTEST, RUFF),
+        quick_checks=(RUFF, TY),
+        regression_tests=(PYTEST,),
+    )
+    assert selected == (PYTEST, RUFF, TY)
+
+
+def test_統合検査は軽い検査と回帰テストを流しタスクのテストは入れない():
+    selected = VerifySelector.select(
+        StageKind.INTEGRATION_CHECK,
+        task_tests=(TY,),
+        quick_checks=(RUFF,),
+        regression_tests=(PYTEST, RUFF),
+    )
+    assert selected == (RUFF, PYTEST)
+
+
 @pytest.mark.parametrize(
-    ("stage", "expected"),
-    [
-        (StageKind.CONFIRM_RED, (PYTEST,)),
-        (StageKind.GATE, (PYTEST,)),
-        (StageKind.VERIFY, (RUFF,)),
-    ],
+    "stage", [StageKind.CONFIRM_RED, StageKind.GATE, StageKind.INTEGRATION_CHECK]
 )
-def test_実装タスクはそのタスクのverifyをgit管理タスクはラン共通のverifyを流す(
-    stage: StageKind, expected: tuple[VerifyCommand, ...]
-):
-    assert VerifySelector.select(stage, (PYTEST,), (RUFF,)) == expected
+def test_3つとも空なら流すものが無い(stage: StageKind):
+    assert VerifySelector.select(stage) == ()
 
 
-def test_他のタスクのverifyを積み上げず空なら空のまま():
-    assert VerifySelector.select(StageKind.GATE, (), (RUFF, PYTEST)) == ()
-    assert VerifySelector.select(StageKind.VERIFY, (PYTEST,), ()) == ()
+def test_回帰テストは軽い検査に移らずGateでは流れない():
+    assert VerifySelector.select(StageKind.GATE, regression_tests=(PYTEST,)) == ()
+    assert VerifySelector.select(StageKind.CONFIRM_RED, quick_checks=(RUFF,)) == ()
 
 
 def test_検証コマンドを流さないステージには選ばない():
-    assert VerifySelector.scope_of(StageKind.IMPL) is None
-    assert VerifySelector.scope_of(StageKind.VERIFY) is VerifyScope.RUN
     with pytest.raises(ValueError, match="Impl は検証コマンドを流さない"):
-        VerifySelector.select(StageKind.IMPL, (PYTEST,), (RUFF,))
+        VerifySelector.select(StageKind.IMPL, task_tests=(PYTEST,), quick_checks=(RUFF,))

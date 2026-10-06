@@ -35,6 +35,7 @@ from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stall_cause import StallCause
 from autodevlib.domain.value_objects.task_id import TaskId
 from autodevlib.domain.value_objects.task_spec import TaskSpec
+from autodevlib.domain.value_objects.verify_command import VerifyCommand
 
 SESSION = SessionId("0f8fad5b-d9cb-469f-a165-70867728950e")
 T1 = TaskId("task1")
@@ -142,7 +143,7 @@ def test_タスク統括の上げはEscalateToRunになる():
                         "scope": [],
                         "entryPoints": ["src/a.py"],
                         "boundary": "",
-                        "verify": [],
+                        "taskTests": [],
                     },
                     "blockedBy": ["task1"],
                     "takesOver": "task2",
@@ -201,6 +202,19 @@ def test_中身はドメインの値に読み替える():
     assert isinstance(insert, InsertTask)
     assert insert.spec == TaskSpec("引き継ぐ", entry_points=("src/a.py",))
     assert insert.blocked_by == frozenset({T1})
+    tested = run_command(
+        {
+            "decision": "insert-task",
+            "insertTask": {
+                "spec": {"title": "引き継ぐ", "taskTests": ["pytest a"]},
+                "blockedBy": [],
+                "takesOver": None,
+                "respondsTo": None,
+            },
+        }
+    )
+    assert isinstance(tested, InsertTask)
+    assert tested.spec.task_tests == (VerifyCommand("pytest a"),)
     plan = run_command(
         {
             "decision": "apply-plan",

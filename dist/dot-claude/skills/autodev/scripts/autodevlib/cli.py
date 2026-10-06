@@ -48,10 +48,12 @@ from .domain.value_objects.branch_name import BranchName
 from .domain.value_objects.command_id import CommandId
 from .domain.value_objects.instruction import Instruction
 from .domain.value_objects.issuer import Issuer
+from .domain.value_objects.model_class import Effort, ModelClass, ModelClasses, ModelName
 from .domain.value_objects.question_id import QuestionId
 from .domain.value_objects.repository import Repository
 from .domain.value_objects.run_name import RunName
 from .infra.lock import DriverBusy, DriverLock
+from .infra.model_config import ModelConfigError, load_model_classes, models_path, set_model_class
 from .infra.paths import RunPaths
 from .infra.repo_config import RepoConfigError, config_path, load_repo_config
 from .infra.store.db import EventsDbMissing
@@ -142,7 +144,11 @@ def _instruction(args: argparse.Namespace) -> Instruction:
 
 
 def _start_command(
-    args: argparse.Namespace, name: RunName, instruction: Instruction, repository: Repository
+    args: argparse.Namespace,
+    name: RunName,
+    instruction: Instruction,
+    repository: Repository,
+    models: ModelClasses,
 ) -> StartRun:
     repo = Git(repository.value)
     overview = BranchName.overview(name)
@@ -161,6 +167,7 @@ def _start_command(
         instruction=instruction,
         repository=repository,
         base=base,
+        models=models,
     )
 
 
@@ -168,10 +175,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     paths = _paths(args.name)
     started = assembly.run_started(paths)
     instruction: Instruction | None = None
+    models: ModelClasses | None = None
     if started is None:
         instruction = _instruction(args)
         if args.repo is None:
             raise Failed("新しいランには --repo が要る")
+        # 新しいランだけが読む。呼び直したランは RunStarted に記録した値を使う
+        models = _models()
     # 対象リポジトリを git で探す前に確かめる。git が無いと、リポジトリが無いという違う理由で落ちる
     if missing := assembly.missing_tools(Path.cwd()):
         raise Failed("足りないものがあるので走らない: " + " / ".join(missing))
@@ -188,8 +198,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         _say(f"リポジトリの設定が無いので既定で走る（置くなら {config_path(repository)}）")
     start = (
         None
-        if instruction is None
-        else StartRequest(_start_command(args, paths.name, instruction, repository))
+        if instruction is None or models is None
+        else StartRequest(_start_command(args, paths.name, instruction, repository, models))
     )
     _say(f"{paths.name} を{'続きから始める' if start is None else '始める'}（記録: {paths.root}）")
     try:
@@ -202,6 +212,55 @@ def cmd_run(args: argparse.Namespace) -> int:
             return int(assembly.build_driver(paths, config).drive(start))
     except DriverBusy as error:
         raise Failed(str(error)) from error
+
+
+# --- config ---
+
+
+def _models() -> ModelClasses:
+    try:
+        return load_model_classes()
+    except ModelConfigError as error:
+        raise Failed(str(error)) from error
+
+
+def _emit_models(models: ModelClasses) -> None:
+    path = models_path()
+    _emit(
+        {
+            "path": str(path),
+            "exists": path.is_file(),
+            "classes": {
+                cls.value: {
+                    "model": models.of(cls).model.value,
+                    "effort": models.of(cls).effort.value,
+                }
+                for cls in ModelClass
+            },
+        }
+    )
+
+
+def cmd_config_show(args: argparse.Namespace) -> int:
+    _emit_models(_models())
+    return OK
+
+
+def cmd_config_set(args: argparse.Namespace) -> int:
+    if args.model is None and args.effort is None:
+        raise Failed("--model か --effort の少なくとも 1 つが要る")
+    model = None if args.model is None else _value(ModelName, args.model, "モデル")
+    try:
+        models = set_model_class(
+            ModelClass(args.cls),
+            model=model,
+            effort=None if args.effort is None else Effort(args.effort),
+        )
+    except ModelConfigError as error:
+        raise Failed(f"{error}（何も書いていない）") from error
+    _say("次に始めるランから効く。走っているランは始めたときの値を使い続ける")
+    _emit_models(models)
+    return OK
 
 
 # --- status・events ---
@@ -354,6 +413,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--repo", help="対象リポジトリ（新しいランでは要る）")
     run.add_argument("--base", help="ランの base（省けば origin の既定ブランチ）")
     run.set_defaults(func=cmd_run)
+
+    config = sub.add_parser("config", help="クラスごとのモデルと effort の設定")
+    config_sub = config.add_subparsers(dest="config_command", required=True)
+    show = config_sub.add_parser("show", help="今の設定と設定ファイルのパスを JSON で出す")
+    show.set_defaults(func=cmd_config_show)
+    put = config_sub.add_parser("set", help="設定ファイルの、1 つのクラスの欄を書き換える")
+    put.add_argument(
+        "--class", dest="cls", required=True, choices=[cls.value for cls in ModelClass]
+    )
+    put.add_argument("--model", help="claude の --model に渡す名前")
+    put.add_argument("--effort", choices=[effort.value for effort in Effort])
+    put.set_defaults(func=cmd_config_set)
 
     status = sub.add_parser("status", help="ランの状態を JSON で出す")
     status.add_argument("--json", action="store_true", required=True)

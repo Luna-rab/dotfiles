@@ -56,7 +56,7 @@ class EvidenceCheck(Enum):
 
     #: 検証コマンドのどれかが落ちる（ConfirmRed: テストが実装の前に落ちる）
     VERIFY_FAILS = "verify-fails"
-    #: 検証コマンドがすべて通る（git 管理タスクの Verify: 積む直前の回帰）
+    #: 検証コマンドがすべて通る（git 管理タスクの統合検査: 積む直前の回帰）
     VERIFY_PASSES = "verify-passes"
     #: 衝突したファイルで両側の変更を残した（CheckUnion）。結果が無ければ形の誤り
     UNION_KEPT = "union-kept"
@@ -104,7 +104,8 @@ class ResultField(Enum):
     #: 提案（Proposal）の欄。設計の本文は driver が `design/v<版>.md` に書き出す
     DESIGN = "design"
     TASKS = "tasks"
-    VERIFY = "verify"
+    QUICK_CHECKS = "quickChecks"
+    REGRESSION_TESTS = "regressionTests"
     STOP = "stop"
     DISCARD = "discard"
     CARRY = "carry"

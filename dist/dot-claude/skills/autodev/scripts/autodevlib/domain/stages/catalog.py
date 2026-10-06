@@ -9,7 +9,8 @@
 読む 1 つの規則で進める（`aggregates/task.py`）。ステージを足すときに、Task の側に表や分岐を書き足さないため
 である。git 管理タスクの仕事の種類ごとの並びも、ここに宣言する（`GIT_JOB_STAGES`）。
 
-モデルと思考量は既定値で、進め方の判断には使わない。
+LLM のステージはモデルのクラス（`model_class`）を持つ。クラスに当たるモデルと effort はランごとに
+決まり（`RunStarted.models`）、進め方の判断には使わない。
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from ..value_objects.artifact_kind import ArtifactKind
 from ..value_objects.escalation_kind import EscalationKind
 from ..value_objects.git_job_kind import GitJobKind
 from ..value_objects.guard import Guard
+from ..value_objects.model_class import ModelClass
 from ..value_objects.stage_kind import StageKind
 from ..value_objects.task_kind import TaskKind
 from ..value_objects.write_scope import WriteScope
@@ -99,8 +101,8 @@ class StageSpec:
     #: 実行を流し直す。そのとき Task の事実（根元）は古いままなので、中身が動かした後の HEAD から流すと
     #: 同じ操作を二度かける。始めた時点から流せば、何度流しても同じ結果になる
     restores_start: bool = False
-    model: str | None = None
-    effort: str | None = None
+    #: LLM のステージだけが持つ。claude に渡すモデルと effort は、ランが記録したこのクラスの値
+    model_class: ModelClass | None = None
     #: ターンの上限。値は実装のときに決める
     max_turns: int | None = None
 
@@ -108,6 +110,8 @@ class StageSpec:
         name = self.kind.value
         if (self.mode is StageMode.LLM) != (self.guard is not None):
             raise ValueError(f"{name}: Guard を持つのは LLM のステージだけ")
+        if (self.mode is StageMode.LLM) != (self.model_class is not None):
+            raise ValueError(f"{name}: モデルのクラスを持つのは LLM のステージだけ")
         if (self.mode is StageMode.COMPOSITE) != bool(self.inner):
             raise ValueError(f"{name}: 中のステージを持つのは合成ステージだけ")
         if (self.session is SessionScope.FOLLOWS) != bool(self.follows):
@@ -168,7 +172,10 @@ class StageSpec:
 _PLANNING = frozenset({TaskKind.PLANNING})
 _IMPLEMENTATION = frozenset({TaskKind.IMPLEMENTATION})
 _GIT = frozenset({TaskKind.GIT})
-_OPUS = "opus"
+_LEAD = ModelClass.LEAD
+_REVIEW = ModelClass.REVIEW
+_IMPLEMENT = ModelClass.IMPLEMENT
+_WRITE = ModelClass.WRITE
 
 _READ_ONLY = Guard(WriteScope.NONE)
 _PLANNER = Guard(WriteScope.NONE, can_ask=True)
@@ -187,6 +194,7 @@ _TO = Handoff
 def _llm(
     kind: StageKind,
     task_kinds: frozenset[TaskKind],
+    model_class: ModelClass,
     guard: Guard,
     session: SessionScope = SessionScope.FRESH,
     *,
@@ -237,7 +245,7 @@ def _llm(
         can_keep=can_keep,
         after_conflict_only=after_conflict_only,
         body=body,
-        model=_OPUS,
+        model_class=model_class,
     )
 
 
@@ -278,7 +286,9 @@ def _program(
 
 
 #: 提案（Proposal）を返すステージが返す欄。止める・破棄する・移すは、確定した設計がある再計画だけ
-_PROPOSAL = frozenset({_F.DESIGN, _F.TASKS, _F.VERIFY, _F.DECISIONS, _F.DEFERRALS})
+_PROPOSAL = frozenset(
+    {_F.DESIGN, _F.TASKS, _F.QUICK_CHECKS, _F.REGRESSION_TESTS, _F.DECISIONS, _F.DEFERRALS}
+)
 _REPLAN = _PROPOSAL | {_F.STOP, _F.DISCARD, _F.CARRY}
 _PR = frozenset({_F.PR})
 
@@ -288,6 +298,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.PLAN,
         _PLANNING,
+        _LEAD,
         Guard(WriteScope.NONE, reads_design=False, can_ask=True),
         needs=frozenset({_A.BRIEF}),
         produces=frozenset({_A.PROPOSAL, _A.CODEMAP}),
@@ -297,6 +308,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.REPLAN,
         _PLANNING,
+        _LEAD,
         _PLANNER,
         needs=frozenset({_A.DESIGN}),
         produces=frozenset({_A.PROPOSAL}),
@@ -314,6 +326,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.DESIGN_REVIEW,
         _PLANNING,
+        _REVIEW,
         _READ_ONLY,
         parent=_S.DESIGN_LOOP,
         role=_R.LOOKER,
@@ -323,6 +336,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.DESIGN_JUDGE,
         _PLANNING,
+        _LEAD,
         _JUDGE,
         SessionScope.RUN,
         parent=_S.DESIGN_LOOP,
@@ -334,6 +348,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.REVISE,
         _PLANNING,
+        _LEAD,
         _PLANNER,
         SessionScope.FOLLOWS,
         follows=(_S.PLAN, _S.REPLAN),
@@ -348,6 +363,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.TEST_GEN,
         _IMPLEMENTATION,
+        _IMPLEMENT,
         Guard(WriteScope.TESTS_AND_STUBS),
         needs=frozenset({_A.DESIGN}),
         produces=frozenset({_A.TESTS}),
@@ -372,6 +388,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.IMPL,
         _IMPLEMENTATION,
+        _IMPLEMENT,
         Guard(WriteScope.NON_TESTS),
         SessionScope.TASK,
         needs=frozenset({_A.DESIGN}),
@@ -394,6 +411,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.EXPECT,
         _IMPLEMENTATION,
+        _IMPLEMENT,
         Guard(WriteScope.TESTS_ONLY),
         needs=frozenset({_A.IMPL}),
         # 期待値を書いたら、そのコミットが tests の在りかになる（Gate の項目 4）。書き残したテストが
@@ -411,6 +429,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.REVIEW,
         _IMPLEMENTATION,
+        _REVIEW,
         _READ_ONLY,
         needs=frozenset({_A.IMPL}),
         parent=_S.REVIEW_LOOP,
@@ -421,6 +440,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.ADVERSARIAL_REVIEW,
         _IMPLEMENTATION,
+        _REVIEW,
         Guard(WriteScope.NONE, reads_design=False),
         needs=frozenset({_A.IMPL}),
         parent=_S.REVIEW_LOOP,
@@ -431,6 +451,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.JUDGE,
         _IMPLEMENTATION,
+        _LEAD,
         _JUDGE,
         SessionScope.TASK,
         parent=_S.REVIEW_LOOP,
@@ -441,6 +462,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.FIX,
         _IMPLEMENTATION,
+        _IMPLEMENT,
         Guard(WriteScope.NON_TESTS),
         SessionScope.FOLLOWS,
         follows=(_S.IMPL,),
@@ -460,6 +482,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.WRITE_PR_BODY,
         _IMPLEMENTATION,
+        _WRITE,
         _READ_ONLY,
         needs=frozenset({_A.GATED}),
         produces=frozenset({_A.PR_BODY}),
@@ -470,6 +493,7 @@ _SPECS: tuple[StageSpec, ...] = (
     _llm(
         _S.RESOLVE_CONFLICT,
         frozenset({TaskKind.IMPLEMENTATION, TaskKind.GIT}),
+        _IMPLEMENT,
         Guard(WriteScope.LISTED),
         reports=frozenset({_E.INTEGRATION_FAILED}),
         after_conflict_only=True,
@@ -503,7 +527,7 @@ _SPECS: tuple[StageSpec, ...] = (
     ),
     # 積む直前のラン共通の検証が落ちたら、意味が変わる統合として扱う
     _program(
-        _S.VERIFY,
+        _S.INTEGRATION_CHECK,
         _GIT,
         expects=EvidenceCheck.VERIFY_PASSES,
         on_mismatch=_E.INTEGRATION_FAILED,
@@ -513,7 +537,7 @@ _SPECS: tuple[StageSpec, ...] = (
     # つないだ PR（このタスクの PR）の番号を返し、Stack に積んだ 1 本として渡す（AppendEntry）
     _program(_S.STACK_LINK, _GIT, result=_PR, hands_to=_TO.ENTRY),
     _program(_S.REFRESH_OVERVIEW, _GIT),
-    _llm(_S.WRITE_OVERVIEW, _GIT, _READ_ONLY, body=BodyTarget.OVERVIEW_PR),
+    _llm(_S.WRITE_OVERVIEW, _GIT, _WRITE, _READ_ONLY, body=BodyTarget.OVERVIEW_PR),
     # 作った概要 PR の番号を、スタックの一番下として渡す（RecordOverview）
     _program(_S.CREATE_OVERVIEW_PR, _GIT, result=_PR, hands_to=_TO.OVERVIEW),
     _program(_S.READY_OVERVIEW, _GIT),
@@ -543,7 +567,7 @@ _STACKING = (
     _S.REBASE,
     _S.RESOLVE_CONFLICT,
     _S.CHECK_UNION,
-    _S.VERIFY,
+    _S.INTEGRATION_CHECK,
     _S.PUSH,
     _S.CREATE_PR,
     _S.STACK_LINK,

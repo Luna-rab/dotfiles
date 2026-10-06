@@ -17,11 +17,20 @@ from autodevlib.adapters.claude.agent_runtime import AgentCall, DeferredToolUse,
 from autodevlib.adapters.claude.guard import GUARD_ENV
 from autodevlib.app.stages import executor as executor_module
 from autodevlib.app.stages.stage_context import ResumeMode
-from autodevlib.domain.commands.run import Panic
+from autodevlib.domain.commands.run import (
+    ApplyPlan,
+    Panic,
+    RecordSettledPlan,
+    StartRun,
+    StartTask,
+)
 from autodevlib.domain.commands.task import (
     AcceptFlow,
+    ConcludeReviewRound,
+    ConfirmHandoff,
     InterruptStage,
     OpenTask,
+    RecordBase,
     ReportBeginFailure,
     ReportStageResult,
     ResolveEscalation,
@@ -30,6 +39,7 @@ from autodevlib.domain.commands.task import (
 from autodevlib.domain.events.run import EscalationRaised
 from autodevlib.domain.events.task import (
     ExecutionRestarted,
+    GateFailed,
     StageCompleted,
     StageDeferred,
     StageFailed,
@@ -41,12 +51,21 @@ from autodevlib.domain.flow.standard import git_job_flow, planning_flow
 from autodevlib.domain.value_objects.artifact_kind import ArtifactKind
 from autodevlib.domain.value_objects.artifact_ref import ArtifactRef
 from autodevlib.domain.value_objects.branch_name import BranchName
+from autodevlib.domain.value_objects.commit_sha import CommitSha
+from autodevlib.domain.value_objects.design_version import DesignVersion
 from autodevlib.domain.value_objects.escalation_kind import EscalationKind
 from autodevlib.domain.value_objects.execution_id import ExecutionId
+from autodevlib.domain.value_objects.gate_item import GateItem
 from autodevlib.domain.value_objects.git_job import GitJob
 from autodevlib.domain.value_objects.git_job_kind import GitJobKind
+from autodevlib.domain.value_objects.glob_pattern import GlobPattern
+from autodevlib.domain.value_objects.instruction import Instruction
 from autodevlib.domain.value_objects.interrupt_cause import InterruptCause
 from autodevlib.domain.value_objects.issuer import Issuer
+from autodevlib.domain.value_objects.parallel_limit import ParallelLimit
+from autodevlib.domain.value_objects.proposal import Proposal
+from autodevlib.domain.value_objects.repository import Repository
+from autodevlib.domain.value_objects.run_name import RunName
 from autodevlib.domain.value_objects.stage_exit import StageExit
 from autodevlib.domain.value_objects.stage_kind import StageKind
 from autodevlib.domain.value_objects.stream_id import StreamId
@@ -80,7 +99,8 @@ PLAN_RESULT = {
     "design": "# 設計\n",
     "codemap": "# コードマップ\n",
     "tasks": [],
-    "verify": [],
+    "quickChecks": [],
+    "regressionTests": [],
     "decisions": [],
     "deferrals": [],
 }
@@ -110,7 +130,7 @@ def impl_task(
             issuer=POLICY,
             task=T1,
             kind=TaskKind.IMPLEMENTATION,
-            spec=TaskSpec("キャッシュ", verify=tuple(VerifyCommand(v) for v in verify)),
+            spec=TaskSpec("キャッシュ", task_tests=tuple(VerifyCommand(v) for v in verify)),
             artifacts=(ArtifactRef(A.DESIGN, "1"), *artifacts),
             branch=BRANCH,
         )
@@ -180,7 +200,8 @@ def test_Implはworktreeで起動しコミットを実物にして完了する(e
     assert guard["guard"]["writes"] == "non-tests"
     assert guard["context"]["tree"] == str(env.paths.task_tree(T1))
     assert call.withhold_github is True
-    assert call.model == "opus"
+    # Impl は implement のクラス。設定を渡さないランは既定の sonnet / medium
+    assert (call.model, call.effort) == ("sonnet", "medium")
     # 結果の JSON は results/ に残り、進み具合は消える
     assert (env.paths.task_results(T1) / f"{ex(S.IMPL)}.json").is_file()
     assert not any(env.paths.progress.glob("*.json"))
@@ -843,7 +864,74 @@ def test_配り直しで済んだ実行をもう一度頼まれても走らせ�
     assert ticket.used and env.world.submitted() == []
 
 
-def test_ConfirmRedはタスクのverifyが落ちれば完了し全部通ればred_check_failedを上げる(env: Env):
+def plan_run(env: Env, *, quick_checks: tuple[str, ...], regression_tests: tuple[str, ...]) -> None:
+    """ランを始め、軽い検査と回帰テストを載せた計画を反映する。"""
+    env.world(
+        StartRun(
+            command_id=new_id(),
+            issuer=Issuer.cli(),
+            name=RunName("r"),
+            instruction=Instruction("キャッシュを足す"),
+            repository=Repository(str(env.repo)),
+            base=BranchName("main"),
+            limit=ParallelLimit(3),
+        )
+    )
+    for task in (TaskId.planning(), TaskId.git()):
+        env.world(StartTask(command_id=new_id(), issuer=POLICY, task=task))
+    proposal = Proposal(
+        DesignVersion(1),
+        (),
+        quick_checks=tuple(VerifyCommand(c) for c in quick_checks),
+        regression_tests=tuple(VerifyCommand(c) for c in regression_tests),
+    )
+    env.world(
+        RecordSettledPlan(
+            command_id=new_id(),
+            issuer=POLICY,
+            proposal=proposal,
+            artifacts=(ArtifactRef(A.DESIGN, "1"),),
+        )
+    )
+    env.world(ApplyPlan(command_id=new_id(), issuer=POLICY, design=DesignVersion(1)))
+
+
+def test_ConfirmRedはラン共通の軽い検査を流さない(env: Env):
+    plan_run(env, quick_checks=("exit 1",), regression_tests=("exit 1",))
+    env.git.create_branch(BRANCH, "main")
+    env.git.add_worktree(env.paths.task_tree(T1), BRANCH)
+    for task_tests, expected in (("exit 1", StageCompleted), ("true", EscalationRaised)):
+        task = TaskId("task1") if task_tests == "exit 1" else TaskId("task2")
+        if task != T1:
+            env.git.create_branch(BranchName("stack/r--task-2"), "main")
+            env.git.add_worktree(env.paths.task_tree(task), BranchName("stack/r--task-2"))
+        env.world(
+            OpenTask(
+                command_id=new_id(),
+                issuer=POLICY,
+                task=task,
+                kind=TaskKind.IMPLEMENTATION,
+                spec=TaskSpec("x", task_tests=(VerifyCommand(task_tests),)),
+                artifacts=(ArtifactRef(A.DESIGN, "1"), ArtifactRef(A.TESTS, "a" * 40)),
+                branch=BRANCH,
+            )
+        )
+        env.world(
+            AcceptFlow(
+                command_id=new_id(),
+                issuer=Issuer.task_supervisor(task, SESSION),
+                task=task,
+                steps=(FlowStep(S.CONFIRM_RED), *IMPL_FLOW),
+            )
+        )
+        execution = ex(S.CONFIRM_RED, task=task)
+        env.begin(execution)
+        events = env.run(execution)
+        # 軽い検査（exit 1）が流れていれば、タスクのテストが通る側でも落ちた扱いになってしまう
+        assert of_type(events, expected), events
+
+
+def test_ConfirmRedはタスクのテストが落ちれば完了し全部通ればred_check_failedを上げる(env: Env):
     steps = (FlowStep(S.CONFIRM_RED), *IMPL_FLOW)
     env.git.create_branch(BRANCH, "main")
     env.git.add_worktree(env.paths.task_tree(T1), BRANCH)
@@ -858,7 +946,7 @@ def test_ConfirmRedはタスクのverifyが落ちれば完了し全部通ればr
                 issuer=POLICY,
                 task=task,
                 kind=TaskKind.IMPLEMENTATION,
-                spec=TaskSpec("x", verify=(VerifyCommand(verify),)),
+                spec=TaskSpec("x", task_tests=(VerifyCommand(verify),)),
                 artifacts=(ArtifactRef(A.DESIGN, "1"), ArtifactRef(A.TESTS, "a" * 40)),
                 branch=BRANCH,
             )
@@ -877,6 +965,118 @@ def test_ConfirmRedはタスクのverifyが落ちれば完了し全部通ればr
         assert of_type(events, expected), events
         if expected is EscalationRaised:
             assert of_type(events, EscalationRaised)[0].kind is EscalationKind.RED_CHECK_FAILED
+
+
+def reach_gate(env: Env) -> ExecutionId:
+    """実装済みのタスクを、Review と Judge を指摘なしで通して Gate の手前まで進める。"""
+    impl_task(
+        env,
+        FlowStep(S.REVIEW_LOOP, reviewers=Reviewers((S.REVIEW,))),
+        FlowStep(S.GATE),
+        FlowStep(S.WRITE_PR_BODY),
+        verify=("true",),
+        artifacts=(ArtifactRef(A.IMPL, "a" * 40),),
+    )
+    tree = env.paths.task_tree(T1)
+    base = sh(env.repo, "rev-parse", "main").strip()
+    commit(tree, "docs/a.md", "x\n")
+    env.world(RecordBase(command_id=new_id(), issuer=POLICY, task=T1, base=CommitSha(base)))
+    review, judge = ex(S.REVIEW, round=1), ex(S.JUDGE, round=1)
+    env.runtime.behaviors.append(lambda call, p: outcome(call, {"findings": []}))
+    env.begin(review)
+    env.run(review)
+    env.world(
+        ConfirmHandoff(command_id=new_id(), issuer=POLICY, task=T1, execution=review, refused=None)
+    )
+    empty_judgement = {"verdicts": [], "comments": [], "stallCause": None, "stallReason": None}
+    env.runtime.behaviors.append(lambda call, p: outcome(call, empty_judgement))
+    env.begin(judge)
+    env.run(judge)
+    env.world(
+        ConcludeReviewRound(
+            command_id=new_id(),
+            issuer=POLICY,
+            task=T1,
+            judge=judge,
+            unresolved=(),
+            stalled=(),
+            cause=None,
+        )
+    )
+    return ex(S.GATE)
+
+
+def test_Gateはタスクのテストが通ってもラン共通の軽い検査が落ちればFixに戻る(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    env = make_env(tmp_path, monkeypatch, untested_globs=(GlobPattern("docs/**"),))
+    plan_run(env, quick_checks=("exit 1",), regression_tests=("true",))
+    gate = reach_gate(env)
+    env.begin(gate)
+    events = env.run(gate)
+    # タスクのテスト（true）は通っているので、G-verify を開くのは軽い検査（exit 1）だけ
+    (failed,) = of_type(events, GateFailed)
+    assert [(r.item, r.reason) for r in failed.failed] == [
+        (GateItem.VERIFY, "exit 1 が終了コード 1 で落ちた")
+    ]
+    assert failed.cursor.inner is S.FIX
+
+
+def test_Gateはラン共通の回帰テストを流さない(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    env = make_env(tmp_path, monkeypatch, untested_globs=(GlobPattern("docs/**"),))
+    plan_run(env, quick_checks=("true",), regression_tests=("exit 1",))
+    gate = reach_gate(env)
+    env.begin(gate)
+    events = env.run(gate)
+    assert not of_type(events, GateFailed), events
+    assert of_type(events, StageCompleted)
+
+
+def test_IntegrationCheckはラン共通の軽い検査と回帰テストを両方流す(env: Env):
+    plan_run(env, quick_checks=("echo quick",), regression_tests=("echo regression",))
+    env.git.create_branch(BRANCH, "main")
+    env.git.add_worktree(env.paths.task_tree(T1), BRANCH)
+    env.git.create_branch(OVERVIEW, "main")
+    env.git.add_worktree(env.paths.overview_tree, OVERVIEW)
+    commit(env.paths.task_tree(T1), "b.txt", "x\n")
+    git = TaskId.git()
+    job = GitJob(6, GitJobKind.STACK, task=T1, branch=BRANCH, base=OVERVIEW)
+    env.world(
+        OpenTask(
+            command_id=new_id(),
+            issuer=POLICY,
+            task=T1,
+            kind=TaskKind.IMPLEMENTATION,
+            spec=TaskSpec("x", task_tests=(VerifyCommand("exit 1"),)),
+            artifacts=(ArtifactRef(A.DESIGN, "1"),),
+            branch=BRANCH,
+        )
+    )
+    base = sh(env.repo, "rev-parse", "main").strip()
+    env.world(RecordBase(command_id=new_id(), issuer=POLICY, task=T1, base=CommitSha(base)))
+    env.world(OpenTask(command_id=new_id(), issuer=POLICY, task=git, kind=TaskKind.GIT))
+    env.world(
+        AcceptFlow(
+            command_id=new_id(),
+            issuer=Issuer.task_supervisor(git),
+            task=git,
+            steps=git_job_flow(job),
+            job=job,
+        )
+    )
+    rebase = ex(S.REBASE, task=git)
+    env.begin(rebase)
+    env.run(rebase)
+    check = ex(S.INTEGRATION_CHECK, task=git)
+    env.begin(check)
+    env.executor.run(check, env.world.inbox.expect(check))
+    env.executor.join()
+    (report,) = reports(env)
+    # 軽い検査 → 回帰テストの順。タスクのテスト（exit 1）は流れない
+    assert [(str(v.command), v.exit_code) for v in report.evidence.verify] == [
+        ("echo quick", 0),
+        ("echo regression", 0),
+    ]
 
 
 def test_joinの待ち時間は全体の上限で走りの数だけ延びない(env: Env):

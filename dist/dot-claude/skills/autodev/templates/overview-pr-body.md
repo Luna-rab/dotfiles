@@ -8,25 +8,27 @@
 
 （レビュアーが手元で確かめる操作と、期待する結果）
 
+<!-- autodev:waiting -->
+
 ---
 
-## autodev の記録
-
-### タスク
+<details><summary>タスク</summary>
 
 <!-- autodev:tasks -->
 
-### 回答を待っていること
+</details>
 
-<!-- autodev:waiting -->
-
-### 判断ログ
+<details><summary>判断ログ</summary>
 
 <!-- autodev:decisions -->
 
-### スコープの外にしたこと
+</details>
+
+<details><summary>スコープの外にしたこと</summary>
 
 <!-- autodev:deferrals -->
+
+</details>
 
 <details><summary>起動時の指示</summary>
 

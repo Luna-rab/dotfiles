@@ -9,8 +9,8 @@ from ....domain.services.union import UnionChecker
 from ....domain.stages.kinds import has_own_commits
 from ....domain.value_objects.artifact_ref import ArtifactRef
 from ....domain.value_objects.branch_name import BranchName
-from ....domain.value_objects.cut_point import CutPoint
 from ....domain.value_objects.pr_number import PrNumber
+from ....domain.value_objects.task_pr_title import TaskPrTitle
 from ....domain.value_objects.union_file_verdict import UnionFileVerdict
 from ....domain.value_objects.union_verdict import UnionVerdict
 from .. import markers
@@ -22,14 +22,9 @@ from .common import (
     job_of,
     overview_pr_of,
     own_commits,
-    start_commit_of,
+    resolve_cut_point,
     verify_tree,
 )
-
-
-def cut_point(tools: Tools, point: CutPoint) -> str:
-    """切る元の名前。ランの base は origin にあればそちらを使う（手元の base は古いことがある）。"""
-    return start_commit_of(tools, str(point.start)) if point.run_base else str(point.start)
 
 
 def cut_branch(ctx: StageContext, tools: Tools) -> ProgramOutcome:
@@ -40,7 +35,7 @@ def cut_branch(ctx: StageContext, tools: Tools) -> ProgramOutcome:
         raise RuntimeError(f"仕事 {job.id}（{job.kind.value}）に切る元が無い")
     git, paths = tools.git, tools.setting.paths
     git.prune_worktrees()
-    start = cut_point(tools, point)
+    start = resolve_cut_point(tools, point)
     branch: BranchName | None
     if point.detached:
         top = git.rev_parse(git.repo, start)
@@ -119,8 +114,8 @@ def check_union(ctx: StageContext, tools: Tools) -> ProgramOutcome:
     return ProgramOutcome(union=UnionVerdict(tuple(verdicts)))
 
 
-def verify(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    """積む直前の回帰を、ラン共通の verify で確かめる。"""
+def integration_check(ctx: StageContext, tools: Tools) -> ProgramOutcome:
+    """積む直前の回帰を、ラン共通の軽い検査と回帰テストで確かめる。"""
     return ProgramOutcome(verify=verify_tree(ctx, tools, ctx.tree))
 
 
@@ -136,7 +131,8 @@ def _read(tools: Tools, ref: ArtifactRef | None, what: str) -> str:
 
 
 def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
-    """タスク PR を、実装タスクが書いた本文で作る。同じブランチの PR があればそれを使う。"""
+    """タスク PR を、実装タスクが書いた本文で作る。題の頭に概要 PR の番号の印を付ける。同じブランチの PR が
+    あればそれを使う。"""
     job = job_of(ctx)
     branch = job_branch(job)
     found = tools.forge.find_pr(ctx.tree, branch)
@@ -144,15 +140,20 @@ def create_pr(ctx: StageContext, tools: Tools) -> ProgramOutcome:
         return ProgramOutcome(result={"pr": int(found.number.value)})
     if job.base is None or ctx.target.title is None:
         raise RuntimeError("積む仕事に一番上か、タスクの件名が無い")
+    overview_pr = overview_pr_of(ctx)
     body = markers.fill(
         markers.template("task-pr-body"),
         {
-            "overview-pr": f"概要 PR: #{overview_pr_of(ctx)}",
+            "overview-pr": f"概要 PR: #{overview_pr}",
             "body": _read(tools, ctx.target.pr_body, "タスク PR の本文（pr-body）"),
         },
     )
     number = tools.forge.create_pr(
-        ctx.tree, base=job.base, head=branch, title=ctx.target.title, body=body
+        ctx.tree,
+        base=job.base,
+        head=branch,
+        title=str(TaskPrTitle.for_task(ctx.target.title, overview_pr)),
+        body=body,
     )
     return ProgramOutcome(result={"pr": int(number.value)})
 

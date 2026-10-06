@@ -1227,7 +1227,7 @@ STACK_JOB = GitJob(3, GitJobKind.STACK, task=T1, branch=BRANCH, base=OVERVIEW_BR
 def test_Rebaseが衝突しなければ衝突したときだけのステージを飛ばす():
     git = git_task()
     git.take(STACK_JOB)
-    assert requested(git.run(ex(S.REBASE, task=G))) == [ex(S.VERIFY, task=G)]
+    assert requested(git.run(ex(S.REBASE, task=G))) == [ex(S.INTEGRATION_CHECK, task=G)]
 
 
 @pytest.mark.parametrize(
@@ -1351,7 +1351,9 @@ def test_積む直前の検証が落ちたら統合の失敗として上げる()
     git = git_task()
     git.take(STACK_JOB)
     git.run(ex(S.REBASE, task=G))
-    events = git.run(ex(S.VERIFY, task=G), verify=(VerifyResult(VerifyCommand("make test"), 2),))
+    events = git.run(
+        ex(S.INTEGRATION_CHECK, task=G), verify=(VerifyResult(VerifyCommand("make test"), 2),)
+    )
     raised = of_type(events, EscalationRaised)[0]
     assert raised.kind is E.INTEGRATION_FAILED
     assert raised.reason == "検証コマンドが落ちた: make test"
@@ -1361,7 +1363,7 @@ def test_StackLinkの結果はPRの番号を持ちStackが受けるまで待ち�
     git = git_task()
     git.take(STACK_JOB)
     git.run(ex(S.REBASE, task=G))
-    git.run(ex(S.VERIFY, task=G))
+    git.run(ex(S.INTEGRATION_CHECK, task=G))
     git.run(ex(S.PUSH, task=G))
     git.run(ex(S.CREATE_PR, task=G), result={"pr": 12})
     events = git.run(ex(S.STACK_LINK, task=G), result={"pr": 12}, confirm=False)
@@ -1469,7 +1471,7 @@ def test_git管理タスクは統合の失敗を閉じた後に仕事を捨て�
     git = git_task()
     git.take(STACK_JOB)
     git.run(ex(S.REBASE, task=G))
-    git.run(ex(S.VERIFY, task=G), verify=(VerifyResult(VerifyCommand("make test"), 2),))
+    git.run(ex(S.INTEGRATION_CHECK, task=G), verify=(VerifyResult(VerifyCommand("make test"), 2),))
     (escalation,) = git.escalation_ids()
     events = close(git, escalation, "タスクを差し込んだ")
     # 捨てた仕事を載せる（FinishGitJob で次の仕事を取り出せるようにする）
@@ -1495,12 +1497,15 @@ def test_捨てたフローで上げたエスカレーションはフローと�
     git = git_task()
     git.take(STACK_JOB)
     git.run(ex(S.REBASE, task=G))
-    git.run(ex(S.VERIFY, task=G), verify=(VerifyResult(VerifyCommand("make test"), 2),))
+    git.run(ex(S.INTEGRATION_CHECK, task=G), verify=(VerifyResult(VerifyCommand("make test"), 2),))
     (escalation,) = git.escalation_ids()
     events = git(AbandonFlow(command_id=new_id(), issuer=POLICY, task=G, reason="タスクを止めた"))
     assert events == [
         EscalationClosed(
-            escalation, "タスクを止めた", kind=E.INTEGRATION_FAILED, origin=ex(S.VERIFY, task=G)
+            escalation,
+            "タスクを止めた",
+            kind=E.INTEGRATION_FAILED,
+            origin=ex(S.INTEGRATION_CHECK, task=G),
         ),
         FlowAbandoned(1, "タスクを止めた", STACK_JOB),
     ]

@@ -31,6 +31,7 @@ from ...domain.value_objects.execution_id import ExecutionId
 from ...domain.value_objects.finding_id import FindingId
 from ...domain.value_objects.git_job import GitJob
 from ...domain.value_objects.glob_pattern import DEFAULT_TEST_GLOBS, GlobPattern
+from ...domain.value_objects.model_class import ModelClasses
 from ...domain.value_objects.pr_number import PrNumber
 from ...domain.value_objects.session_id import SessionId
 from ...domain.value_objects.stack_entry import StackEntry
@@ -60,12 +61,15 @@ class RunSetting:
     #: ランの base
     base: BranchName
     instruction: str
-    #: リポジトリごとの設定の検証コマンド（ブリーフに載せる。ラン共通の verify は計画が決める）
-    verify: tuple[VerifyCommand, ...] = ()
+    #: リポジトリごとの設定の軽い検査・回帰テスト（ブリーフに載せる。ランの値は計画が決める）
+    quick_checks: tuple[VerifyCommand, ...] = ()
+    regression_tests: tuple[VerifyCommand, ...] = ()
     test_globs: tuple[GlobPattern, ...] = DEFAULT_TEST_GLOBS
     protected_globs: tuple[GlobPattern, ...] = ()
     #: テストが要らないパス（TestGen を置かないフローで、Gate が変更をここに収まるか見る）
     untested_globs: tuple[GlobPattern, ...] = ()
+    #: ランが記録したクラスごとのモデルと effort
+    models: ModelClasses = field(default_factory=ModelClasses.default)
 
 
 @dataclass(frozen=True)
@@ -99,12 +103,22 @@ class TaskRow:
 
 
 @dataclass(frozen=True)
+class WaitingRow:
+    """概要 PR の回答待ちの 1 行。"""
+
+    #: 上げたタスク。ラン全体のものは None
+    task: TaskId | None
+    kind: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class OverviewFacts:
     """RefreshOverview が概要 PR のマーカーを埋める材料（数と状態は毎回ここから組む）。"""
 
     tasks: tuple[TaskRow, ...] = ()
-    #: 回答を待っているエスカレーション（タスクと種類）
-    waiting: tuple[tuple[TaskId | None, str], ...] = ()
+    #: 回答を待っているエスカレーション
+    waiting: tuple[WaitingRow, ...] = ()
     #: 計画が決めたことと、回答で決めたこと
     decisions: tuple[str, ...] = ()
     notes: tuple[Decision, ...] = ()
@@ -158,8 +172,9 @@ class StageContext:
     listed: tuple[str, ...] = ()
     #: 同じフローの前の Rebase が衝突したファイル（CheckUnion が見る）
     conflicts: tuple[str, ...] = ()
-    #: ラン共通の検証コマンド（最後に反映した計画のもの）
-    run_verify: tuple[VerifyCommand, ...] = ()
+    #: ラン共通の軽い検査・回帰テスト（最後に反映した計画のもの）
+    run_quick_checks: tuple[VerifyCommand, ...] = ()
+    run_regression_tests: tuple[VerifyCommand, ...] = ()
     #: 実行の状態（begin・run の呼び直しで、もう済んだ実行を走らせないために見る）
     status: ExecutionStatus | None = None
     gate: GateFacts | None = None
@@ -211,14 +226,14 @@ def _overview_facts(
 ) -> OverviewFacts:
     prs = {entry.task: entry.pr for entry in stack.entries} if stack is not None else {}
     rows: list[TaskRow] = []
-    waiting: list[tuple[TaskId | None, str]] = []
+    waiting: list[WaitingRow] = []
     if run is not None:
         for entry in sorted(run.tasks.values(), key=lambda e: _number(e.id)):
             if not entry.is_implementation:
                 continue
             title = entry.spec.title if entry.spec is not None else entry.id.value
             rows.append(TaskRow(entry.id, title, entry.status, prs.get(entry.id)))
-        waiting = [(e.task, e.kind.value) for e in run.escalations.values()]
+        waiting = [WaitingRow(e.task, e.kind.value, e.reason) for e in run.escalations.values()]
     return OverviewFacts(
         tasks=tuple(rows),
         waiting=tuple(waiting),
@@ -291,7 +306,8 @@ def snapshot(
         tool_use_id=record.tool_use_id,
         listed=task.conflicts or task.conflict_files,
         conflicts=task.conflicts or (),
-        run_verify=run.verify if run is not None else (),
+        run_quick_checks=run.quick_checks if run is not None else (),
+        run_regression_tests=run.regression_tests if run is not None else (),
         status=record.status,
         gate=_gate_facts(task, ledger, record.step) if execution.stage is StageKind.GATE else None,
         stack=StackFacts(stack.overview, tuple(stack.entries))
@@ -307,7 +323,7 @@ def snapshot(
 
 def run_setting(paths: RunPaths, history: Iterable[Delivery], **repository: Any) -> RunSetting:
     """確定したイベントの列の RunStarted から、ランの間変わらない値を組む。`repository` はリポジトリ
-    ごとの設定（`verify`・`test_globs`・`protected_globs`・`untested_globs`）。まだ無ければ LookupError。"""
+    ごとの設定（`quick_checks`・`regression_tests`・`test_globs`・`protected_globs`・`untested_globs`）。まだ無ければ LookupError。"""
     for delivery in history:
         if isinstance(delivery.event, RunStarted):
             started = delivery.event
@@ -316,6 +332,7 @@ def run_setting(paths: RunPaths, history: Iterable[Delivery], **repository: Any)
                 repository=Path(started.repository.value),
                 base=started.base,
                 instruction=started.instruction.value,
+                models=started.models or ModelClasses.default(),
                 **repository,
             )
     raise LookupError("RunStarted がまだ無い")

@@ -47,6 +47,7 @@ from ...domain.supervision import SUPERVISOR_GUARD, Supervisor
 from ...domain.value_objects.command_id import CommandId
 from ...domain.value_objects.event_id import EventId
 from ...domain.value_objects.issuer import Issuer
+from ...domain.value_objects.model_class import ModelClasses
 from ...domain.value_objects.session_id import SessionId
 from ...domain.value_objects.task_id import TaskId
 from ...infra.files import write_atomic
@@ -88,8 +89,8 @@ class SupervisorSetting:
     repository: Callable[[], str]
     #: Run が呼び直された回数（`Run.resumes`）。メインループのスレッドで、起こす時点に呼ぶ
     resumes: Callable[[], int] = lambda: 0
-    model: str | None = None
-    effort: str | None = None
+    #: ランが記録したクラスごとのモデルと effort（`Run.models`）。メインループのスレッドで、起こす時点に呼ぶ
+    models: Callable[[], ModelClasses] = ModelClasses.default
     max_turns: int | None = None
     #: 1 ターンの上限（秒）。過ぎたら interrupt を送る
     timeout: float | None = None
@@ -107,6 +108,8 @@ class _Turn:
     prompt: StagePrompt
     #: 起こす時点に Run が呼び直されていた回数（Panic の id に入れる）
     resumes: int = 0
+    #: 起こす時点にメインループのスレッドで取った、クラスごとのモデルと effort
+    models: ModelClasses = field(default_factory=ModelClasses.default)
     corrections: int = 0
 
 
@@ -261,7 +264,14 @@ class SupervisorRunner:
         self.sessions.add_pending(supervisor, source)
         state = self._states.setdefault(supervisor, _State())
         state.queue.append(
-            _Turn(prompt, source, self._setting.repository(), prompt, self._setting.resumes())
+            _Turn(
+                prompt,
+                source,
+                self._setting.repository(),
+                prompt,
+                self._setting.resumes(),
+                self._setting.models(),
+            )
         )
         self._next(supervisor)
 
@@ -449,6 +459,7 @@ class SupervisorRunner:
     def _run_once(self, supervisor: Supervisor, turn: _Turn) -> AgentOutcome | None:
         paths = self._setting.paths
         session, resume = self.sessions.session(supervisor)
+        choice = turn.models.of(supervisor.model_class)
         call = AgentCall(
             prompt=turn.prompt.text,
             cwd=str(paths.root),
@@ -458,8 +469,8 @@ class SupervisorRunner:
             json_schema=schema_text(
                 "supervisor-run" if supervisor.task is None else "supervisor-task"
             ),
-            model=self._setting.model,
-            effort=self._setting.effort,
+            model=choice.model.value,
+            effort=choice.effort.value,
             max_turns=self._setting.max_turns,
             settings=str(paths.guard),
             system_append=turn.prompt.system_append,

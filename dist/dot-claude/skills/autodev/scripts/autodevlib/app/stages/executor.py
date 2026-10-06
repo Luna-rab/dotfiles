@@ -70,11 +70,12 @@ from ...domain.value_objects.artifact_ref import ArtifactRef
 from ...domain.value_objects.base import InvalidValue
 from ...domain.value_objects.command_id import CommandId
 from ...domain.value_objects.commit_sha import CommitSha
+from ...domain.value_objects.cut_point import CutPoint
 from ...domain.value_objects.deferred_call import DeferredCall
 from ...domain.value_objects.evidence import Evidence
 from ...domain.value_objects.execution_id import ExecutionId
 from ...domain.value_objects.issuer import Issuer
-from ...domain.value_objects.overview_pr_title import overview_pr_title
+from ...domain.value_objects.overview_pr_title import OverviewPrTitle
 from ...domain.value_objects.pointers import Pointers
 from ...domain.value_objects.session_id import SessionId
 from ...domain.value_objects.stage_exit import StageExit
@@ -84,9 +85,14 @@ from ...infra.files import utc_now
 from ...infra.status.status import remove_progress, write_progress
 from ..driving.mainloop import Ticket
 from . import files, outputs
-from .programs.common import ProgramOutcome, Tools, VerifyRunner, own_commits
+from .programs.common import (
+    ProgramOutcome,
+    Tools,
+    VerifyRunner,
+    own_commits,
+    resolve_cut_point,
+)
 from .programs.registry import run_program
-from .programs.stacking import cut_point
 from .prompts.assets import asset_name, skill_root
 from .stage_context import ResumeMode, RunSetting, StageContext, StagePrompt, run_setting, snapshot
 
@@ -305,7 +311,7 @@ class Executor:
             process = live.process
         if process is not None:
             process.interrupt("driver が止めた")
-        # 決定的なステージ（Gate・Verify・Rebase など）の子プロセスも止める。止め終えるまで、同じ
+        # 決定的なステージ（Gate・統合検査・Rebase など）の子プロセスも止める。止め終えるまで、同じ
         # worktree の次の仕事は待つ（`_wait_stopped`）
         live.scope.stop()
 
@@ -472,11 +478,10 @@ class Executor:
             return git.head(context.tree)
         point = context.job.cut_point if context.job is not None else None
         if point is not None:
-            found = git.rev_parse(git.repo, cut_point(self._tools, point))
+            found = git.rev_parse(git.repo, resolve_cut_point(self._tools, point))
             if found is not None:
                 return found
-        base = self.setting.base
-        for rev in (f"origin/{base}", str(base), "HEAD"):
+        for rev in (*CutPoint(self.setting.base, run_base=True).refs(), "HEAD"):
             if (found := git.rev_parse(git.repo, rev)) is not None:
                 return found
         raise RuntimeError(f"{context.execution} の HEAD が決まらない")
@@ -677,7 +682,8 @@ class Executor:
     def _call(self, context: StageContext, prompt: StagePrompt | None) -> AgentCall:
         spec, setting = context.spec, self.setting
         guard = spec.guard
-        assert guard is not None and context.session is not None
+        assert guard is not None and spec.model_class is not None and context.session is not None
+        choice = setting.models.of(spec.model_class)
         where = guard_context(
             tree=context.tree,
             run_dir=setting.paths.root,
@@ -696,8 +702,8 @@ class Executor:
             resume=context.session_started,
             log_path=str(self._log_path(context)),
             json_schema=schema.read_text(encoding="utf-8"),
-            model=spec.model,
-            effort=spec.effort,
+            model=choice.model.value,
+            effort=choice.effort.value,
             max_turns=spec.max_turns,
             settings=str(setting.paths.guard),
             system_append=prompt.system_append if prompt is not None else None,
@@ -847,7 +853,7 @@ def _unusable(spec: StageSpec, result: Mapping[str, Any] | None) -> list[str]:
     if result is None or _F.TITLE not in spec.result:
         return []
     try:
-        overview_pr_title(str(result.get(_F.TITLE.value, "")))
+        OverviewPrTitle.for_run(str(result.get(_F.TITLE.value, "")))
     except InvalidValue as error:
         return [f"$.{_F.TITLE.value}: {error}"]
     return []
@@ -870,7 +876,7 @@ def from_parts(parts: DriverParts, runtime: AgentStarter, **repository: Any) -> 
     """組み立ての根から使う形: `Driver(paths, executor=lambda parts: from_parts(parts, runtime))`。
 
     対象リポジトリ・base・指示は RunStarted から読む（`stage_context.run_setting`）。`repository` は
-    リポジトリごとの設定（`verify`・`test_globs`・`protected_globs`・`untested_globs`）。
+    リポジトリごとの設定（`quick_checks`・`regression_tests`・`test_globs`・`protected_globs`・`untested_globs`）。
     """
     return Executor(
         setting=lambda: run_setting(parts.paths, parts.history(), **repository),

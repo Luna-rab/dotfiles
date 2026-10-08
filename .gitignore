@@ -1,57 +1,10 @@
-# `/*` と `/.**` で全部無視してから、追跡するものを `!` で戻す方式。
-# 新しく追跡したいファイルは、ここに `!` で足さないと git に入らない。
-### all ignore ###
-/*
-/.**
-
-### not ignore ###
-# $HOME へ配るもの
-!/dist
-!/dist/**
-
-# このリポジトリで作業するときだけ使う Claude Code の設定と道具。配らない
-!/.claude
-!/.claude/**
-
-# 検査。**配らない**（`dist/` の外に置いてあるのがその印である）
-!/test
-!/test/**
-
-# CI。push と pull request のたびに上の検査を流す
-!/.github
-!/.github/**
-
-# 上の `!` で復活した許可を打ち消し、生成物だけ再び無視する。
-#
-# `python3 -m compileall` やスキルのスクリプト実行で
-# scripts/ の下の __pycache__/ に .pyc が生まれるが、ソースから作り直せるので追跡しない。
-/dist/**/__pycache__/
-/dist/**/*.pyc
-/.claude/**/__pycache__/
-/.claude/**/*.pyc
-/test/**/__pycache__/
-/test/**/*.pyc
-# Claude Code が作る作業ツリー（git worktree の実体）。リポジトリの複製なので
-# コミットしない。
-/.claude/worktrees/
-
-# ruff（lint と書式）と ty（型）の設定と、その依存の固定。
-# 中身は開発と手元の検査だけで使うもので、dotfiles を入れた人には要らない
-# （スキルのスクリプトは標準ライブラリだけで動く）。
-!/pyproject.toml
-!/uv.lock
-
-# ruff と pytest がキャッシュを置く。ソースの副産物なので追跡しない
-/.ruff_cache/
+# Generated files and local state; new modules are tracked automatically.
+/.claude/
+/.codex/
+/.agents/
+/.venv/
 /.pytest_cache/
-/dist/**/.ruff_cache/
-/dist/**/.pytest_cache/
-/.claude/**/.ruff_cache/
-/.claude/**/.pytest_cache/
-/test/**/.ruff_cache/
-/test/**/.pytest_cache/
-
-!install.sh
-!/README.md
-!.gitignore
-!.gitkeep
+/.ruff_cache/
+**/__pycache__/
+*.py[cod]
+.DS_Store

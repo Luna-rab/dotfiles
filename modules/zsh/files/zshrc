@@ -1,0 +1,8 @@
+# 読み込み順を固定する。補完は sheldon が fpath を用意してから初期化する。
+for dotfiles_part in tools completion widgets; do
+  source "$HOME/.config/zsh/conf.d/$dotfiles_part.zsh"
+done
+unset dotfiles_part
+
+# 端末固有の設定。dotfiles はこのファイルを配置・上書きしない。
+[[ ! -f "$HOME/.config/zsh/local.zsh" ]] || source "$HOME/.config/zsh/local.zsh"

@@ -1,0 +1,30 @@
+# ./install.sh が ~/.config/mise/config.toml にリンクし、mise install で導入する。
+# zsh の起動時は mise activate で有効化するだけで、インストールしない。
+
+[tools]
+
+# シェルと Git
+sheldon = "latest" # ~/.zshrc がプラグインの読み込みに使う。
+fzf = "latest"     # zsh の ghq-fzf と gs が候補の選択に使う。
+ghq = "latest"     # Git リポジトリを ghq root 配下に配置する。
+gh = "latest"      # GitHub CLI。拡張の導入は利用側で管理する。
+
+# 言語の実行環境と Python パッケージ管理
+node = "lts"
+python = "latest"
+uv = "latest"
+
+# AI コーディング CLI
+claude = "latest"
+codex = "latest"
+copilot = "latest"
+
+# 言語サーバ（LSP）。接続設定はエディタや toolkit 側で管理する。
+
+# 利用先の node_modules/typescript が必要。利用先で npm ci などを実行する。
+# mise は npm パッケージごとに node_modules を分けるため、ここに
+# npm:typescript を追加しても、このサーバからは参照できない。
+"npm:typescript-language-server" = "latest"
+
+# Python。実行ファイル名は pyright-langserver。
+"npm:pyright" = "latest"
